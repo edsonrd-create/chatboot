@@ -46,3 +46,7 @@ O repositório contém `render.yaml` para publicação controlada na Render (pla
 ## Central de conversas V1.8
 
 Depois de entrar no painel do backend, abra **`/inbox`** para a nova interface responsiva: WhatsApp 01/02, busca, histórico, pausa da IA, transferências e mensagens manuais na fila Chatwoot. A conexão por QR Code, quando apresentada, acontece **somente dentro do fluxo oficial de cadastro incorporado da Meta**, no Chatwoot; o painel não gera um QR de pareamento artificial. Leia [a configuração detalhada](docs/DOIS-WHATSAPPS-E-CENTRAL.md). Nenhum número real estará conectado até a homologação.
+
+## V1.9 — Configurações e PDV seguro
+
+**NÃO PRONTO PARA PRODUÇÃO.** Página administrativa no backend: `/configuracoes`. A conexão do PDV só permite leitura de catálogo/loja pelas APIs existentes; nenhum pedido é enviado ao PDV sem contrato seguro de inclusão autenticado e idempotente. Administração exige login e persiste na base do servidor, não no HTML. API: `GET/PUT /api/settings`, `POST /api/pdv/test`, `GET /api/pdv/menu`, `GET /api/readiness`. O bot não responde automaticamente aos clientes até haver homologação comprovada. Leia [docs/HOMOLOGACAO-PDV-V19.md](docs/HOMOLOGACAO-PDV-V19.md).
