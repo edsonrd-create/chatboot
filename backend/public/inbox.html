@@ -1,21 +1,62 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0d1d24"><meta name="description" content="Central Guto Express: dois números WhatsApp e atendimento com inteligência artificial."><title>Guto Bot | Duplo WhatsApp</title><link rel="stylesheet" href="./inbox.css"><script src="./inbox.js" defer></script></head>
-<body><div class="shell" id="shell">
-<nav class="rail" aria-label="Navegação"><b class="logo">G</b><a class="selected" href="./inbox.html" title="Conversas">☏</a><a href="./index.html" title="Painel inicial">▦</a><button id="sideConfig" title="Conectar WhatsApps">⚙</button></nav>
-<aside class="sidebar">
-<header class="sidebar-head"><small class="kicker">GUTO EXPRESS · CENTRAL</small><div class="headline"><h1>Conversas <em>.</em></h1><button id="setup" title="Conexões WhatsApp" class="plain">⚙</button></div>
-<div class="channels"><button class="channel on" data-channel="1"><span>✆</span><div><b>WhatsApp 01</b><small id="st1">Aguardando conexão</small></div></button><button class="channel" data-channel="2"><span>✆</span><div><b>WhatsApp 02</b><small id="st2">Aguardando conexão</small></div></button></div>
-<input type="search" id="search" placeholder="⌕  Buscar conversas..." aria-label="Buscar conversas"><div class="filter"><button class="on" data-filter="all">Todas</button><button data-filter="unread">Não lidas</button></div></header>
-<div class="list" id="list"></div><div class="sidebar-bottom" id="connection">Ambiente de demonstração</div>
-</aside>
-<section class="chat">
-<header class="chat-head"><button id="back" class="mobile-back">←</button><div class="avatar" id="chatAvatar">G</div><div class="name"><b id="chatName">Selecione uma conversa</b><small id="chatSub">Atendimento Guto Express</small></div><button id="refresh" class="outline">↻ Atualizar</button><button id="handoff" class="outline">✋ Humano</button></header>
-<div class="banner" id="banner">DEMONSTRAÇÃO · Conversas fictícias; nenhuma mensagem é enviada para WhatsApp real.</div><div class="messages" id="messages"><p class="empty">Escolha uma conversa ao lado.</p></div>
-<form class="composer" id="compose"><textarea id="message" placeholder="Escreva uma resposta ao cliente..." rows="2" maxlength="2000" required></textarea><button id="send" type="submit">Enviar ➤</button></form>
-<div class="chat-footer" id="footerLabel">Teste local · IA generativa requer backend configurado</div>
-</section>
-<aside class="detail"><div class="profile"><div class="avatar large" id="rightAvatar">G</div><b id="rightName">Selecione uma conversa</b><small id="rightPhone">Dois canais independentes</small></div><h3>Detalhes</h3><dl><dt>Canal</dt><dd id="rightChannel">WhatsApp 01</dd><dt>Atendimento</dt><dd id="rightStatus">Demonstração</dd><dt>Mensagens</dt><dd id="rightCount">0</dd></dl><div class="info"><b>Atendimento inteligente</b><p>O sistema real usa IA no servidor. A versão estática não consulta modelos de IA.</p></div><div class="info"><b>Conexão oficial</b><p>É possível conectar os dois números do WhatsApp Business pelo fluxo de coexistência da Meta.</p><button id="sideConnect">Conectar número</button></div></aside>
+<html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101b2a"><meta name="robots" content="noindex,nofollow">
+<title>Central de conversas | Guto Bot</title>
+<link rel="stylesheet" href="/inbox.css">
+</head><body>
+<div class="app-shell" id="app-shell">
+  <aside class="rail" aria-label="Navegação">
+    <div class="logo-mark" title="Guto Express">G<span>.</span></div>
+    <a class="rail-btn active" href="/inbox" aria-label="Conversas" title="Conversas">▤</a>
+    <a class="rail-btn" href="/" aria-label="Painel administrativo" title="Painel administrativo">▦</a>
+    <button id="connect-rail" class="rail-btn" aria-label="Configurar os números" title="Configurar números">⚙</button>
+    <div class="rail-fill"></div>
+    <span class="rail-version">BETA</span>
+    <button id="logout-inbox" class="rail-btn" aria-label="Sair" title="Sair">⇥</button>
+  </aside>
+  <section class="sidebar" aria-label="Lista de conversas">
+    <div class="sidebar-heading"><div><div class="overline">GUTO EXPRESS · CENTRAL</div><h1>Conversas <span id="count" class="count">0</span></h1></div><button class="icon-square" id="refresh" aria-label="Atualizar">↻</button></div>
+    <div class="channel-tabs" role="tablist" aria-label="Selecionar número">
+      <button class="tab active" data-channel="all" type="button">Todas</button>
+      <button class="tab" data-channel="1" type="button">WhatsApp 1</button>
+      <button class="tab" data-channel="2" type="button">WhatsApp 2</button>
+    </div>
+    <div class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Pesquisar cliente ou conversa" aria-label="Pesquisar conversas"></div>
+    <div class="list-top"><span>ATENDIMENTOS</span><button id="configure" type="button">+ Conectar número</button></div>
+    <div class="conversation-list" id="conversations" role="list"><div class="loading">Carregando conversas…</div></div>
+    <div class="sidebar-footer"><span class="live-dot"></span><span id="channel-info">Verificando integração</span></div>
+  </section>
+  <main class="main-chat" id="main-chat">
+    <div class="chat-header" id="chat-header">
+      <button id="back-list" class="back-list" aria-label="Voltar às conversas">←</button>
+      <div class="avatar ghost" id="chat-avatar">G</div>
+      <div class="chat-person"><strong id="chat-name">Selecione uma conversa</strong><span id="chat-channel">Histórico e atendimento inteligente</span></div>
+      <div class="chat-actions"><span class="status-label" id="bot-status">Nenhuma conversa selecionada</span><button id="toggle-mode" type="button" disabled>Assumir atendimento</button></div>
+    </div>
+    <div class="chat-content" id="chat-content">
+      <div class="chat-empty" id="empty-state"><div class="chat-empty-icon">☏</div><h2>Seu atendimento, em um só lugar.</h2><p>Visualize os dois WhatsApps, assuma conversas e acompanhe os pedidos com contexto.</p><button id="empty-connect" type="button">Configurar canais WhatsApp</button><div class="empty-disclaimer">Ambiente de homologação • Nenhum QR Code ou conexão é simulado como real</div></div>
+      <div id="messages" class="messages" aria-live="polite" hidden></div>
+    </div>
+    <div class="composer" id="composer"><div class="composer-warning" id="composer-warning">Selecione uma conversa para responder.</div><form id="reply-form"><textarea id="reply" placeholder="Escreva uma mensagem ao cliente…" maxlength="2000" rows="1" disabled></textarea><button id="send" type="submit" disabled aria-label="Enviar mensagem">Enviar ↗</button></form><div class="composer-foot">Mensagens manuais exigem atendimento humano e integração Chatwoot configurada.</div></div>
+  </main>
+  <section class="detail" id="detail" aria-label="Detalhes de atendimento">
+    <div class="detail-top"><h3>Detalhes</h3><button id="connect-detail" class="text-button">Canais <span>↗</span></button></div>
+    <div class="detail-avatar">G</div><h3 id="detail-name">Guto Bot</h3><div class="muted center" id="detail-sub">Atendimento organizado</div>
+    <div class="detail-card"><div class="detail-card-title">ESTADO DA IA</div><strong id="detail-mode">Aguardando conversa</strong><p id="detail-mode-sub">A IA pode ser pausada a qualquer momento para que um atendente assuma.</p></div>
+    <div class="detail-card"><div class="detail-card-title">PEDIDO EM ANDAMENTO</div><div id="cart-preview">Nenhum pedido selecionado.</div></div>
+    <div class="detail-card"><div class="detail-card-title">SISTEMA</div><div class="system-line"><span>WhatsApp 01</span><b id="channel-one">Pendente</b></div><div class="system-line"><span>WhatsApp 02</span><b id="channel-two">Pendente</b></div><div class="system-line"><span>Integração</span><b id="integration">Não verificada</b></div></div>
+  </section>
 </div>
-<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-body"><button id="close" class="close" aria-label="Fechar">×</button><small class="kicker">META + CHATWOOT · AUTORIZADO</small><h2 id="modalTitle">Conectar WhatsApp 01</h2><p>Conecte seu número existente pelo processo oficial do WhatsApp Business Platform, preservando o aplicativo quando a Meta permitir coexistência.</p><ol><li>Abra o Chatwoot e acesse <b>Settings → Inboxes → Add Inbox → WhatsApp</b>.</li><li>Selecione <b>Connect with WhatsApp Business</b> e o número existente.</li><li>Se a Meta mostrar um <b>QR Code oficial</b>, escaneie pelo aplicativo conforme as instruções; em outros casos, a Meta solicita verificação por código.</li><li>Finalize e repita no segundo número em outra caixa de entrada.</li></ol><div class="qr"><span>▦</span><div><b>QR Code gerado pela Meta</b><small>Não criamos um QR fictício. Use apenas o apresentado pelo processo oficial.</small></div></div><a id="provider" target="_blank" rel="noopener noreferrer" class="primary-link" href="https://app.chatwoot.com">Abrir conexão oficial ↗</a><p class="fine">A ativação pode desvincular dispositivos existentes do WhatsApp Web. Não exclua sua conta atual.</p></div></div>
-<div class="toast" id="toast" hidden></div>
+<div class="overlay" id="overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading">
+    <div class="modal-head"><div><div class="overline">GUTO BOT · CONFIGURAÇÃO OFICIAL</div><h2 id="modal-heading">Conectar WhatsApp Business</h2></div><button id="close-overlay" class="icon-square" aria-label="Fechar">×</button></div>
+    <p class="modal-intro">Cada número deve ser cadastrado separadamente no Chatwoot pela <b>Configuração rápida com a Meta</b>, usando <b>Coexistência</b> para manter o WhatsApp Business atual (quando elegível).</p>
+    <div class="connect-grid" id="connect-grid"></div>
+    <div class="qr-explainer"><div class="qr-illustration"><div class="qr-corners">▦</div><span>QR oficial</span></div><div><h3>Como funciona o QR Code?</h3><p>O scanner ou código de verificação é apresentado <b>pela Meta durante a conexão oficial</b>, quando disponibilizado para sua conta. O Guto Bot <b>não gera QR Code de WhatsApp Web</b> e não pede sua senha.</p><ol><li>Abra Chatwoot → Configurações → Caixas de entrada → Adicionar → WhatsApp.</li><li>Escolha <b>Conectar com WhatsApp Business</b> e selecione seu número existente.</li><li>Se a Meta mostrar um QR, escaneie com o aplicativo indicado; se mostrar código, siga as instruções oficiais.</li><li>Repita para o segundo número; confirme envio e recebimento antes de ativar a IA.</li></ol></div></div>
+    <div class="modal-bottom"><a id="open-chatwoot" href="https://app.chatwoot.com" target="_blank" rel="noopener noreferrer">Abrir Chatwoot ↗</a><a href="https://www.chatwoot.com/hc/user-guide/articles/1791812048-2-escolha-como-conectar-o-whats_app" target="_blank" rel="noopener noreferrer">Ver documentação oficial ↗</a></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/inbox.js" defer></script>
 </body></html>
