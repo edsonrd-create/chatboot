@@ -1,26 +1,100 @@
-(()=>{'use strict';
-const $=id=>document.getElementById(id),demo=location.protocol==='file:'||location.hostname.endsWith('.github.io')||new URLSearchParams(location.search).has('demo');
-const SAMPLE={1:[{id:101,name:'Cliente teste 01',unread:2,time:'11:43',messages:[{type:'incoming',content:'Boa noite, quero uma grande meio calabresa meio frango com catupa.',time:'11:40'},{type:'outgoing',content:'Claro! Vou montar uma Grande de 10 fatias com os dois sabores. Quer acrescentar bebida?',time:'11:42'},{type:'incoming',content:'Uma coca de dois litros também.',time:'11:43'}]},{id:102,name:'Cliente teste 02',unread:0,time:'11:10',messages:[{type:'incoming',content:'O combo Big vem com refrigerante?',time:'11:10'}]},{id:103,name:'Cliente teste 03',unread:1,time:'10:48',messages:[{type:'incoming',content:'Quais são os ingredientes da Portuguesa?',time:'10:48'}]}],2:[{id:201,name:'Cliente teste 04',unread:1,time:'11:46',messages:[{type:'incoming',content:'Duas pizzas médias pra retirar, pode ser?',time:'11:46'}]},{id:202,name:'Cliente teste 05',unread:0,time:'10:51',messages:[{type:'incoming',content:'Tem promoção pra hoje?',time:'10:51'}]}]};
-let channel=1,filter='all',active=null,live=!demo,threads=demo?structuredClone(SAMPLE):{1:[],2:[]},config=[],setupUrl=null,ai=false;
-const nameOf=()=> 'WhatsApp '+String(channel).padStart(2,'0');
-const current=()=> (threads[channel]||[]).find(x=>x.id===active);
-const initials=s=>String(s||'?').split(' ').slice(0,2).map(x=>x[0]||'').join('').toUpperCase();
-const notify=msg=>{const el=$('toast');el.textContent=msg;el.hidden=false;clearTimeout(window.__toast);window.__toast=setTimeout(()=>el.hidden=true,3500);};
-const timeOf=t=>{if(!t)return '';const d=new Date(typeof t==='number'?t*1000:t);return Number.isFinite(+d)?d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';};
-const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n;};
-async function api(path,opts={}){const r=await fetch(path,{credentials:'same-origin',headers:{'content-type':'application/json'},...opts});let d={};try{d=await r.json();}catch{}if(!r.ok)throw Error(r.status===401?'Faça login no painel inicial para acessar conversas reais.':d.error||'Erro na conexão com Chatwoot');return d;}
-function list(){const box=$('list');box.replaceChildren();const search=$('search').value.toLocaleLowerCase('pt-BR');const arr=(threads[channel]||[]).filter(c=>(filter==='all'||c.unread>0)&&c.name.toLocaleLowerCase('pt-BR').includes(search));if(!arr.length)box.append(el('p','empty',live?'Nenhuma conversa no canal.':'Nenhum cliente de teste.'));for(const c of arr){const b=el('button','person'+(c.id===active?' active':''));b.type='button';b.append(el('span','avatar',initials(c.name)));const d=el('div','person-data'),top=el('div','person-top');top.append(el('b','',c.name),el('time','',c.time||''));d.append(top,el('p','',c.messages?.at(-1)?.content||c.lastMessage||'Nenhuma mensagem'));b.append(d);if(c.unread)b.append(el('span','unread',c.unread));b.addEventListener('click',()=>choose(c.id));box.append(b);}}
-function show(){const c=current();$('chatName').textContent=c?.name||'Selecione uma conversa';$('chatSub').textContent=c?nameOf()+(live?' · Chatwoot':' · Simulação'):'Atendimento Guto Express';$('chatAvatar').textContent=initials(c?.name||'G');$('rightAvatar').textContent=initials(c?.name||'G');$('rightName').textContent=c?.name||'Selecione uma conversa';$('rightPhone').textContent=live?(c?.phone||'Contato Chatwoot'):'Cliente fictício';$('rightChannel').textContent=nameOf();$('rightStatus').textContent=live?'Atendimento humano':'Simulação';$('rightCount').textContent=c?.messages?.length||0;$('handoff').disabled=!c||!live;$('send').disabled=!c;$('message').disabled=!c;const box=$('messages');box.replaceChildren();if(!c){box.append(el('p','empty','Escolha uma conversa à esquerda.'));return;}for(const m of c.messages||[]){const b=el('div','bubble '+(m.type==='outgoing'?'outgoing':'incoming'));b.append(el('span','',m.content||'[Mensagem sem texto]'),el('time','',m.time||''));box.append(b);}box.scrollTop=box.scrollHeight;}
-function render(){for(let i=1;i<=2;i++){const b=document.querySelector('[data-channel="'+i+'"]');b.classList.toggle('on',channel===i);$('st'+i).textContent=live?(config[i-1]?.configured?'Inbox validado':'Não conectado'):'Prévia sem conexão';}$('connection').textContent=live?'Conexão Chatwoot verificada conforme configuração do servidor':'Simulação local · nenhuma conta real conectada';$('banner').textContent=live?'ATENÇÃO · Mensagens enviadas aqui vão para clientes reais. Use apenas após homologação.':'DEMONSTRAÇÃO · Conversas fictícias; nenhuma mensagem é enviada ao WhatsApp real.';$('footerLabel').textContent=live?'Envio manual por Chatwoot: IA pausada nesta conversa':'Teste local · IA real exige backend e chave de API';list();show();}
-async function choose(id){active=id;const c=current();if(c)c.unread=0;render();$('shell').classList.add('in-chat');if(live&&c){try{const d=await api('/api/inbox/conversations/'+id+'/messages?inboxId='+encodeURIComponent(config[channel-1].inboxId));if(active!==id)return;c.messages=(d.messages||[]).map(m=>({type:m.type,content:m.content,time:timeOf(m.timestamp)}));show();}catch(e){notify(e.message);}}}
-async function loadConvos(){if(!live)return;const c=config[channel-1];if(!c?.configured){threads[channel]=[];active=null;return render();}try{const d=await api('/api/inbox/conversations?inboxId='+encodeURIComponent(c.inboxId));threads[channel]=(d.conversations||[]).map(x=>({...x,messages:[],time:timeOf(x.timestamp)}));if(!current())active=null;render();}catch(e){notify(e.message);}}
-async function initialize(){if(demo){live=false;render();return;}try{const d=await api('/api/inbox/channels');config=d.channels||[];ai=d.aiConfigured;setupUrl=d.onboardingUrl;live=true;threads={1:[],2:[]};render();await loadConvos();}catch(e){live=true;threads={1:[],2:[]};render();notify(e.message);}}
-function modal(){$('modalTitle').textContent='Conectar '+nameOf();$('provider').href=setupUrl||'https://app.chatwoot.com';$('modal').hidden=false;}
-document.querySelectorAll('[data-channel]').forEach(b=>b.addEventListener('click',async()=>{channel=Number(b.dataset.channel);active=null;$('shell').classList.remove('in-chat');render();if(live)await loadConvos();}));
-document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('on',x===b));list();}));
-$('search').addEventListener('input',list);$('refresh').addEventListener('click',()=>live?loadConvos():notify('A prévia não recebe mensagens reais.'));$('back').addEventListener('click',()=>$('shell').classList.remove('in-chat'));$('handoff').addEventListener('click',()=>notify('A IA é pausada ao enviar uma resposta manual pelo painel conectado.'));
-for(const id of ['setup','sideConfig','sideConnect'])$(id).addEventListener('click',modal);
-$('close').addEventListener('click',()=>$('modal').hidden=true);$('modal').addEventListener('click',e=>{if(e.target===$('modal'))$('modal').hidden=true;});document.addEventListener('keydown',e=>{if(e.key==='Escape')$('modal').hidden=true;});$('message').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('compose').requestSubmit();}});
-$('compose').addEventListener('submit',async e=>{e.preventDefault();const c=current(),value=$('message').value.trim();if(!c||!value)return;if(!live){c.messages.push({type:'outgoing',content:value,time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})});$('message').value='';render();notify('Mensagem simulada; nenhum cliente recebeu.');return;}const inbox=config[channel-1];if(!inbox?.configured)return notify('Conecte este número oficialmente.');if(!confirm('Enviar esta mensagem REAL ao cliente?'))return;$('send').disabled=true;try{await api('/api/inbox/conversations/'+c.id+'/reply?inboxId='+inbox.inboxId,{method:'POST',body:JSON.stringify({content:value})});$('message').value='';await choose(c.id);notify('Mensagem enviada via Chatwoot; IA pausada.');}catch(e){notify(e.message);}finally{$('send').disabled=false;}});
-initialize();
-})();
+'use strict';
+const byId=id=>document.getElementById(id);
+const state={items:[],channels:[],selected:null,channel:'all',search:'',detail:null,refreshTimer:null,offline:true};
+const endpoint='/api';
+async function api(route,opts={}){
+  const resp=await fetch(endpoint+route,{credentials:'same-origin',headers:{'content-type':'application/json'},...opts});
+  let body;try{body=await resp.json();}catch{body={error:`Resposta inválida (HTTP ${resp.status})`};}
+  if(resp.status===401){window.location.assign('/');throw new Error('Sessão encerrada. Entre novamente pelo painel.');}
+  if(!resp.ok)throw new Error(body.error||`Erro HTTP ${resp.status}`);
+  return body;
+}
+function toast(text){const n=byId('toast');n.textContent=text;n.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>n.hidden=true,5100);}
+function element(tag,css,text){const e=document.createElement(tag);if(css)e.className=css;if(text!==undefined)e.textContent=String(text);return e;}
+function shortTime(date){const d=new Date(date);return Number.isFinite(d.getTime())?d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';}
+const slotOfId=id=>state.channels.find(x=>x.inboxId===id)?.slot||null;
+function filtered(){return state.items.filter(x=>{
+    if(state.channel!=='all'&&slotOfId(x.inboxId)!==Number(state.channel))return false;
+    const terms=state.search.toLocaleLowerCase('pt-BR');return !terms||(x.name+' '+x.preview).toLocaleLowerCase('pt-BR').includes(terms);
+});}
+function setVisibleDetail(selected){byId('app-shell').classList.toggle('chat-selected',Boolean(selected));}
+function renderList(){const items=filtered(),container=byId('conversations');container.replaceChildren();byId('count').textContent=state.items.length;
+  if(!items.length){container.append(element('div','no-conversation',state.items.length?'Nenhum atendimento encontrado neste filtro.':'Nenhuma conversa real recebida. Conecte os dois canais pelo Chatwoot para começar.'));return;}
+  for(const item of items){const button=element('button','conversation'+(state.selected===item.key?' active':''));button.type='button';button.setAttribute('role','listitem');
+    const avatar=element('div','avatar',item.name.slice(0,1).toUpperCase());const main=element('div','conversation-body');const title=element('div','conversation-title');title.append(element('strong','',item.name),element('span','conversation-time',shortTime(item.updatedAt)));main.append(title,element('div','preview',item.preview||'Conversa sem prévia'));
+    const line=element('div');line.append(element('span','tag',`WhatsApp ${slotOfId(item.inboxId)||'?'}`));line.append(element('span','tag '+(item.mode==='HUMAN'?'amber':'green'),item.mode==='HUMAN'?'Humano':'IA'));
+    main.append(line);button.append(avatar,main);button.addEventListener('click',()=>openChat(item.key));container.append(button);
+  }
+}
+function renderChannels(){const labels=state.channels.map(c=>c.configured?'Configurado · não verificado':'Não conectado');
+  byId('channel-one').textContent=labels[0]||'Pendente';byId('channel-two').textContent=labels[1]||'Pendente';
+  byId('channel-info').textContent=state.channels.some(c=>c.configured)?'Integração cadastrada · não verificada':'Aguardando a conexão dos 2 números';
+  byId('integration').textContent='Não verificada';const grid=byId('connect-grid');grid.replaceChildren();
+  for(let i=0;i<2;i++){const c=state.channels[i]||{slot:i+1,configured:false};const item=element('div','connect-card');item.append(element('strong','',`WhatsApp ${i+1}`));item.append(element('p','',c.configured?`Inbox ID: ${c.inboxId}. Isso não garante que o número esteja online.`:'Ainda não configurado neste servidor. Mantenha o aplicativo WhatsApp Business instalado.'));
+    item.append(element('span','tag '+(c.configured?'amber':''),c.configured?'Configuração informada':'Sem conexão verificada'));
+    const button=element('button','',c.chatwootUrl?'Abrir configuração no Chatwoot ↗':'Ver instruções oficiais ↗');button.addEventListener('click',()=>{
+      const url=c.chatwootUrl||'https://www.chatwoot.com/hc/user-guide/articles/1791812048-2-escolha-como-conectar-o-whats_app';
+      window.open(url,'_blank','noopener,noreferrer');
+    });item.append(button);grid.append(item);
+  }
+  const base=state.channels.find(x=>x.chatwootUrl)?.chatwootUrl;
+  byId('open-chatwoot').href=base||'https://app.chatwoot.com';
+}
+function formatMoney(cents){return Number.isSafeInteger(cents)?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100):'A confirmar';}
+function renderCart(detail){const box=byId('cart-preview');box.replaceChildren();const summary=detail?.summary;
+  if(!summary?.items?.length){box.textContent='Nenhum item no carrinho desta conversa.';return;}
+  for(const i of summary.items){const row=element('div','system-line');row.append(element('span','',`${i.quantity}× ${i.description}`),element('b','',formatMoney(i.unitPriceCents)));box.append(row);}
+  const hr=document.createElement('hr');hr.style.border='none';hr.style.borderTop='1px solid #e6ebf0';hr.style.marginTop='13px';box.append(hr);
+  const total=element('div','system-line');total.append(element('strong','', 'Total'),element('b','',formatMoney(summary.totalCents)));box.append(total);
+  if(summary.missing?.length)box.append(element('p','muted',`Pendências: ${summary.missing.join(', ')}`));
+}
+function renderChat(){const detail=state.detail,selected=Boolean(detail);setVisibleDetail(selected);
+  byId('empty-state').hidden=selected;byId('messages').hidden=!selected;byId('chat-name').textContent=detail?.name||'Selecione uma conversa';
+  byId('detail-name').textContent=detail?.name||'Guto Bot';
+  byId('detail-sub').textContent=detail?`WhatsApp ${slotOfId(detail.inboxId)||'?'} · ${detail.key}`:'Atendimento organizado';
+  byId('chat-channel').textContent=detail?`WhatsApp ${slotOfId(detail.inboxId)||'?'} · ${detail.history.length} mensagens`:'Histórico e atendimento inteligente';
+  byId('chat-avatar').textContent=(detail?.name||'G').slice(0,1).toUpperCase();
+  const manual=detail?.mode==='HUMAN';const canSend=Boolean(detail && manual && state.channels.some(x=>x.configured&&x.inboxId===detail.inboxId));
+  byId('bot-status').textContent=!selected?'Nenhuma conversa':manual?'Atendente humano':'IA ativa';byId('bot-status').className='status-label'+(selected?(manual?' human':' live'):'');
+  byId('detail-mode').textContent=!selected?'Aguardando conversa':manual?'Humano assumiu':'Modo automático';
+  byId('detail-mode-sub').textContent=!selected?'Selecione uma conversa.':manual?'Respostas automáticas estão pausadas nesta conversa.':'Use Assumir atendimento antes de responder manualmente.';
+  byId('toggle-mode').disabled=!selected;byId('toggle-mode').textContent=manual?'Reativar IA':'Assumir atendimento';
+  byId('reply').disabled=!canSend;byId('send').disabled=!canSend;
+  byId('composer-warning').textContent=!selected?'Selecione uma conversa para responder.':!manual?'A IA está ativa. Clique em “Assumir atendimento” para responder manualmente.':!canSend?'A integração precisa estar configurada para enviar mensagens.':'Modo humano: as mensagens serão colocadas em fila de envio ao Chatwoot.';
+  renderCart(detail);
+  const chat=byId('messages');chat.replaceChildren();if(!selected)return;
+  for(const m of detail.history){const incoming=m.role==='incoming';const bubble=element('div','message '+(incoming?'incoming':'outgoing'),m.content);const desc=incoming?'Cliente':m.role==='human'?'Atendente':'Guto Bot';
+    const delivery=m.delivery==='queued'?' · na fila':m.delivery==='failed'?' · falhou':m.delivery==='sent'?' · enviado':'';
+    bubble.append(element('div','message-info',desc+delivery));chat.append(bubble);
+  }
+  byId('chat-content').scrollTop=byId('chat-content').scrollHeight;
+}
+async function load(){const data=await api('/inbox/conversations');state.items=data.items||[];state.channels=data.channels||[];state.offline=false;renderChannels();renderList();
+  if(state.selected && state.items.some(x=>x.key===state.selected))await fetchDetail(state.selected,false);
+  else if(state.selected){state.selected=null;state.detail=null;renderChat();}
+}
+async function fetchDetail(key,withScroll=true){const detail=await api('/inbox/conversations/'+encodeURIComponent(key));if(state.selected!==key)return;const old=state.detail;const changed=!old || old.updatedAt!==detail.updatedAt || old.mode!==detail.mode || old.history.length!==detail.history.length || old.history.at(-1)?.delivery!==detail.history.at(-1)?.delivery;state.detail=detail;if(changed){renderChat();if(withScroll)byId('chat-content').scrollTop=byId('chat-content').scrollHeight;}}
+async function openChat(key){state.selected=key;renderList();try{await fetchDetail(key);}catch(e){toast(e.message);}}
+async function sendMessage(event){event.preventDefault();const content=byId('reply').value.trim();if(!content||!state.selected)return;
+  const key=state.selected,button=byId('send'),requestId=crypto.randomUUID();button.disabled=true;
+  try{const result=await api(`/inbox/conversations/${encodeURIComponent(key)}/messages`,{method:'POST',body:JSON.stringify({content,requestId})});
+    if(result.queued){byId('reply').value='';toast('Mensagem adicionada à fila de envio.');await fetchDetail(key);}
+  }catch(e){toast(e.message);}finally{button.disabled=false;}
+}
+function openConnect(){byId('overlay').hidden=false;byId('close-overlay').focus();}function closeConnect(){byId('overlay').hidden=true;}
+byId('refresh').addEventListener('click',()=>load().catch(e=>toast(e.message)));
+byId('search').addEventListener('input',e=>{state.search=e.target.value;renderList();});
+for(const tab of document.querySelectorAll('[data-channel]'))tab.addEventListener('click',()=>{state.channel=tab.dataset.channel;document.querySelectorAll('[data-channel]').forEach(x=>x.classList.toggle('active',x===tab));renderList();});
+for(const id of ['connect-rail','configure','empty-connect','connect-detail'])byId(id).addEventListener('click',openConnect);
+byId('close-overlay').addEventListener('click',closeConnect);byId('overlay').addEventListener('click',e=>{if(e.target===byId('overlay'))closeConnect();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeConnect();});
+byId('back-list').addEventListener('click',()=>{state.selected=null;state.detail=null;renderChat();});
+byId('toggle-mode').addEventListener('click',async()=>{if(!state.selected||!state.detail)return;const mode=state.detail.mode==='HUMAN'?'BOT':'HUMAN';
+  if(mode==='BOT'&&!confirm('Retomar IA nesta conversa? Faça isso apenas depois de confirmar a configuração e a segurança do atendimento.'))return;
+  try{await api(`/conversations/${encodeURIComponent(state.selected)}/mode`,{method:'POST',body:JSON.stringify({mode})});await load();toast(mode==='HUMAN'?'Conversa assumida por atendente.':'IA reativada para esta conversa.');}catch(e){toast(e.message);}
+});
+byId('reply-form').addEventListener('submit',sendMessage);
+byId('reply').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();byId('reply-form').requestSubmit();}});
+byId('logout-inbox').addEventListener('click',async()=>{try{await api('/logout',{method:'POST'});}catch{}window.location.assign('/');});
+renderChat();load().catch(e=>{byId('conversations').replaceChildren(element('div','no-conversation',`Não foi possível carregar: ${e.message}`));toast(e.message);});
+state.refreshTimer=setInterval(()=>{if(!document.hidden)load().catch(()=>{});},6000);
