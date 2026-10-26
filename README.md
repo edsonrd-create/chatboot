@@ -73,3 +73,12 @@ npm start
 O sistema só processa pedidos livres usando IA quando um provedor de modelo for conectado com uma chave válida. **Ainda não há Chatwoot/WhatsApps reais, preço atualizado, pagamento ou produção conectados.** Não usar para vender antes dos testes de homologação descritos em [backend/docs/HOMOLOGACAO-V16.md](backend/docs/HOMOLOGACAO-V16.md).
 
 **Testes GitHub Actions:** [Guto Bot backend tests](../../actions/workflows/guto-backend-tests.yml). A suíte antiga do simulador também é executada quando o HTML é alterado.
+
+
+## Atendimento com IA real (backend V1.7)
+
+**Atenção:** o `index.html` do GitHub Pages usa um simulador estático de regras, não um modelo de IA. Para testar conversas humanizadas com modelo real, é preciso implantar o [backend](backend/) em hospedagem HTTPS com chave de API guardada no servidor. Sem chave, a API de simulação não finge inteligência: responde que a IA não está configurada.
+
+[**Preparar implantação de homologação no Render**](https://render.com/deploy?repo=https://github.com/edsonrd-create/chatboot) — exige revisão e confirmação na conta Render. O plano Starter com disco pode ter custo; consulte preço antes de confirmar.
+
+[Manual de IA real e publicação](backend/docs/IA-REAL-E-DEPLOY-V17.md). A autenticação é pelo painel do backend publicado, não pelo GitHub Pages. A integração de WhatsApp real continuará desligada até homologação.
