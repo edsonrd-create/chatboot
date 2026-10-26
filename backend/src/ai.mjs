@@ -85,7 +85,7 @@ async function callOpenAI(body,apiKey,model){
  }finally{clearTimeout(timer);}
 }
 
-export async function testAIConnection({apiKey,model='gpt-4.1-mini'}={}) {
+export async function testAIConnection({apiKey,model='gpt-4.1-mini'}={}){
  if(!apiKey)throw new Error('OPENAI_API_KEY ausente');
  const response=await callOpenAI({model,input:[{role:'user',content:'Responda apenas: OK'}],max_output_tokens:32,store:false},apiKey,model);
  if(!extractText(response))throw new Error('Resposta vazia do modelo');
