@@ -39,6 +39,7 @@ jobs:
           test -s _site/whatsapp.html
           test -s _site/inbox.css
           test -s _site/inbox.js
+          node --check _site/inbox.js
           touch _site/.nojekyll
           test -s _site/index.html
           ! grep -Eqi 'OPENAI_API_KEY=|CHATWOOT_API_TOKEN=|META_ACCESS_TOKEN=' _site/index.html
