@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101b2a"><meta name="robots" content="noindex,nofollow">
+<title>Central de conversas | Guto Bot</title>
+<style>[hidden]{display:none!important}:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;color:#202d3e;background:#edf1f5;--nav:#172435;--green:#13865f;--green-soft:#ecf7f0;--line:#e6ebf0;--muted:#84909f;--red:#c52b30;--focus:#f0f8f3;--shadow:0 14px 45px #19283c11}*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-size:14px}button,input,textarea{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.55}a{color:inherit;text-decoration:none}.app-shell{height:100vh;min-height:600px;display:grid;grid-template-columns:70px 356px minmax(380px,1fr) 274px;background:#fff;overflow:hidden}.rail{background:var(--nav);display:flex;align-items:center;flex-direction:column;padding:22px 10px;gap:14px;color:#acb7c8}.logo-mark{display:grid;place-items:center;width:43px;height:43px;border-radius:14px;background:#e63d35;color:#fff;font-size:22px;font-weight:900;margin-bottom:32px;letter-spacing:-2px;box-shadow:0 10px 22px #e63d3533}.logo-mark span{color:#fff4b2}.rail-btn{display:grid;place-items:center;width:45px;height:45px;font-size:25px;background:transparent;color:#a5b6c7;border:0;border-radius:13px}.rail-btn:hover,.rail-btn.active{background:#293c53;color:white}.rail-fill{flex:1}.rail-version{font-size:9px;font-weight:800;letter-spacing:1px;color:#8b99a8}.sidebar{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--line);background:#fff}.sidebar-heading{display:flex;justify-content:space-between;align-items:center;padding:29px 25px 21px}.overline{font-size:10px;font-weight:800;letter-spacing:1.7px;color:#e34e46}.sidebar h1{font-size:23px;letter-spacing:-.8px;margin:6px 0 0}.count{display:inline-block;vertical-align:middle;border-radius:30px;padding:1px 9px;font-size:12px;background:#edf3f6;color:#617386}.icon-square{border:1px solid var(--line);width:37px;height:37px;border-radius:10px;background:#fff;color:#536479;font-size:22px}.channel-tabs{display:flex;gap:4px;margin:0 22px 17px;background:#f4f6f8;border-radius:12px;padding:5px}.tab{border:0;background:transparent;color:#7b8998;padding:9px 11px;border-radius:9px;font-size:12px;flex:1;white-space:nowrap}.tab.active{color:#1c7157;background:#fff;box-shadow:0 2px 7px #1a294211;font-weight:800}.search-wrap{display:flex;align-items:center;gap:9px;border:1px solid #e6ebee;border-radius:12px;background:#f8fafb;margin:0 22px 22px;padding:0 12px}.search-wrap span{font-size:23px;color:#9aa5b3}.search-wrap input{outline:none;background:transparent;border:0;padding:12px 0;width:100%;font-size:13px;color:#314154}.list-top{display:flex;align-items:center;justify-content:space-between;padding:0 24px 12px;color:#8d9aab;font-size:10px;letter-spacing:1px;font-weight:800}.list-top button,.text-button{border:0;background:transparent;color:#187a5e;font-size:12px;font-weight:700;letter-spacing:0}.conversation-list{overflow-y:auto;flex:1;padding:0 10px 10px}.conversation{width:100%;display:flex;align-items:flex-start;text-align:left;gap:11px;padding:15px 12px;border:0;border-bottom:1px solid #f0f3f6;background:#fff;border-radius:11px}.conversation:hover{background:#f6f9fa}.conversation.active{background:var(--green-soft)}.avatar{height:44px;width:44px;display:grid;place-items:center;flex:none;border-radius:14px;background:#f4dacb;color:#955936;font-size:16px;font-weight:800}.avatar.ghost{background:#eaf0f5;color:#687789}.conversation-body{min-width:0;flex:1}.conversation-title{display:flex;align-items:center;justify-content:space-between;gap:5px}.conversation-title strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}.conversation-time{font-size:10px;color:#9aa5b0;white-space:nowrap}.preview{color:#8b97a3;font-size:12px;margin:5px 0 7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tag{display:inline-flex;align-items:center;padding:3px 8px;border-radius:6px;background:#f4f6f8;font-size:10px;color:#66768a;font-weight:800}.tag.green{background:#e4f5eb;color:#16805c}.tag.amber{background:#fff2dd;color:#a97219}.sidebar-footer{height:60px;border-top:1px solid var(--line);padding:0 23px;display:flex;align-items:center;gap:10px;font-size:12px;color:#8592a2}.live-dot{height:8px;width:8px;background:#dd9d45;border-radius:50%}.main-chat{display:flex;flex-direction:column;min-width:0;background:#f4f5f1}.chat-header{height:86px;background:#fff;display:flex;gap:12px;align-items:center;padding:0 24px;border-bottom:1px solid var(--line);flex-shrink:0}.chat-person{display:flex;flex-direction:column;gap:4px;min-width:0}.chat-person strong{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chat-person span{font-size:12px;color:var(--muted)}.chat-actions{margin-left:auto;display:flex;align-items:center;gap:11px}.status-label{border-radius:20px;background:#eef3f5;color:#728095;font-size:11px;font-weight:700;padding:7px 10px;white-space:nowrap}.status-label.live{background:#eaf6ee;color:#13714c}.status-label.human{background:#fff2de;color:#a66c16}.chat-actions button,.chat-empty button{border:0;border-radius:11px;background:var(--nav);color:#fff;padding:11px 13px;font-weight:700;font-size:12px;white-space:nowrap}.chat-content{flex:1;min-height:0;overflow-y:auto;padding:23px 30px;background-color:#f1f3ed;background-image:radial-gradient(#a7b4ab14 1px,transparent 1px);background-size:22px 22px}.chat-empty{max-width:420px;text-align:center;margin:max(8vh,25px) auto}.chat-empty-icon{margin:0 auto 25px;background:#dcece3;height:92px;width:92px;border-radius:28px;color:#22815b;display:grid;place-items:center;font-size:49px}.chat-empty h2{font-size:24px;letter-spacing:-.6px}.chat-empty p{line-height:1.7;color:#708074}.chat-empty button{margin-top:20px;background:#177855}.empty-disclaimer{font-size:11px;color:#8a988c;margin-top:23px}.messages{display:flex;flex-direction:column;gap:13px;padding-bottom:15px}.message{max-width:min(80%,570px);border-radius:15px;box-shadow:0 2px 8px #1b30210f;padding:12px 15px;white-space:pre-wrap;line-height:1.5;overflow-wrap:anywhere}.message.incoming{background:#fff;align-self:flex-start;border-top-left-radius:3px}.message.outgoing{background:#d7efdd;align-self:flex-end;border-top-right-radius:3px}.message-info{font-size:10px;margin-top:7px;text-align:right;color:#81928a}.composer{padding:14px 22px 16px;background:#fff;border-top:1px solid #e7ece8}.composer form{display:flex;gap:10px;align-items:center}.composer textarea{width:100%;resize:none;outline:none;border:1px solid var(--line);background:#f7f8f9;border-radius:13px;padding:13px 15px;line-height:1.5;min-height:48px;max-height:160px}.composer textarea:focus{border-color:#72b396;box-shadow:0 0 0 3px #88c4a033}.composer form button{background:#167d59;color:#fff;border:0;border-radius:12px;padding:14px 20px;font-weight:800}.composer-warning{font-size:12px;color:#ad7427;margin-bottom:10px}.composer-foot{font-size:10px;color:#98a2a7;margin-top:10px}.detail{border-left:1px solid var(--line);background:#fff;overflow-y:auto;padding:25px 20px}.detail-top{display:flex;align-items:center;justify-content:space-between}.detail-top h3{font-size:16px;margin:0}.detail-avatar{display:grid;place-items:center;width:75px;height:75px;border-radius:22px;background:#e5f4e8;color:#207c58;font-size:27px;font-weight:800;margin:31px auto 13px}.detail>h3{text-align:center;margin:0 0 3px}.center{text-align:center}.muted{color:var(--muted);font-size:12px}.detail-card{margin-top:24px;border:1px solid var(--line);border-radius:13px;padding:16px}.detail-card-title{font-size:10px;color:#9ca7b4;letter-spacing:1px;font-weight:800;margin-bottom:12px}.detail-card strong{font-size:13px}.detail-card p{color:#8593a2;font-size:12px;line-height:1.6;margin:8px 0 0}.system-line{display:flex;gap:6px;justify-content:space-between;align-items:center;margin:12px 0;font-size:12px}.system-line span{color:#718094}.system-line b{font-size:11px;color:#bc722c;text-align:right}.loading,.no-conversation{color:#93a0ad;font-size:13px;text-align:center;padding:40px 15px;line-height:1.7}.back-list{display:none;background:transparent;border:0;color:#698275;font-size:25px}.overlay{position:fixed;inset:0;background:#0e1c2b99;display:grid;place-items:center;padding:14px;z-index:20}.overlay[hidden]{display:none}.modal{width:min(810px,100%);background:#fff;padding:29px;border-radius:24px;box-shadow:0 25px 70px #080d184d;max-height:90vh;overflow:auto}.modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.modal-head h2{margin:8px 0 0;font-size:24px;letter-spacing:-.7px}.modal-intro{color:#657487;line-height:1.6;font-size:13px}.connect-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:23px 0}.connect-card{background:#f8fafb;border:1px solid var(--line);border-radius:14px;padding:17px}.connect-card strong{font-size:15px}.connect-card p{font-size:12px;color:#8191a1;line-height:1.6;min-height:40px}.connect-card .tag{margin-top:12px}.connect-card button{width:100%;padding:11px;border:0;border-radius:10px;background:#1c7759;color:white;font-size:12px;font-weight:800;margin-top:16px}.connect-card button:disabled{background:#d5dde2;color:#8492a1}.qr-explainer{display:flex;gap:20px;background:#f4f8f6;border:1px solid #e3eee9;border-radius:14px;padding:17px}.qr-illustration{width:120px;height:125px;flex:none;border:2px dashed #bdd8ca;border-radius:14px;display:flex;flex-direction:column;justify-content:center;align-items:center;color:#67917a}.qr-corners{font-size:45px;opacity:.65}.qr-illustration span{font-size:11px}.qr-explainer h3{margin:0 0 7px;font-size:15px}.qr-explainer p,.qr-explainer li{color:#647e71;font-size:12px;line-height:1.7}.qr-explainer ol{padding-left:18px;margin-bottom:0}.modal-bottom{display:flex;gap:15px;margin-top:20px}.modal-bottom a{font-weight:800;color:#187958;font-size:12px}.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#192a3e;color:white;max-width:min(520px,90vw);padding:13px 21px;border-radius:11px;z-index:30;box-shadow:var(--shadow)}.toast[hidden]{display:none}@media(max-width:1270px){.app-shell{grid-template-columns:65px 315px minmax(340px,1fr)}.detail{display:none}}@media(max-width:760px){.app-shell{grid-template-columns:56px minmax(0,1fr)}.rail{padding:12px 5px}.logo-mark{width:37px;height:37px}.rail-btn{width:39px;height:39px}.sidebar-heading{padding:22px 15px}.channel-tabs{margin-left:12px;margin-right:12px}.search-wrap{margin-left:13px;margin-right:13px}.list-top{padding:0 14px 12px}.main-chat{display:none}.app-shell.chat-selected{grid-template-columns:0 minmax(0,1fr)}.app-shell.chat-selected .rail,.app-shell.chat-selected .sidebar{display:none}.app-shell.chat-selected .main-chat{display:flex}.chat-header{padding:0 12px;height:76px}.back-list{display:block}.chat-actions{gap:4px}.chat-actions button{padding:9px;font-size:11px}.status-label{display:none}.chat-content{padding:15px}.composer{padding:12px}.modal{padding:20px}.connect-grid{grid-template-columns:1fr}.qr-explainer{flex-direction:column}.qr-illustration{width:100%;height:90px}.modal-bottom{flex-direction:column;gap:10px}}
+</style>
+</head><body><div style="position:fixed;top:0;right:50%;transform:translateX(50%);z-index:3;background:#fff1cf;color:#734b09;border-radius:0 0 10px 10px;padding:6px 17px;font:700 10px system-ui;letter-spacing:.4px;box-shadow:0 3px 8px #aaa3">DEMONSTRAÇÃO OFFLINE — 2 CONVERSAS FICTÍCIAS • SEM WHATSAPP REAL</div>
+<div class="app-shell" id="app-shell">
+  <aside class="rail" aria-label="Navegação">
+    <div class="logo-mark" title="Guto Express">G<span>.</span></div>
+    <a class="rail-btn active" href="/inbox" aria-label="Conversas" title="Conversas">▤</a>
+    <a class="rail-btn" href="/" aria-label="Painel administrativo" title="Painel administrativo">▦</a>
+    <button id="connect-rail" class="rail-btn" aria-label="Configurar os números" title="Configurar números">⚙</button>
+    <div class="rail-fill"></div>
+    <span class="rail-version">BETA</span>
+    <button id="logout-inbox" class="rail-btn" aria-label="Sair" title="Sair">⇥</button>
+  </aside>
+  <section class="sidebar" aria-label="Lista de conversas">
+    <div class="sidebar-heading"><div><div class="overline">GUTO EXPRESS · CENTRAL</div><h1>Conversas <span id="count" class="count">0</span></h1></div><button class="icon-square" id="refresh" aria-label="Atualizar">↻</button></div>
+    <div class="channel-tabs" role="tablist" aria-label="Selecionar número">
+      <button class="tab active" data-channel="all" type="button">Todas</button>
+      <button class="tab" data-channel="1" type="button">WhatsApp 1</button>
+      <button class="tab" data-channel="2" type="button">WhatsApp 2</button>
+    </div>
+    <div class="search-wrap"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Pesquisar cliente ou conversa" aria-label="Pesquisar conversas"></div>
+    <div class="list-top"><span>ATENDIMENTOS</span><button id="configure" type="button">+ Conectar número</button></div>
+    <div class="conversation-list" id="conversations" role="list"><div class="loading">Carregando conversas…</div></div>
+    <div class="sidebar-footer"><span class="live-dot"></span><span id="channel-info">Verificando integração</span></div>
+  </section>
+  <main class="main-chat" id="main-chat">
+    <div class="chat-header" id="chat-header">
+      <button id="back-list" class="back-list" aria-label="Voltar às conversas">←</button>
+      <div class="avatar ghost" id="chat-avatar">G</div>
+      <div class="chat-person"><strong id="chat-name">Selecione uma conversa</strong><span id="chat-channel">Histórico e atendimento inteligente</span></div>
+      <div class="chat-actions"><span class="status-label" id="bot-status">Nenhuma conversa selecionada</span><button id="toggle-mode" type="button" disabled>Assumir atendimento</button></div>
+    </div>
+    <div class="chat-content" id="chat-content">
+      <div class="chat-empty" id="empty-state"><div class="chat-empty-icon">☏</div><h2>Seu atendimento, em um só lugar.</h2><p>Visualize os dois WhatsApps, assuma conversas e acompanhe os pedidos com contexto.</p><button id="empty-connect" type="button">Configurar canais WhatsApp</button><div class="empty-disclaimer">Ambiente de homologação • Nenhum QR Code ou conexão é simulado como real</div></div>
+      <div id="messages" class="messages" aria-live="polite" hidden></div>
+    </div>
+    <div class="composer" id="composer"><div class="composer-warning" id="composer-warning">Selecione uma conversa para responder.</div><form id="reply-form"><textarea id="reply" placeholder="Escreva uma mensagem ao cliente…" maxlength="2000" rows="1" disabled></textarea><button id="send" type="submit" disabled aria-label="Enviar mensagem">Enviar ↗</button></form><div class="composer-foot">Mensagens manuais exigem atendimento humano e integração Chatwoot configurada.</div></div>
+  </main>
+  <section class="detail" id="detail" aria-label="Detalhes de atendimento">
+    <div class="detail-top"><h3>Detalhes</h3><button id="connect-detail" class="text-button">Canais <span>↗</span></button></div>
+    <div class="detail-avatar">G</div><h3 id="detail-name">Guto Bot</h3><div class="muted center" id="detail-sub">Atendimento organizado</div>
+    <div class="detail-card"><div class="detail-card-title">ESTADO DA IA</div><strong id="detail-mode">Aguardando conversa</strong><p id="detail-mode-sub">A IA pode ser pausada a qualquer momento para que um atendente assuma.</p></div>
+    <div class="detail-card"><div class="detail-card-title">PEDIDO EM ANDAMENTO</div><div id="cart-preview">Nenhum pedido selecionado.</div></div>
+    <div class="detail-card"><div class="detail-card-title">SISTEMA</div><div class="system-line"><span>WhatsApp 01</span><b id="channel-one">Pendente</b></div><div class="system-line"><span>WhatsApp 02</span><b id="channel-two">Pendente</b></div><div class="system-line"><span>Integração</span><b id="integration">Não verificada</b></div></div>
+  </section>
+</div>
+<div class="overlay" id="overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading">
+    <div class="modal-head"><div><div class="overline">GUTO BOT · CONFIGURAÇÃO OFICIAL</div><h2 id="modal-heading">Conectar WhatsApp Business</h2></div><button id="close-overlay" class="icon-square" aria-label="Fechar">×</button></div>
+    <p class="modal-intro">Cada número deve ser cadastrado separadamente no Chatwoot pela <b>Configuração rápida com a Meta</b>, usando <b>Coexistência</b> para manter o WhatsApp Business atual (quando elegível).</p>
+    <div class="connect-grid" id="connect-grid"></div>
+    <div class="qr-explainer"><div class="qr-illustration"><div class="qr-corners">▦</div><span>QR oficial</span></div><div><h3>Como funciona o QR Code?</h3><p>O scanner ou código de verificação é apresentado <b>pela Meta durante a conexão oficial</b>, quando disponibilizado para sua conta. O Guto Bot <b>não gera QR Code de WhatsApp Web</b> e não pede sua senha.</p><ol><li>Abra Chatwoot → Configurações → Caixas de entrada → Adicionar → WhatsApp.</li><li>Escolha <b>Conectar com WhatsApp Business</b> e selecione seu número existente.</li><li>Se a Meta mostrar um QR, escaneie com o aplicativo indicado; se mostrar código, siga as instruções oficiais.</li><li>Repita para o segundo número; confirme envio e recebimento antes de ativar a IA.</li></ol></div></div>
+    <div class="modal-bottom"><a id="open-chatwoot" href="https://app.chatwoot.com" target="_blank" rel="noopener noreferrer">Abrir Chatwoot ↗</a><a href="https://www.chatwoot.com/hc/user-guide/articles/1791812048-2-escolha-como-conectar-o-whats_app" target="_blank" rel="noopener noreferrer">Ver documentação oficial ↗</a></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+// PREVIA VISUAL OFFLINE: não vincula contas nem envia mensagens.
+(() => {
+const items=[
+ {key:'9:11:712',name:'Cliente de exemplo A',inboxId:11,mode:'HUMAN',updatedAt:'2026-10-26T14:15:00',preview:'Quero uma pizza grande meio calabresa, meio frango com catupiry',messages:4,items:1},
+ {key:'9:22:723',name:'Cliente de exemplo B',inboxId:22,mode:'BOT',updatedAt:'2026-10-26T14:09:00',preview:'Qual é a diferença entre a Big e a Gigante?',messages:2,items:0}
+];
+const channels=[{slot:1,inboxId:11,configured:false,connection:'UNVERIFIED',chatwootUrl:null},{slot:2,inboxId:22,configured:false,connection:'UNVERIFIED',chatwootUrl:null}];
+const conversations={
+ '9:11:712':{key:'9:11:712',name:'Cliente de exemplo A',inboxId:11,mode:'HUMAN',updatedAt:items[0].updatedAt,history:[
+ {id:'1',role:'incoming',content:'Boa noite, tem pizza grande meio a meio?'},
+ {id:'2',role:'bot',content:'Boa noite! 😊 Temos a Grande com 10 fatias. Quais sabores você gostaria de escolher?',delivery:'sent'},
+ {id:'3',role:'incoming',content:'Quero metade calabresa, metade frango com catupiry. Tem Coca 2 litros?'},
+ {id:'4',role:'human',content:'Vou conferir os valores atualizados e já te informo! 🍕',delivery:'sent'}
+ ],summary:{items:[{quantity:1,description:'Pizza Grande 10 fatias — Calabresa + Frango com Catupiry',unitPriceCents:null}],totalCents:null,missing:['validar preço e entrega']}},
+ '9:22:723':{key:'9:22:723',name:'Cliente de exemplo B',inboxId:22,mode:'BOT',updatedAt:items[1].updatedAt,history:[
+ {id:'1',role:'incoming',content:'Boa tarde, quantas fatias têm a Big e a Gigante?'},
+ {id:'2',role:'bot',content:'Oi! 😊 A Big tem 12 fatias, e a Gigante tem 16. Quer que eu te mostre alguns sabores?',delivery:'sent'}
+ ],summary:{items:[],totalCents:null,missing:[]}}
+};
+window.fetch=async function(input, opts){
+ const p=new URL(typeof input==='string'?input:input.url,location.href).pathname;
+ let body={},status=200;
+ if(p.endsWith('/api/inbox/conversations')) body={items,channels};
+ else if(p.includes('/api/inbox/conversations/')){
+   const k=decodeURIComponent(p.split('/').at(-1));
+   body=conversations[k]||{error:'Conversa de demonstração não encontrada'};status=conversations[k]?200:404;
+ } else {body={error:'Esta é uma demonstração offline. Nenhum WhatsApp ou backend foi conectado.'};status=503;}
+ return new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});
+};
+})();
+</script><script>'use strict';
+const byId=id=>document.getElementById(id);
+const state={items:[],channels:[],selected:null,channel:'all',search:'',detail:null,refreshTimer:null,offline:true};
+const endpoint='/api';
+async function api(route,opts={}){
+  const resp=await fetch(endpoint+route,{credentials:'same-origin',headers:{'content-type':'application/json'},...opts});
+  let body;try{body=await resp.json();}catch{body={error:`Resposta inválida (HTTP ${resp.status})`};}
+  if(resp.status===401){window.location.assign('/');throw new Error('Sessão encerrada. Entre novamente pelo painel.');}
+  if(!resp.ok)throw new Error(body.error||`Erro HTTP ${resp.status}`);
+  return body;
+}
+function toast(text){const n=byId('toast');n.textContent=text;n.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>n.hidden=true,5100);}
+function element(tag,css,text){const e=document.createElement(tag);if(css)e.className=css;if(text!==undefined)e.textContent=String(text);return e;}
+function shortTime(date){const d=new Date(date);return Number.isFinite(d.getTime())?d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';}
+const slotOfId=id=>state.channels.find(x=>x.inboxId===id)?.slot||null;
+function filtered(){return state.items.filter(x=>{
+    if(state.channel!=='all'&&slotOfId(x.inboxId)!==Number(state.channel))return false;
+    const terms=state.search.toLocaleLowerCase('pt-BR');return !terms||(x.name+' '+x.preview).toLocaleLowerCase('pt-BR').includes(terms);
+});}
+function setVisibleDetail(selected){byId('app-shell').classList.toggle('chat-selected',Boolean(selected));}
+function renderList(){const items=filtered(),container=byId('conversations');container.replaceChildren();byId('count').textContent=state.items.length;
+  if(!items.length){container.append(element('div','no-conversation',state.items.length?'Nenhum atendimento encontrado neste filtro.':'Nenhuma conversa real recebida. Conecte os dois canais pelo Chatwoot para começar.'));return;}
+  for(const item of items){const button=element('button','conversation'+(state.selected===item.key?' active':''));button.type='button';button.setAttribute('role','listitem');
+    const avatar=element('div','avatar',item.name.slice(0,1).toUpperCase());const main=element('div','conversation-body');const title=element('div','conversation-title');title.append(element('strong','',item.name),element('span','conversation-time',shortTime(item.updatedAt)));main.append(title,element('div','preview',item.preview||'Conversa sem prévia'));
+    const line=element('div');line.append(element('span','tag',`WhatsApp ${slotOfId(item.inboxId)||'?'}`));line.append(element('span','tag '+(item.mode==='HUMAN'?'amber':'green'),item.mode==='HUMAN'?'Humano':'IA'));
+    main.append(line);button.append(avatar,main);button.addEventListener('click',()=>openChat(item.key));container.append(button);
+  }
+}
+function renderChannels(){const labels=state.channels.map(c=>c.configured?'Configurado · não verificado':'Não conectado');
+  byId('channel-one').textContent=labels[0]||'Pendente';byId('channel-two').textContent=labels[1]||'Pendente';
+  byId('channel-info').textContent=state.channels.some(c=>c.configured)?'Integração cadastrada · não verificada':'Aguardando a conexão dos 2 números';
+  byId('integration').textContent='Não verificada';const grid=byId('connect-grid');grid.replaceChildren();
+  for(let i=0;i<2;i++){const c=state.channels[i]||{slot:i+1,configured:false};const item=element('div','connect-card');item.append(element('strong','',`WhatsApp ${i+1}`));item.append(element('p','',c.configured?`Inbox ID: ${c.inboxId}. Isso não garante que o número esteja online.`:'Ainda não configurado neste servidor. Mantenha o aplicativo WhatsApp Business instalado.'));
+    item.append(element('span','tag '+(c.configured?'amber':''),c.configured?'Configuração informada':'Sem conexão verificada'));
+    const button=element('button','',c.chatwootUrl?'Abrir configuração no Chatwoot ↗':'Ver instruções oficiais ↗');button.addEventListener('click',()=>{
+      const url=c.chatwootUrl||'https://www.chatwoot.com/hc/user-guide/articles/1791812048-2-escolha-como-conectar-o-whats_app';
+      window.open(url,'_blank','noopener,noreferrer');
+    });item.append(button);grid.append(item);
+  }
+  const base=state.channels.find(x=>x.chatwootUrl)?.chatwootUrl;
+  byId('open-chatwoot').href=base||'https://app.chatwoot.com';
+}
+function formatMoney(cents){return Number.isSafeInteger(cents)?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100):'A confirmar';}
+function renderCart(detail){const box=byId('cart-preview');box.replaceChildren();const summary=detail?.summary;
+  if(!summary?.items?.length){box.textContent='Nenhum item no carrinho desta conversa.';return;}
+  for(const i of summary.items){const row=element('div','system-line');row.append(element('span','',`${i.quantity}× ${i.description}`),element('b','',formatMoney(i.unitPriceCents)));box.append(row);}
+  const hr=document.createElement('hr');hr.style.border='none';hr.style.borderTop='1px solid #e6ebf0';hr.style.marginTop='13px';box.append(hr);
+  const total=element('div','system-line');total.append(element('strong','', 'Total'),element('b','',formatMoney(summary.totalCents)));box.append(total);
+  if(summary.missing?.length)box.append(element('p','muted',`Pendências: ${summary.missing.join(', ')}`));
+}
+function renderChat(){const detail=state.detail,selected=Boolean(detail);setVisibleDetail(selected);
+  byId('empty-state').hidden=selected;byId('messages').hidden=!selected;byId('chat-name').textContent=detail?.name||'Selecione uma conversa';
+  byId('detail-name').textContent=detail?.name||'Guto Bot';
+  byId('detail-sub').textContent=detail?`WhatsApp ${slotOfId(detail.inboxId)||'?'} · ${detail.key}`:'Atendimento organizado';
+  byId('chat-channel').textContent=detail?`WhatsApp ${slotOfId(detail.inboxId)||'?'} · ${detail.history.length} mensagens`:'Histórico e atendimento inteligente';
+  byId('chat-avatar').textContent=(detail?.name||'G').slice(0,1).toUpperCase();
+  const manual=detail?.mode==='HUMAN';const canSend=Boolean(detail && manual && state.channels.some(x=>x.configured&&x.inboxId===detail.inboxId));
+  byId('bot-status').textContent=!selected?'Nenhuma conversa':manual?'Atendente humano':'IA ativa';byId('bot-status').className='status-label'+(selected?(manual?' human':' live'):'');
+  byId('detail-mode').textContent=!selected?'Aguardando conversa':manual?'Humano assumiu':'Modo automático';
+  byId('detail-mode-sub').textContent=!selected?'Selecione uma conversa.':manual?'Respostas automáticas estão pausadas nesta conversa.':'Use Assumir atendimento antes de responder manualmente.';
+  byId('toggle-mode').disabled=!selected;byId('toggle-mode').textContent=manual?'Reativar IA':'Assumir atendimento';
+  byId('reply').disabled=!canSend;byId('send').disabled=!canSend;
+  byId('composer-warning').textContent=!selected?'Selecione uma conversa para responder.':!manual?'A IA está ativa. Clique em “Assumir atendimento” para responder manualmente.':!canSend?'A integração precisa estar configurada para enviar mensagens.':'Modo humano: as mensagens serão colocadas em fila de envio ao Chatwoot.';
+  renderCart(detail);
+  const chat=byId('messages');chat.replaceChildren();if(!selected)return;
+  for(const m of detail.history){const incoming=m.role==='incoming';const bubble=element('div','message '+(incoming?'incoming':'outgoing'),m.content);const desc=incoming?'Cliente':m.role==='human'?'Atendente':'Guto Bot';
+    const delivery=m.delivery==='queued'?' · na fila':m.delivery==='failed'?' · falhou':m.delivery==='sent'?' · enviado':'';
+    bubble.append(element('div','message-info',desc+delivery));chat.append(bubble);
+  }
+  byId('chat-content').scrollTop=byId('chat-content').scrollHeight;
+}
+async function load(){const data=await api('/inbox/conversations');state.items=data.items||[];state.channels=data.channels||[];state.offline=false;renderChannels();renderList();
+  if(state.selected && state.items.some(x=>x.key===state.selected))await fetchDetail(state.selected,false);
+  else if(state.selected){state.selected=null;state.detail=null;renderChat();}
+}
+async function fetchDetail(key,withScroll=true){const detail=await api('/inbox/conversations/'+encodeURIComponent(key));if(state.selected!==key)return;const old=state.detail;const changed=!old || old.updatedAt!==detail.updatedAt || old.mode!==detail.mode || old.history.length!==detail.history.length || old.history.at(-1)?.delivery!==detail.history.at(-1)?.delivery;state.detail=detail;if(changed){renderChat();if(withScroll)byId('chat-content').scrollTop=byId('chat-content').scrollHeight;}}
+async function openChat(key){state.selected=key;renderList();try{await fetchDetail(key);}catch(e){toast(e.message);}}
+async function sendMessage(event){event.preventDefault();const content=byId('reply').value.trim();if(!content||!state.selected)return;
+  const key=state.selected,button=byId('send'),requestId=crypto.randomUUID();button.disabled=true;
+  try{const result=await api(`/inbox/conversations/${encodeURIComponent(key)}/messages`,{method:'POST',body:JSON.stringify({content,requestId})});
+    if(result.queued){byId('reply').value='';toast('Mensagem adicionada à fila de envio.');await fetchDetail(key);}
+  }catch(e){toast(e.message);}finally{button.disabled=false;}
+}
+function openConnect(){byId('overlay').hidden=false;byId('close-overlay').focus();}function closeConnect(){byId('overlay').hidden=true;}
+byId('refresh').addEventListener('click',()=>load().catch(e=>toast(e.message)));
+byId('search').addEventListener('input',e=>{state.search=e.target.value;renderList();});
+for(const tab of document.querySelectorAll('[data-channel]'))tab.addEventListener('click',()=>{state.channel=tab.dataset.channel;document.querySelectorAll('[data-channel]').forEach(x=>x.classList.toggle('active',x===tab));renderList();});
+for(const id of ['connect-rail','configure','empty-connect','connect-detail'])byId(id).addEventListener('click',openConnect);
+byId('close-overlay').addEventListener('click',closeConnect);byId('overlay').addEventListener('click',e=>{if(e.target===byId('overlay'))closeConnect();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeConnect();});
+byId('back-list').addEventListener('click',()=>{state.selected=null;state.detail=null;renderChat();});
+byId('toggle-mode').addEventListener('click',async()=>{if(!state.selected||!state.detail)return;const mode=state.detail.mode==='HUMAN'?'BOT':'HUMAN';
+  if(mode==='BOT'&&!confirm('Retomar IA nesta conversa? Faça isso apenas depois de confirmar a configuração e a segurança do atendimento.'))return;
+  try{await api(`/conversations/${encodeURIComponent(state.selected)}/mode`,{method:'POST',body:JSON.stringify({mode})});await load();toast(mode==='HUMAN'?'Conversa assumida por atendente.':'IA reativada para esta conversa.');}catch(e){toast(e.message);}
+});
+byId('reply-form').addEventListener('submit',sendMessage);
+byId('reply').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();byId('reply-form').requestSubmit();}});
+byId('logout-inbox').addEventListener('click',async()=>{try{await api('/logout',{method:'POST'});}catch{}window.location.assign('/');});
+renderChat();load().catch(e=>{byId('conversations').replaceChildren(element('div','no-conversation',`Não foi possível carregar: ${e.message}`));toast(e.message);});
+state.refreshTimer=setInterval(()=>{if(!document.hidden)load().catch(()=>{});},6000);
+</script>
+</body></html>
