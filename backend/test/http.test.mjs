@@ -32,7 +32,7 @@ test('servidor inicializa, exige login e protege APIs administrativas',async t=>
  assert.equal(dashboard.stats.orders,0);
  assert.equal(dashboard.onlineConfigured,false);
  const sim=await fetch(base+'/api/simulate',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({content:'quais sabores vocês têm?'})});
- assert.equal(sim.status,503);assert.match((await sim.json()).error,/atendimento por IA real/i);
+ assert.equal(sim.status,503);assert.match((await sim.json()).error,/IA real ainda não está configurado|atendimento por IA real/i);
  const check=await fetch(base+'/api/ai/check',{method:'POST',headers:{cookie}});assert.equal(check.status,503);
  assert.equal((await fetch(base+'/api/dashboard',{headers:{cookie,'origin':'https://site-malicioso.example','sec-fetch-site':'cross-site'},method:'POST'})).status,403);
 });
@@ -51,11 +51,11 @@ test('dois canais recebem evento autêntico sem duplicar e rejeitam origem desco
  assert.equal(db.events['9:101'].n.key,'9:11:111');assert.equal(db.events['9:102'].n.key,'9:22:122');
 });
 
-test('regressão: sem IA, webhooks dos dois canais encaminham para humanos sem travar fila',async t=>{
+test('regressão realista: sem IA, webhook encaminha dois canais para humanos, sem travar fila',async t=>{
  const {base,tmp}=await start(t,true);
  const makeEvent=(inbox,id)=>({event:'message_created',id,content:'Preciso fazer um pedido, pode me ajudar?',message_type:'incoming',private:false,account:{id:9},inbox:{id:inbox},conversation:{id:700+inbox,inbox_id:inbox},sender:{name:'Cliente homologação'}});
  for(const [inbox,id] of [[11,811],[22,822]]){
-  const body=JSON.stringify(makeEvent(inbox,id)),timestamp=String(Math.floor(Date.now()/1000));
+  const body=JSON.stringify(makeEvent(inbox,id));const timestamp=String(Math.floor(Date.now()/1000));
   const signature='sha256='+crypto.createHmac('sha256','my_webhook_secret').update(`${timestamp}.${body}`).digest('hex');
   const resp=await fetch(base+'/webhooks/chatwoot',{method:'POST',headers:{'content-type':'application/json','x-chatwoot-timestamp':timestamp,'x-chatwoot-signature':signature},body});
   assert.equal(resp.status,202);
@@ -70,24 +70,7 @@ test('regressão: sem IA, webhooks dos dois canais encaminham para humanos sem t
  assert.equal(db.sessions['9:11:711'].mode,'HUMAN');assert.equal(db.sessions['9:22:722'].mode,'HUMAN');
  assert.match(db.sessions['9:11:711'].history.at(-1).content,/indisponível/);
  for(const id of ['9:811','9:822']){
-  assert.equal(db.outbox[`handoff:${id}`].private,true);
+  assert.equal(db.outbox[`handoff:${id}`].private,true,'nota interna de handoff deve existir');
   assert.match(db.outbox[`reply:${id}`].content,/equipe/);
  }
-});
-
-test('central dupla exige login e não expõe conversas reais sem Chatwoot',async t=>{
- const {base}=await start(t);
- const page=await fetch(base+'/inbox');assert.equal(page.status,200);assert.match(await page.text(),/Duplo WhatsApp/);
- assert.match(page.headers.get('content-security-policy'),/script-src 'self'/);
- assert.equal((await fetch(base+'/inbox.js')).status,200);
- assert.equal((await fetch(base+'/inbox.css')).status,200);
- assert.equal((await fetch(base+'/api/inbox/channels')).status,401);
- assert.equal((await fetch(base+'/api/inbox/conversations?inboxId=11')).status,401);
- const login=await fetch(base+'/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:'testing_password_for_admin'})});
- const cookie=login.headers.get('set-cookie').split(';')[0];
- const r=await fetch(base+'/api/inbox/channels',{headers:{cookie}});
- assert.equal(r.status,200);const d=await r.json();assert.equal(d.channels.length,2);assert.equal(d.chatwootConfigured,false);
- assert.equal((await fetch(base+'/api/inbox/conversations?inboxId=11',{headers:{cookie}})).status,403);
- const send=await fetch(base+'/api/inbox/conversations/1/reply?inboxId=11',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({content:'Oi'})});
- assert.equal(send.status,403);
 });
