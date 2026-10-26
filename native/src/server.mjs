@@ -27,13 +27,14 @@ const getToken=(c,env)=>c.tokenEncrypted?revealToken(c.tokenEncrypted,env.APP_SE
 export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now()}={}){
   // Homologação pode iniciar sem credenciais Meta; webhooks ficam desligados até configurá-las.
   // Não gerar ou simular segredos Meta, números conectados nem mensagens reais.
-  if(!env.ADMIN_PASSWORD||env.ADMIN_PASSWORD.length<12||!env.APP_SECRET||env.APP_SECRET.length<32){throw new Error('ADMIN_PASSWORD (12+) e APP_SECRET (32+) são exigidos.');}
-  // Render Free: dados locais não persistem. Proibido conectar WhatsApp real neste modo.
+  // Em FREE_PREVIEW_MODE, liberar apenas prévia anônima e IMUTÁVEL; nunca credenciais reais.
   const freePreview=String(env.FREE_PREVIEW_MODE||'').toLowerCase()==='true';
+  if(!freePreview && (!env.ADMIN_PASSWORD||env.ADMIN_PASSWORD.length<12||!env.APP_SECRET||env.APP_SECRET.length<32)){throw new Error('ADMIN_PASSWORD (12+) e APP_SECRET (32+) são exigidos.');}
   const appUrl=String(env.APP_PUBLIC_URL||env.RENDER_EXTERNAL_URL||'');
-  if(env.NODE_ENV==='production' && (!/^https:\/\/[^/]+$/.test(appUrl)||!env.DATA_FILE&&!dataFile))throw new Error('Produção exige APP_PUBLIC_URL ou RENDER_EXTERNAL_URL HTTPS e armazenamento persistente.');
+  if(!freePreview && env.NODE_ENV==='production' && (!/^https:\/\/[^/]+$/.test(appUrl)||!env.DATA_FILE&&!dataFile))throw new Error('Produção exige APP_PUBLIC_URL ou RENDER_EXTERNAL_URL HTTPS e armazenamento persistente.');
   const statePath=dataFile||path.resolve(root,env.DATA_FILE||'data/state.json');
-  const store=new JsonStore(statePath).init();
+  // Sem leitura de dados locais durante prévia: nenhum cliente real pode ser exposto.
+  const store=freePreview?new JsonStore(statePath):new JsonStore(statePath).init();
   const allowedHosts=String(env.PDV_ALLOWED_HOSTS||'pdvgutoexpress.com.br').split(',').map(x=>x.trim()).filter(Boolean);
   const attempts=new Map();
   let pumping=false;
@@ -41,6 +42,16 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   const business=JSON.parse(fs.readFileSync(path.join(root,'config','business.json'),'utf8'));
   const version=graphVersion(env.META_GRAPH_VERSION);
   const configuredChannels=d=>d.channels.map(c=>{const phoneId=c.phoneId||String(env[`META_PHONE_ID_${c.slot}`]||'');return {...c,phoneId};});
+  // Conversas fictícias, somente para revisão do layout; nunca números telefônicos reais.
+  const sampleMessages=[
+    {id:'demo-a-1',direction:'incoming',text:'Boa noite! Quero uma grande metade calabresa, metade frango com catupiry.',type:'text',at:'2026-10-26T18:00:00.000Z',delivery:'received',source:'EXEMPLO FICTÍCIO'},
+    {id:'demo-a-2',direction:'outgoing',text:'Exemplo de resposta: prefere entrega ou retirada? Este ambiente não envia mensagens.',type:'text',at:'2026-10-26T18:01:00.000Z',delivery:'demo',source:'EXEMPLO FICTÍCIO'},
+  ];
+  const demoThreads=[
+    {id:'demo:1',slot:1,customer:'CLIENTE-FICTICIO-01',customerName:'Exemplo fictício · Ana',mode:'HUMAN',unread:0,updatedAt:'2026-10-26T18:01:00.000Z',messages:sampleMessages},
+    {id:'demo:2',slot:2,customer:'CLIENTE-FICTICIO-02',customerName:'Exemplo fictício · Bruno',mode:'HUMAN',unread:0,updatedAt:'2026-10-26T18:02:00.000Z',messages:[{id:'demo-b-1',direction:'incoming',text:'Quais são as opções de pizza gigante? É para retirar no balcão.',type:'text',at:'2026-10-26T18:02:00.000Z',delivery:'received',source:'EXEMPLO FICTÍCIO'}]},
+  ];
+  const previewStatus=()=>({mode:'PREVIA_PUBLICA',ready:false,autoReplyEnabled:false,reason:'Prévia visual somente leitura; nenhum WhatsApp ou PDV conectado',hosting:{freePreview:true,ephemeralData:true,customerMessagingDisabled:true,readOnly:true},channels:[1,2].map(slot=>({slot,phoneId:'',number:'Não conectado',apiVerifiedAt:null,lastInboundAt:null,lastOutboundAt:null,hasToken:false,status:'NOT_VERIFIED'})),ai:{configured:false,model:'',realTest:false,testAt:null},pdv:{enabled:false,baseUrl:'https://pdvgutoexpress.com.br',ordersMode:'DISABLED',lastTest:null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:2,messages:3,pendingOrders:0},oauth:{available:false,appId:null,configId:null}});
   const status=()=>{const d=store.snapshot();const channels=configuredChannels(d);return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:false,reason:'Liberação integral pendente: prova real de 2 números, PDV e IA',hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(env.OPENAI_API_KEY),model:env.OPENAI_MODEL||'gpt-4.1-mini',realTest:!!d.aiTest?.ok,testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
   function authed(req){const raw=cookieValue(req);const n=raw.lastIndexOf('.');if(n<0)return false;const payload=raw.slice(0,n),mac=raw.slice(n+1);if(!safeCompare(sign(payload,env.APP_SECRET),mac))return false;const parts=payload.split(':');return parts[0]==='admin'&&Number(parts[1])>clock()&&Number(parts[1])<clock()+86400000;}
   function checkLoginRate(req){const ip=req.socket?.remoteAddress||'unknown',now=clock();let old=attempts.get(ip)||{at:now,n:0};if(now-old.at>15*60e3)old={at:now,n:0};old.n++;attempts.set(ip,old);return old.n<=12;}
@@ -85,6 +96,22 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   const fileRoutes={'/':'index.html','/painel':'index.html','/app.css':'app.css','/app.js':'app.js'};
   async function router(req,res){const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`),p=url.pathname;
     if(p==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'guto-bot-nativo',ready:false,freePreview});
+    // A prévia Free atende somente GETs seguros; todos os POSTs/PUTs são bloqueados sem exceção.
+    if(freePreview && p.startsWith('/api/')){
+      if(req.method!=='GET')return json(res,403,{error:'Prévia gratuita: somente visualização. Operações, login e conexões reais desativados.'});
+      if(p==='/api/status')return json(res,200,previewStatus());
+      if(p==='/api/conversations'){
+        const slot=Number(url.searchParams.get('slot')||0);
+        return json(res,200,{items:demoThreads.filter(t=>!slot||t.slot===slot).map(userView)});
+      }
+      if(p==='/api/thread'){
+        const demo=demoThreads.find(t=>t.id===url.searchParams.get('id'));
+        return demo?json(res,200,{thread:userView(demo),messages:demo.messages.map(serializeMessage),cart:{items:[],missing:['Ambiente apenas visual']}}):json(res,404,{error:'Conversa não encontrada na demonstração'});
+      }
+      if(p==='/api/orders')return json(res,200,{items:[]});
+      if(p==='/api/settings')return json(res,200,{pdv:previewStatus().pdv,approval:{autoReply:false,production:false},meta:{appConfigured:false,version,webhookUrl:null,verifyTokenConfigured:false},readiness:previewStatus()});
+      return json(res,404,{error:'Rota não disponível na prévia pública'});
+    }
     if(p==='/webhooks/meta'&&req.method==='GET'){
       if(freePreview)return json(res,503,{error:'Prévia gratuita: WhatsApp real desativado porque o armazenamento é temporário'});
       if(!env.META_APP_SECRET||!env.META_VERIFY_TOKEN)return json(res,503,{error:'Webhook Meta não configurado para homologação'});
