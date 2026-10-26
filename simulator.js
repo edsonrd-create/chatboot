@@ -81,10 +81,10 @@ function respond(message,s,data){
  const combo=lookupCombo(t,data);
  if(combo){s.pendingCombo=combo.id;return answer('O '+combo.label+' anunciado inclui: '+combo.description+'. O valor divulgado foi '+money(combo.publishedPriceCents)+', sujeito à confirmação de vigência, composição e disponibilidade. 🍕 Quer escolher os sabores? Não vou lançar um combo como pedido antes de validar a oferta.');}
  if(/\b(quais combos|combos|promocoes|ofertas)\b/.test(t))return answer('Estas ofertas aparecem no catálogo publicado:\n'+data.combos.map(c=>'• '+c.label+' — '+money(c.publishedPriceCents)+' (anunciado)').join('\n')+'\nQual chamou sua atenção? Vamos confirmar as condições antes do pedido.');
- if(/\b(quero|manda|faz|pizzas?|pedir)\b/.test(t)){
-   const several=parseSeveralPizzas();
-   if(several){s.cart.push(...several);s.draft=null;return answer('Anotei as '+several.length+' pizzas separadamente! 🍕\n'+describeCart(s,data)+'\n'+nextMissing(s));}
- }
+ // Pedidos como 'uma grande calabresa e uma média portuguesa' não incluem verbo de pedido.
+ // Interpretar dois tamanhos explícitos antes de assumir que é uma pizza meio a meio.
+ const several=parseSeveralPizzas();
+ if(several){s.cart.push(...several);s.draft=null;return answer('Anotei as '+several.length+' pizzas separadamente! 🍕\n'+describeCart(s,data)+'\n'+nextMissing(s));}
  const size=sizeFrom(t),ids=flavorsIn(t,data),drink=drinkIn(t,data),wantsItem=isOrder(t);
  if(/\b(o que (leva|tem)|ingredientes?|alergicos?|composicao|vai o que)\b/.test(t)&&ids.length){return answer(ids.slice(0,3).map(id=>{const f=data.flavors.find(x=>x.id===id);return f.label+' leva: '+f.ingredients.join(', ')+'.';}).join('\n')+'\nIngredientes declarados no cardápio; informações sobre alergênicos precisam ser confirmadas com a cozinha.');}
  if(/\b(quanto custa|preco|valor|quanto fica)\b/.test(t)&&ids.length){const f=data.flavors.find(x=>x.id===ids[0]);return answer('O cardápio anuncia '+f.label+' a partir de '+money(f.startingPriceCents)+'. O preço exato depende do tamanho, combinações e promoções válidas. Qual tamanho você gostaria?');}
