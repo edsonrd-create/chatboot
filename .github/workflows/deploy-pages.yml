@@ -1,0 +1,46 @@
+name: Publicar demonstracao Guto Bot (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publicar somente o painel demonstrativo
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Preparar o site sem dados privados
+        run: |
+          set -eu
+          mkdir -p _site
+          cp index.html _site/index.html
+          touch _site/.nojekyll
+          test -s _site/index.html
+          ! grep -Eqi 'OPENAI_API_KEY=|CHATWOOT_API_TOKEN=|META_ACCESS_TOKEN=' _site/index.html
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Criar artefato do site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './_site'
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
