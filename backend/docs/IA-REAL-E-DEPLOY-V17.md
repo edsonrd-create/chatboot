@@ -1,29 +1,41 @@
-# Guto Bot V1.7 — Inteligência real e homologação
+# Guto Bot V1.7 — ativação de IA real e homologação
 
-## Diagnóstico
-A página estática em GitHub Pages usa um **simulador local por regras** e não consegue chamar modelos em segurança: chaves de API nunca podem ficar no navegador. O backend já tinha suporte à API de IA, mas, sem chave, usava FAQ básica facilmente confundida com IA real. O webhook também continha uma variável indefinida no handoff humano.
+## Problema confirmado
 
-## Correções concluídas
-- `POST /api/simulate`: exige `OPENAI_API_KEY` no servidor. Sem chave retorna HTTP 503 — não finge resposta de IA.
-- `POST /api/ai/check`: teste administrativo opt-in que faz chamada real ao modelo e informa se respondeu. **Pode gerar cobrança pelo provedor da IA.**
-- UI do backend informa se a chave está ausente ou configurada; não a revela.
-- Webhooks Chatwoot de dois inboxes sem IA configurada encaminham à equipe com nota privada e sem tentativa de venda automatizada.
-- Corrigido erro `previouslyHuman is not defined`.
-- Fila de saída Chatwoot separada da fila de entrada: falhas no envio não travam a leitura de novas mensagens.
-- Detecta `RENDER_EXTERNAL_URL` em hospedagem Render para validação de origem e cookies seguros.
+O HTML estático do GitHub Pages não tem servidor. O simulador visual usa regras locais e **não possui conexão com modelos de IA**. O backend V1.6 já possuía suporte à API de IA, mas, sem `OPENAI_API_KEY`, mostrava FAQ básica, o que era fácil confundir com atendimento inteligente. Além disso, no processamento de transferência humana havia uma variável indefinida `previouslyHuman` que impedia registrar o handoff.
 
-## Como colocar IA real online
-1. Abra o [Deploy to Render](https://render.com/deploy?repo=https://github.com/edsonrd-create/chatboot) do projeto. Leia o custo indicado antes de confirmar: **plano Starter e armazenamento persistente podem gerar cobrança**.
-2. O `render.yaml` publica o backend de homologação com domínio HTTPS e disco persistente (instância única). Ele **não ativa WhatsApp automaticamente**.
-3. Insira, somente no formulário seguro da Render, `ADMIN_PASSWORD` exclusiva com 12+ caracteres e `OPENAI_API_KEY` da conta de API do provedor. `APP_SECRET` é gerado pela Render; não copie chaves para GitHub, ChatGPT ou HTML.
-4. Após a implantação, abra o endereço `*.onrender.com` disponibilizado pelo provedor, e teste `/health`.
-5. Entre no painel com a senha definida; abra **Simulador IA → Verificar conexão com a IA**. A verificação faz chamada real e pode consumir saldo. Só depois envie perguntas livres.
-6. Cadastre preços de pizzas, bebidas, taxa por entrega e regras da meia a meia a partir de fonte comercial validada. O sistema bloqueia confirmar pedido sem orçamento completo.
-7. Somente após homologação, conecte os dois inboxes Chatwoot/WhatsApp com canais oficiais e autorização apropriada.
+## Correções V1.7
 
-## Limitações importantes
-- **GitHub Pages continua sendo prévia estática sem IA**. Para IA de verdade é preciso abrir o painel HTTPS do backend.
-- Backend armazena dados em JSON no disco; adequado apenas à homologação controlada com **uma réplica**. Operação comercial exige PostgreSQL, filas duráveis e backups.
-- Nenhuma chave nem conta Render está vinculada neste código; não houve deploy em conta de hospedagem a partir deste repositório.
-- Testes automatizados usam respostas de IA simuladas. A verificação real precisa ocorrer no serviço implantado; teste de unidade não prova disponibilidade externa.
-- Não utilizar com clientes reais sem controle de acesso, validação de preço e testes ponta a ponta.
+- A rota administrativa `POST /api/simulate` exige chave de IA; responde HTTP 503 quando ela não está configurada. Não disfarça respostas programadas como IA real.
+- A rota administrativa `POST /api/ai/check` faz uma chamada simples e autorizada à API de modelo para testar chave, rede e modelo. **A chamada pode consumir saldo da API**. Não envia dados de clientes.
+- O painel informa configuração ausente, chave presente ainda não verificada, e resultado da verificação. A chave não aparece no navegador.
+- O processamento de mensagens dos dois inboxes encaminha para a equipe quando a chave da IA não está presente ou quando o modelo falha; gera nota interna e não tenta vender sem modelo.
+- A variável de transferência foi corrigida e o caso foi incluído em teste HTTP de ponta a ponta com webhooks assinados, eventos em disco e canais isolados.
+- A fila de saída (Chatwoot) foi separada do processamento de entrada, evitando que falhas de envio atrasem a leitura de novas mensagens.
+- O endereço público em hospedagem Render é detectado usando `RENDER_EXTERNAL_URL` caso `APP_PUBLIC_URL` não esteja definido.
+
+## Como publicar backend para teste com IA de verdade
+
+1. Entre no serviço [Render](https://dashboard.render.com/) com sua conta. O blueprint do repositório `chatboot` pode ser iniciado pelo botão do README. Revise **o custo do plano Starter e do volume persistente antes de confirmar**.
+2. Faça a implantação usando o `render.yaml` da raiz. Ele publica `backend/` e o **painel com login do backend**, não o HTML do GitHub Pages.
+3. Quando o Render pedir variáveis secretas, informe **somente no painel seguro da Render**: `ADMIN_PASSWORD` (mínimo 12 caracteres) e `OPENAI_API_KEY` (chave própria do serviço de IA). O `APP_SECRET` é gerado automaticamente.
+4. Aguarde a implantação e abra o endereço HTTPS fornecido pelo Render. Confirme que `/health` responde `{ "ok": true }`. Faça login com sua senha administrativa.
+5. Na seção **Simulador IA**, clique em **Verificar conexão com a IA** (faz uma chamada real e cobrada conforme o provedor). Se funcionar, envie perguntas livres sobre sabores, ingredientes e quantidades.
+6. Ainda não cadastre valores de venda como reais até confirmar preços e taxas no painel. Sem preço válido o sistema **bloqueia confirmação do pedido**.
+7. A integração Chatwoot com dois WhatsApps só deverá ser habilitada **depois dos testes de homologação**, consentimento operacional e configuração de inboxes autorizados.
+
+## Limitações do piloto
+
+- Persistência atual é **arquivo JSON em volume**, exclusivamente para 1 instância, não banco PostgreSQL multi-instância.
+- Não há deploy automático em conta Render realizado pelo ChatGPT; o responsável deve revisar e confirmar a criação do serviço.
+- Não há chave OpenAI incluída no código e não há número de WhatsApp configurado.
+- O HTML estático da raiz pode continuar acessível via GitHub Pages, mas não se tornará IA real: para testar conversa com modelo, use o painel HTTPS do backend.
+- O teste unitário com resposta simulada da API não comprova disponibilidade da IA externa; a verificação de conexão precisa ser executada após implantar.
+
+## Segurança
+
+Não insira tokens ou senhas no chat, GitHub, arquivos estáticos, mensagens, telas públicas nem histórico de atendimento. Recomendamos isolamento de ambiente de testes, controle de acesso, retenção adequada e nunca habilitar venda automática sem validação de preços.
+
+## Tests
+
+`cd backend && npm test` após clonar o repositório. O workflow de GitHub Actions executa a suíte sem custos ou chamadas reais ao modelo.
