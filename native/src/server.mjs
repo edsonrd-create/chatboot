@@ -25,10 +25,12 @@ const serializeMessage=m=>({id:m.id,direction:m.direction,text:m.text,type:m.typ
 const getToken=(c,env)=>c.tokenEncrypted?revealToken(c.tokenEncrypted,env.APP_SECRET):String(env[`META_TOKEN_${c.slot}`]||'');
 
 export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now()}={}){
-  if(!env.ADMIN_PASSWORD||env.ADMIN_PASSWORD.length<12||!env.APP_SECRET||env.APP_SECRET.length<32||!env.META_APP_SECRET||!env.META_VERIFY_TOKEN){throw new Error('ADMIN_PASSWORD (12+), APP_SECRET (32+), META_APP_SECRET e META_VERIFY_TOKEN são exigidos.');}
-  if(env.NODE_ENV==='production' && (!env.APP_PUBLIC_URL?.startsWith('https://')||!env.DATA_FILE&&!dataFile))throw new Error('Produção exige APP_PUBLIC_URL HTTPS e armazenamento persistente.');
+  // Homologação pode iniciar sem credenciais Meta; webhooks ficam desligados até configurá-las.
+  // Não gerar ou simular segredos Meta, números conectados nem mensagens reais.
+  if(!env.ADMIN_PASSWORD||env.ADMIN_PASSWORD.length<12||!env.APP_SECRET||env.APP_SECRET.length<32){throw new Error('ADMIN_PASSWORD (12+) e APP_SECRET (32+) são exigidos.');}
+  const appUrl=String(env.APP_PUBLIC_URL||env.RENDER_EXTERNAL_URL||'');
+  if(env.NODE_ENV==='production' && (!/^https:\/\/[^/]+$/.test(appUrl)||!env.DATA_FILE&&!dataFile))throw new Error('Produção exige APP_PUBLIC_URL ou RENDER_EXTERNAL_URL HTTPS e armazenamento persistente.');
   const store=new JsonStore(dataFile||path.join(root,env.DATA_FILE||'data/state.json')).init();
-  const appUrl=env.APP_PUBLIC_URL||'';
   const allowedHosts=String(env.PDV_ALLOWED_HOSTS||'pdvgutoexpress.com.br').split(',').map(x=>x.trim()).filter(Boolean);
   const attempts=new Map();
   let pumping=false;
@@ -81,11 +83,13 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   async function router(req,res){const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`),p=url.pathname;
     if(p==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'guto-bot-nativo',ready:false});
     if(p==='/webhooks/meta'&&req.method==='GET'){
+      if(!env.META_APP_SECRET||!env.META_VERIFY_TOKEN)return json(res,503,{error:'Webhook Meta não configurado para homologação'});
       const ok=url.searchParams.get('hub.mode')==='subscribe'&&safeCompare(url.searchParams.get('hub.verify_token'),env.META_VERIFY_TOKEN);
       const challenge=url.searchParams.get('hub.challenge')||'';
       return ok&&/^\d{1,200}$/.test(challenge)?respond(res,200,challenge,{'content-type':'text/plain; charset=utf-8'}):json(res,403,{error:'Token de verificação inválido'});
     }
     if(p==='/webhooks/meta'&&req.method==='POST'){
+      if(!env.META_APP_SECRET||!env.META_VERIFY_TOKEN)return json(res,503,{error:'Webhook Meta não configurado para homologação'});
       const raw=await readBody(req,1024*1024);
       if(!verifyMetaSignature(raw,req.headers['x-hub-signature-256'],env.META_APP_SECRET))return json(res,401,{error:'Assinatura Meta inválida'});
       let data;try{data=JSON.parse(raw.toString('utf8'));}catch{return json(res,400,{error:'JSON inválido'});}
