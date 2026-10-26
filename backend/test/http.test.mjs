@@ -68,9 +68,9 @@ test('regressão realista: sem IA, webhook encaminha dois canais para humanos, s
  }
  assert.equal(db.events['9:811'].state,'done');assert.equal(db.events['9:822'].state,'done');
  assert.equal(db.sessions['9:11:711'].mode,'HUMAN');assert.equal(db.sessions['9:22:722'].mode,'HUMAN');
- assert.match(db.sessions['9:11:711'].history.at(-1).content,/indisponível/);
+ assert.match(db.sessions['9:11:711'].history.at(-1).content,/Preciso fazer um pedido/);
  for(const id of ['9:811','9:822']){
   assert.equal(db.outbox[`handoff:${id}`].private,true,'nota interna de handoff deve existir');
-  assert.match(db.outbox[`reply:${id}`].content,/equipe/);
+  assert.equal(db.outbox[`reply:${id}`],undefined,'sem resposta automática antes da homologação');
  }
 });
