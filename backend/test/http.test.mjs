@@ -74,3 +74,20 @@ test('regressão: sem IA, webhooks dos dois canais encaminham para humanos sem t
   assert.match(db.outbox[`reply:${id}`].content,/equipe/);
  }
 });
+
+test('central dupla exige login e não expõe conversas reais sem Chatwoot',async t=>{
+ const {base}=await start(t);
+ const page=await fetch(base+'/inbox');assert.equal(page.status,200);assert.match(await page.text(),/Duplo WhatsApp/);
+ assert.match(page.headers.get('content-security-policy'),/script-src 'self'/);
+ assert.equal((await fetch(base+'/inbox.js')).status,200);
+ assert.equal((await fetch(base+'/inbox.css')).status,200);
+ assert.equal((await fetch(base+'/api/inbox/channels')).status,401);
+ assert.equal((await fetch(base+'/api/inbox/conversations?inboxId=11')).status,401);
+ const login=await fetch(base+'/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:'testing_password_for_admin'})});
+ const cookie=login.headers.get('set-cookie').split(';')[0];
+ const r=await fetch(base+'/api/inbox/channels',{headers:{cookie}});
+ assert.equal(r.status,200);const d=await r.json();assert.equal(d.channels.length,2);assert.equal(d.chatwootConfigured,false);
+ assert.equal((await fetch(base+'/api/inbox/conversations?inboxId=11',{headers:{cookie}})).status,403);
+ const send=await fetch(base+'/api/inbox/conversations/1/reply?inboxId=11',{method:'POST',headers:{cookie,'content-type':'application/json'},body:JSON.stringify({content:'Oi'})});
+ assert.equal(send.status,403);
+});
