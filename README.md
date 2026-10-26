@@ -4,7 +4,9 @@
 
 ## Prévia
 
-Abra [index.html](index.html) ou ative GitHub Pages em **Settings → Pages → Deploy from branch → main → / (root)**. Após o deploy, o endereço esperado é **https://edsonrd-create.github.io/chatboot/**, sujeito à ativação e confirmação no GitHub.
+Abra [index.html](index.html) localmente ou publique a versão estática usando o workflow [Publicar demonstração](.github/workflows/deploy-pages.yml). **É preciso ativar o GitHub Pages uma vez** em [Settings → Pages](https://github.com/edsonrd-create/chatboot/settings/pages): em **Build and deployment → Source**, escolha **GitHub Actions**. Depois abra [Actions → Publicar demonstração](https://github.com/edsonrd-create/chatboot/actions/workflows/deploy-pages.yml) e clique **Run workflow** na branch `main`. Com o deploy concluído com sucesso, teste em **https://edsonrd-create.github.io/chatboot/**.
+
+A implantação publica **somente o arquivo `index.html` estático**, sem o backend e sem dados privados. Os dois números WhatsApp e o Chatwoot ainda não estão conectados.
 
 Em **Simulador do bot**, escreva como um cliente falaria no WhatsApp. O simulador entende várias mensagens em sequência, mantém um carrinho, reconhece alguns apelidos de sabores, complementa meio a meio, registra pagamento/endereço fornecidos, faz perguntas quando a bebida ou troca não está clara, preserva contexto entre dúvidas, e bloqueia conclusão sem cotação. É um **motor local baseado em regras**, não IA generativa.
 
