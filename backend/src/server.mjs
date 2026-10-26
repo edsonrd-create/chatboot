@@ -4,7 +4,6 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {FileStore} from './store.mjs';
-import {makeInboxClient} from './chatwoot-inbox.mjs';
 import {verifyChatwootSignature,normalizeEvent,newSession,getSummary} from './core.mjs';
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
 
@@ -32,7 +31,6 @@ const store=new FileStore(DATA_FILE).init();
 if(!fs.existsSync(BUSINESS_FILE)){fs.mkdirSync(path.dirname(BUSINESS_FILE),{recursive:true});fs.copyFileSync(path.join(projectRoot,'config','business.json'),BUSINESS_FILE);}
 let business=JSON.parse(fs.readFileSync(BUSINESS_FILE,'utf8'));
 const PUBLIC=path.join(projectRoot,'public');
-const inboxClient=makeInboxClient({baseUrl:CW_HOST,apiToken:CW_TOKEN,accountId:CW_ACCOUNT,allowedInboxIds:INBOXES});
 
 const json=(res,status,obj,headers={})=>respond(res,status,JSON.stringify(obj),{'content-type':'application/json; charset=utf-8',...headers});
 const respond=(res,status,data,headers={})=>{res.writeHead(status,{'x-content-type-options':'nosniff','referrer-policy':'no-referrer','cache-control':'no-store','x-frame-options':'DENY','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",...headers});res.end(data);};
@@ -159,36 +157,6 @@ async function router(req,res){
  if(p.startsWith('/api/')){
    if(!authed(req))return json(res,401,{error:'Faça login para acessar'});
    if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
-   if(p==='/api/inbox/channels'&&req.method==='GET'){
-     const channels=[0,1].map(i=>({label:`WhatsApp ${i+1}`,inboxId:INBOXES[i]||null,configured:false}));
-     let error=null;
-     if(inboxClient.configured){
-       try{const found=await inboxClient.verifyChannelIds();for(const c of channels)c.configured=found.some(x=>x.id===c.inboxId&&x.found);}
-       catch(e){error='Falha ao verificar os canais no Chatwoot';}
-     }
-     return json(res,200,{mode:'live',channels,chatwootConfigured:inboxClient.configured,aiConfigured:!!env.OPENAI_API_KEY,
-       onboardingUrl:CW_HOST&&CW_ACCOUNT?`${CW_HOST.replace(/\/$/,'')}/app/accounts/${CW_ACCOUNT}/settings/inboxes/new`:null,error});
-   }
-   if(p==='/api/inbox/conversations'&&req.method==='GET'){
-     const conversations=await inboxClient.conversations(url.searchParams.get('inboxId'));
-     return json(res,200,{conversations});
-   }
-   const inboxMessages=p.match(/^\/api\/inbox\/conversations\/(\d+)\/messages$/);
-   if(inboxMessages&&req.method==='GET'){
-     const messages=await inboxClient.messages(url.searchParams.get('inboxId'),inboxMessages[1]);
-     return json(res,200,{messages});
-   }
-   const inboxReply=p.match(/^\/api\/inbox\/conversations\/(\d+)\/reply$/);
-   if(inboxReply&&req.method==='POST'){
-     let body;try{body=JSON.parse((await readBody(req,4096)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
-     const channelId=url.searchParams.get('inboxId'),conversationId=inboxReply[1];
-     if(typeof body?.content!=='string'||!body.content.trim()||body.content.length>2000)return json(res,422,{error:'Mensagem inválida'});
-     await inboxClient.conversation(channelId,conversationId);
-     const key=`${CW_ACCOUNT}:${channelId}:${conversationId}`;
-     await store.tx(d=>{const session=d.sessions[key]||newSession();session.mode='HUMAN';session.reason='Atendente assumiu no painel';session.inboxId=Number(channelId);session.updatedAt=new Date().toISOString();d.sessions[key]=session;});
-     await inboxClient.reply(channelId,conversationId,body.content);
-     return json(res,200,{ok:true,mode:'HUMAN'});
-   }
    if(p==='/api/dashboard'&&req.method==='GET')return json(res,200,webData());
    if(p==='/api/business'&&req.method==='GET')return json(res,200,business);
    if(p==='/api/business'&&req.method==='PUT'){
@@ -232,7 +200,7 @@ async function router(req,res){
    return json(res,404,{error:'Rota não encontrada'});
  }
  if(req.method!=='GET')return json(res,405,{error:'Método não permitido'});
- const assets={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/inbox':'inbox.html','/inbox.html':'inbox.html','/inbox.css':'inbox.css','/inbox.js':'inbox.js'};
+ const assets={'/':'index.html','/app.js':'app.js','/style.css':'style.css'};
  if(!assets[p])return json(res,404,{error:'Não encontrado'});
  const filename=path.join(PUBLIC,assets[p]);
  const mime=p.endsWith('.js')?'text/javascript; charset=utf-8':p.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';
