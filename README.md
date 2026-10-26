@@ -82,3 +82,11 @@ O sistema só processa pedidos livres usando IA quando um provedor de modelo for
 [**Preparar implantação de homologação no Render**](https://render.com/deploy?repo=https://github.com/edsonrd-create/chatboot) — exige revisão e confirmação na conta Render. O plano Starter com disco pode ter custo; consulte preço antes de confirmar.
 
 [Manual de IA real e publicação](backend/docs/IA-REAL-E-DEPLOY-V17.md). A autenticação é pelo painel do backend publicado, não pelo GitHub Pages. A integração de WhatsApp real continuará desligada até homologação.
+
+## V1.8 — Central Duplo WhatsApp com visual estilo WhatsApp Web
+
+[**Abrir a central de conversas (demonstração)**](https://edsonrd-create.github.io/chatboot/whatsapp.html) — selecionar WhatsApp 1 ou 2, navegar por conversas e enviar respostas **apenas simuladas**.
+
+Para mensagens reais, o projeto dispõe de API autenticada e tela `/inbox` no backend hospedado, mas exige dois inboxes Chatwoot conectados, integração oficial com a Meta e credenciais privadas. O QR Code de coexistência pode ser exibido **somente pelo procedimento da Meta**. Não geramos QR falsos no frontend.
+
+Documentação: [DUPLO-WHATSAPP-V18.md](backend/docs/DUPLO-WHATSAPP-V18.md).
