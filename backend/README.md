@@ -35,8 +35,10 @@ O arquivo `Dockerfile` é para backend Node 22 em instância única com volume p
 **Documentação da assinatura Chatwoot:** https://www.chatwoot.com/hc/user-guide/articles/1677693021-how-to-use-webhooks
 
 
-## IA real na hospedagem — V1.7
+## Homologação com modelo de IA real — V1.7
 
-O simulador do backend agora exige `OPENAI_API_KEY` e exibe erro 503 se não estiver configurada; não confunda as respostas do `index.html` estático com IA. A ferramenta administrativa **Verificar conexão com a IA** faz uma chamada real e pode gerar cobrança do provedor.
+O painel estático do GitHub Pages **não executa IA**. Para testar perguntas reais e pedidos em linguagem natural, use o painel do backend, implantado em HTTPS. Sem `OPENAI_API_KEY`, a rota `/api/simulate` agora retorna HTTP 503 em vez de simular inteligência com respostas rígidas; quando a IA está indisponível, os canais Chatwoot são encaminhados ao atendimento humano.
 
-Corrigido o erro de transferência para humano e separadas as filas de entrada e saída do Chatwoot. O workflow de teste realiza regressão com dois canais. Para publicação de homologação controlada em hospedagem Render, consulte [docs/IA-REAL-E-DEPLOY-V17.md](docs/IA-REAL-E-DEPLOY-V17.md) e o `render.yaml` na raiz do GitHub. **Blueprint usa serviço Starter e disco persistente (podem ter custo); confirme antes de implantar.**
+Foi corrigida a falha `previouslyHuman is not defined` na transferência, e agora o envio de mensagens ao Chatwoot roda em fila separada para não bloquear o próximo atendimento. Incluímos um botão **Verificar conexão com a IA** no painel, que gera uma chamada real ao provedor e pode consumir saldo.
+
+O repositório contém `render.yaml` para publicação controlada na Render (plano Starter e disco persistente **podem gerar cobrança**, confirme preços antes de aceitar). A implantação é opcional; nenhuma credencial é distribuída com os arquivos. Consulte [docs/IA-REAL-E-DEPLOY-V17.md](docs/IA-REAL-E-DEPLOY-V17.md).
