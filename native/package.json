@@ -1,0 +1,8 @@
+{
+  "name":"guto-bot-nativo",
+  "version":"2.0.0-rc.1",
+  "private":true,
+  "type":"module",
+  "engines":{"node":">=22"},
+  "scripts":{"dev":"node --watch src/server.mjs","start":"node src/server.mjs","test":"node --test test/*.test.mjs"}
+}
