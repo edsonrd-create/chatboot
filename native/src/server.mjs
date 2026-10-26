@@ -30,7 +30,8 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   if(!env.ADMIN_PASSWORD||env.ADMIN_PASSWORD.length<12||!env.APP_SECRET||env.APP_SECRET.length<32){throw new Error('ADMIN_PASSWORD (12+) e APP_SECRET (32+) são exigidos.');}
   const appUrl=String(env.APP_PUBLIC_URL||env.RENDER_EXTERNAL_URL||'');
   if(env.NODE_ENV==='production' && (!/^https:\/\/[^/]+$/.test(appUrl)||!env.DATA_FILE&&!dataFile))throw new Error('Produção exige APP_PUBLIC_URL ou RENDER_EXTERNAL_URL HTTPS e armazenamento persistente.');
-  const store=new JsonStore(dataFile||path.join(root,env.DATA_FILE||'data/state.json')).init();
+  const statePath=dataFile||path.resolve(root,env.DATA_FILE||'data/state.json');
+  const store=new JsonStore(statePath).init();
   const allowedHosts=String(env.PDV_ALLOWED_HOSTS||'pdvgutoexpress.com.br').split(',').map(x=>x.trim()).filter(Boolean);
   const attempts=new Map();
   let pumping=false;
