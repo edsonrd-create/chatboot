@@ -28,3 +28,30 @@ jobs:
           node --check public/app.js
       - name: Testes de integração local
         run: npm test
+
+      - name: Build real do container Docker para Render
+        working-directory: .
+        run: docker build -f native/Dockerfile -t guto-native-ci native
+      - name: Subir o container e testar as rotas HTTPS de homologacao
+        working-directory: .
+        run: |
+          docker volume create guto-native-ci-data
+          docker run -d --name guto-native-ci -p 127.0.0.1:18080:8080 \
+            -v guto-native-ci-data:/app/data \
+            -e NODE_ENV=production \
+            -e HOST=0.0.0.0 \
+            -e PORT=8080 \
+            -e RENDER_EXTERNAL_URL=https://guto-ci.onrender.com \
+            -e DATA_FILE=/app/data/state.json \
+            -e ADMIN_PASSWORD=secure-staging-only-ci-pass \
+            -e APP_SECRET=ci-staging-only-very-long-secret-32-characters \
+            guto-native-ci
+          trap 'docker logs guto-native-ci || true; docker rm -f guto-native-ci || true; docker volume rm guto-native-ci-data || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/health > /tmp/guto-health.json; then break; fi
+            sleep 1
+          done
+          node -e "const fs=require('fs');const d=JSON.parse(fs.readFileSync('/tmp/guto-health.json')); if(d.ok!==true||d.ready!==false)process.exit(1)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/painel)" = "200"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/api/status)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/webhooks/meta)" = "503"
