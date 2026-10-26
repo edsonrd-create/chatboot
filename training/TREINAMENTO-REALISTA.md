@@ -33,7 +33,7 @@ Use Node.js >= 22:
 npm test
 ```
 
-O arquivo `training/realistic-cases.json` contém **33 roteiros de conversas sintéticas** (com várias mensagens, não apenas entradas isoladas). O teste lê cada mensagem, executa o motor **real do simulador** sem substituir suas respostas por respostas pré-programadas, e inspeciona o carrinho resultante e a resposta final. Também testa isolamento de dois canais, confirmações repetidas e endereços distintos.
+O arquivo `training/realistic-cases.json` contém **46 roteiros de conversas sintéticas** (com várias mensagens, não apenas entradas isoladas). O teste lê cada mensagem, executa o motor **real do simulador** sem substituir suas respostas por respostas pré-programadas, e inspeciona o carrinho resultante e a resposta final. Também testa isolamento de dois canais, confirmações repetidas e endereços distintos.
 
 O objetivo dos casos não é provar que o bot entende todo português. Casos que falharem devem gerar correções e novos cenários. Quando o backend e uma conta de IA estiverem configurados, faça testes E2E adicionais por meio do Chatwoot em ambiente isolado, com dois números de teste e operadores, antes de liberar clientes.
 
