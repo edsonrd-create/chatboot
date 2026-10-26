@@ -1,0 +1,21 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {PDV_DEFAULTS,validatePdvSettings,normalizePdvMenu,normalizePdvStore,pdvReadStatus,buildReadiness} from '../src/pdv-integration.mjs';
+const allowed=['pdvgutoexpress.com.br'];
+const settings={enabled:true,baseUrl:'https://pdvgutoexpress.com.br/',ordersMode:'DISABLED'};
+const product={id:21,name:'Calabresa',description:'Calabresa e mussarela',category:'Tradicionais',kind:'pizza',inStock:true,priceCents:5999,promoPriceCents:null,comboPriceCents:null,sizes:[{label:'Grande',priceCents:5999,maxFlavors:2}]};
+test('PDV e bot de produção bloqueados por padrão',()=>{assert.equal(PDV_DEFAULTS.enabled,false);assert.equal(PDV_DEFAULTS.ordersMode,'DISABLED');const r=buildReadiness({aiKeyConfigured:true,chatwootConfigured:true,pdvTest:{ok:true,at:'2026-10-26'}});assert.equal(r.ready,false);assert.equal(r.canAutoReply,false);assert.equal(r.canWritePdv,false);});
+test('valida somente domínio seguro',()=>{const s=validatePdvSettings(settings,{allowedHosts:allowed});assert.equal(s.baseUrl,'https://pdvgutoexpress.com.br');assert.equal(s.ordersMode,'DISABLED');});
+for(const baseUrl of ['http://pdvgutoexpress.com.br/','https://localhost/','https://127.0.0.1/','https://pdvgutoexpress.com.br.evil.tld/','https://pdvgutoexpress.com.br:8443/','https://root:pw@pdvgutoexpress.com.br/','https://pdvgutoexpress.com.br/a','https://pdvgutoexpress.com.br/?a=b'])
+ test('rejeita URL perigosa '+baseUrl,()=>assert.throws(()=>validatePdvSettings({...settings,baseUrl},{allowedHosts:allowed}),/não autorizado/));
+test('bloqueia envio de pedidos não homologado',()=>assert.throws(()=>validatePdvSettings({...settings,ordersMode:'ACTIVE'},{allowedHosts:allowed}),/bloqueado/));
+test('valida e sanitiza catálogo vigente',()=>{const r=normalizePdvMenu({ok:true,items:[product]});assert.equal(r.items[0].name,'Calabresa');assert.equal(r.items[0].sizes[0].priceCents,5999);assert.equal(r.readOnly,true);});
+test('rejeita IDs duplicados no cardápio',()=>assert.throws(()=>normalizePdvMenu({ok:true,items:[product,product]}),/duplicados/));
+test('rejeita valores negativos',()=>assert.throws(()=>normalizePdvMenu({ok:true,items:[{...product,priceCents:-1}]}),/Preço/));
+test('valida funcionamento da loja',()=>assert.equal(normalizePdvStore({ok:true,open:false,delivery:false,pickup:true}).pickup,true));
+test('rejeita resposta incompleta da loja',()=>assert.throws(()=>normalizePdvStore({ok:true,open:true}),/incompatível/));
+test('integração usa somente GET e caminhos conhecidos',async()=>{const calls=[];
+ const fetchImpl=async(url,opts)=>{calls.push({url,opts});return {ok:true,headers:{get:()=> 'application/json; charset=utf-8'},text:async()=>JSON.stringify(url.endsWith('menu')?{ok:true,items:[product]}:{ok:true,open:true,delivery:true,pickup:true,name:'Guto Express'})};};
+ const r=await pdvReadStatus(settings,{allowedHosts:allowed,fetchImpl});assert.equal(r.catalog.items.length,1);assert.equal(r.operation.open,true);assert.deepEqual(calls.map(x=>new URL(x.url).pathname),['/api/v1/menu','/api/v1/store']);assert.ok(calls.every(x=>x.opts.method==='GET'&&x.opts.redirect==='error'));
+});
+test('falha fechada quando PDV responde 503',async()=>await assert.rejects(()=>pdvReadStatus(settings,{allowedHosts:allowed,fetchImpl:async()=>({ok:false,status:503})}),/503/));
+test('PDV desativado impede chamadas',async()=>await assert.rejects(()=>pdvReadStatus(PDV_DEFAULTS,{allowedHosts:allowed,fetchImpl:()=>{throw Error('não deveria executar');}}),/desativada/));
