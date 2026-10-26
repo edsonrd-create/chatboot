@@ -56,11 +56,11 @@ function validateBusiness(b){
 }
 const orderSummary=(s)=>({cart:getSummary(s,business).items,address:s.address,payment:s.payment});
 
-async function postMessage(accountId,conversationId,content){
+async function postMessage(accountId,conversationId,content,isPrivate=false){
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),12000);
  try{
   const url=`${CW_HOST.replace(/\/$/,'')}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-  const r=await fetch(url,{method:'POST',signal:controller.signal,headers:{api_access_token:CW_TOKEN,'content-type':'application/json'},body:JSON.stringify({content,message_type:'outgoing',private:false})});
+  const r=await fetch(url,{method:'POST',signal:controller.signal,headers:{api_access_token:CW_TOKEN,'content-type':'application/json'},body:JSON.stringify({content,message_type:'outgoing',private:isPrivate})});
   if(!r.ok)throw new Error(`Chatwoot HTTP ${r.status}`);
  }finally{clearTimeout(timer);}
 }
@@ -88,6 +88,10 @@ async function pump(){
        try{reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}
        catch(error){reply='Tive uma dificuldade para consultar as informações agora. Vou encaminhar sua conversa para a equipe. 🙏';session.mode='HUMAN';session.reason='Falha no processamento de IA';}
        if(session.mode==='HUMAN'&&wantsHuman(n.content))reply='Claro! Vou encaminhar seu atendimento para nossa equipe. 😊';
+       if(!previouslyHuman && session.mode==='HUMAN'){
+         const noteId=`handoff:${evt.id}`;
+         if(!d.outbox[noteId])d.outbox[noteId]={id:noteId,accountId:n.accountId,conversationId:n.conversationId,content:`[Guto Bot] Atendimento humano solicitado. Motivo: ${String(session.reason||'necessita conferência').slice(0,200)}. IA pausada para esta conversa.`,private:true,state:'pending',attempts:0,nextAt:Date.now()};
+       }
        session.history.push({role:'user',content:n.content.slice(0,2000)});
        session.history.push({role:'assistant',content:reply.slice(0,3000)});
        session.history=session.history.slice(-30);
@@ -107,7 +111,7 @@ async function pump(){
   const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());
   for(const o of outgoing){
     if(!ONLINE)continue;
-    try{await postMessage(o.accountId,o.conversationId,o.content);await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();}});}
+    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();}});}
     catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8)x.state='failed';}});}
   }
  }finally{pumping=false;}

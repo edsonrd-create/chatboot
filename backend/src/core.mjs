@@ -20,9 +20,9 @@ export function normalizeEvent(event, configuredInboxes=[], configuredAccount=nu
   return {inboxId,conversationId,accountId,messageId,content:event.content.trim(),sender: String(event.sender?.name || 'Cliente').slice(0,80),key:`${accountId}:${inboxId}:${conversationId}`,eventKey:`${accountId}:${messageId}`};
 }
 
-export const newSession = ()=>({mode:'BOT',cart:[],address:null,payment:null,awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
+export const newSession = ()=>({mode:'BOT',cart:[],address:null,payment:null,fulfillment:'DELIVERY',awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
 function invalidateQuote(session){session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;session.confirmedRequestId=null;}
-export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,payment:quote.payment,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
+export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,payment:quote.payment,fulfillment:quote.fulfillment,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
 export function extractText(response) {
   if (typeof response?.output_text === 'string') return response.output_text.trim();
   return (response?.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n').trim();
@@ -63,9 +63,26 @@ export function replaceFlavor(session,business,{fromFlavorId,toFlavorId}){
  if(!business.flavors.some(f=>f.id===toFlavorId&&f.available))return {ok:false,error:'Novo sabor não disponível.'};
  const matches=session.cart.filter(x=>x.kind==='pizza'&&x.flavors.includes(fromFlavorId));
  if(matches.length!==1)return {ok:false,error:matches.length?'Há várias pizzas com esse sabor; informe qual deseja alterar.':'Não encontrei esse sabor no carrinho.'};
- const pizza=matches[0];if(pizza.flavors.includes(toFlavorId))return {ok:false,error:'Esse sabor já está na pizza.'};
- pizza.flavors=pizza.flavors.map(f=>f===fromFlavorId?toFlavorId:f);invalidateQuote(session);
+ const pizza=matches[0];if(pizza.quantity!==1)return {ok:false,error:'Este item representa várias pizzas; informe qual unidade deseja alterar para não modificar todas.'};if(pizza.flavors.includes(toFlavorId))return {ok:false,error:'Esse sabor já está na pizza.'};
+ pizza.flavors=pizza.flavors.map(f=>f===fromFlavorId?toFlavorId:f);const size=business.sizes.find(s=>s.id===pizza.size);pizza.description=`Pizza ${size.label} (${size.slices} fatias), ${pizza.flavors.map(id=>business.flavors.find(f=>f.id===id).label).join(' + ')}`;pizza.unitPriceCents=null;invalidateQuote(session);
  return {ok:true,item:pizza,quoteMustBeRefreshed:true};
+}
+/** Troca sabor de uma única pizza quando uma linha do carrinho tem quantidade > 1.
+ *  Evita modificar todas as unidades por engano ("troca uma das duas"). */
+export function replaceFlavorOneUnit(session,business,{itemId,fromFlavorId,toFlavorId}){
+  const item=session.cart.find(x=>x.id===itemId&&x.kind==='pizza');
+  if(!item)return {ok:false,error:'Pizza não localizada. Consulte o resumo para identificar o item.'};
+  if(!Number.isSafeInteger(item.quantity)||item.quantity<2)return {ok:false,error:'Esta linha não contém mais de uma unidade; utilize substituição normal.'};
+  if(!item.flavors.includes(fromFlavorId))return {ok:false,error:'O sabor anterior não pertence à pizza escolhida.'};
+  const newFlavor=business.flavors.find(f=>f.id===toFlavorId&&f.available);
+  if(!newFlavor||item.flavors.includes(toFlavorId))return {ok:false,error:'Novo sabor inválido ou repetido.'};
+  item.quantity--;
+  const single={...item,id:crypto.randomUUID(),quantity:1,flavors:item.flavors.map(f=>f===fromFlavorId?toFlavorId:f),unitPriceCents:null};
+  const size=business.sizes.find(s=>s.id===item.size);
+  single.description=`Pizza ${size.label} (${size.slices} fatias), ${single.flavors.map(id=>business.flavors.find(f=>f.id===id).label).join(' + ')}`;
+  session.cart.splice(session.cart.indexOf(item)+1,0,single);
+  invalidateQuote(session);
+  return {ok:true,item:single,remainingOriginal:item.quantity,quoteMustBeRefreshed:true};
 }
 /** Exige ID de item, evita excluir a pizza errada em pedidos com várias unidades. */
 export function removeCartItem(session,{itemId}){
@@ -95,7 +112,8 @@ export function getSummary(session,business) {
       const prices=flavors.map(f=>f && business.pizzas?.[f.id]?.[item.size]);
       const valid=size && flavors.every(Boolean) && prices.every(p=>Number.isSafeInteger(p)&&p>=0);
       const unitPriceCents=valid?(prices.length===1?prices[0]:business.halfHalfPricing==='MAX'?Math.max(...prices):business.halfHalfPricing==='AVERAGE'?Math.round((prices[0]+prices[1])/2):null):null;
-      return {...item,unitPriceCents};
+      const description=size?`Pizza ${size.label} (${size.slices} fatias), ${flavors.map((f,i)=>f?.label||`Sabor indisponível (${item.flavors[i]})`).join(' + ')}`:item.description;
+      return {...item,description,unitPriceCents};
     }
     if(item.kind==='drink'){
       const drink=business.drinks.find(d=>d.id===item.drinkId&&d.available);
@@ -105,14 +123,23 @@ export function getSummary(session,business) {
   });
   const subtotalKnown=items.length>0 && items.every(x=>Number.isSafeInteger(x.unitPriceCents));
   const subtotalCents=subtotalKnown?items.reduce((sum,x)=>sum+x.quantity*x.unitPriceCents,0):null;
-  const deliveryFeeCents=Number.isSafeInteger(business.deliveryFeeCents) && session.address?business.deliveryFeeCents:null;
+  const fulfillment=session.fulfillment||'DELIVERY';
+  const deliveryFeeCents=fulfillment==='PICKUP'?0:Number.isSafeInteger(business.deliveryFeeCents) && session.address?business.deliveryFeeCents:null;
   const totalCents=subtotalCents!==null && deliveryFeeCents!==null?subtotalCents+deliveryFeeCents:null;
-  return {items,subtotalCents,deliveryFeeCents,totalCents,address:session.address,payment:session.payment,missing:[...(items.length?[]:['itens']),...(session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
+  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,missing:[...(items.length?[]:['itens']),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
 }
 
+/** Modalidade explícita, sem presumir entrega quando o cliente escolheu retirada. */
+export function setFulfillment(session,{method}){
+  if(!['DELIVERY','PICKUP'].includes(method))return {ok:false,error:'Selecione entrega ou retirada.'};
+  session.fulfillment=method;
+  if(method==='PICKUP')session.address=null;
+  invalidateQuote(session);
+  return {ok:true,fulfillment:method};
+}
 export function setAddress(session,{address}) {
   if(typeof address!=='string'||address.trim().length<12 || address.length>500)return {ok:false,error:'Solicite endereço completo com rua, número, bairro e cidade.'};
-  session.address=address.trim();invalidateQuote(session);return {ok:true,address:session.address};
+  session.address=address.trim();session.fulfillment='DELIVERY';invalidateQuote(session);return {ok:true,address:session.address};
 }
 export function setPayment(session,{method}){
   if(!['PIX','CARTAO','DINHEIRO'].includes(method))return {ok:false,error:'Forma de pagamento inválida.'};

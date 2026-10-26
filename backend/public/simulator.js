@@ -7,10 +7,10 @@ const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLo
 const money=n=>Number.isInteger(n)?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100):'a confirmar';
 const contains=(s,re)=>re.test(s);
 const names={broto:'Broto',media:'Média',grande:'Grande',big:'Big',gigante:'Gigante'};
-const createSession=()=>({cart:[],draft:null,pendingCombo:null,address:null,delivery:'ENTREGA',payment:null,human:false,lastQuestion:'',turns:0,history:[]});
+const createSession=()=>({cart:[],draft:null,pendingCombo:null,pendingDrink:false,address:null,delivery:'ENTREGA',payment:null,human:false,lastQuestion:'',lastMentionedFlavor:null,turns:0,history:[]});
 const human=/\b(atendente|humano|gerente|funcionario|pessoa de verdade|falar com alguem)\b/;
 const confirm=/^(confirmo|pode fechar|fechar pedido|esta certo|pode enviar|sim confirma|pode confirmar|fechado|confirmado)$/;
-const cancelAll=/\b(cancela tudo|cancela meu pedido|desiste de tudo|esquece o pedido|apaga tudo)\b/;
+const cancelAll=/\b(cancela tudo|cancela meu pedido|desiste de tudo|esquece o pedido|esquece tudo|apaga tudo|nao quero mais nada)\b/;
 const sizeRe={gigante:/\b(gigante|16 fatias)\b/,big:/\b(big|12 fatias)\b/,grande:/\b(grandes?|10 fatias)\b/,media:/\b(medias?|8 fatias)\b/,broto:/\b(broto|6 fatias)\b/};
 function sizeFrom(t){for(const [k,re] of Object.entries(sizeRe))if(re.test(t))return k;return null;}
 function quantity(t){let m=t.match(/\b([2-9])\s*(?:pizzas?|unidades?)\b/)||t.match(/\b(duas|dois|tres|quatro)\s+pizzas?\b/); if(!m)return 1;const n={duas:2,dois:2,tres:3,quatro:4};return n[m[1]]||Number(m[1])||1;}
@@ -25,7 +25,7 @@ function flavorsIn(t,data){
  return found;
 }
 function drinkIn(t,data){
- const drinkAliases=[['coca_cola_2l',/\b(coca|coca cola)\s*(2\s*l|2\s*litros?)\b/],['coca_zero_2l',/\b(coca zero|zero)\s*(2\s*l|2\s*litros?)\b/],['coca_cola_350ml',/\b(coca|coca cola)\s*(lata|350)\b/],['guarana_antartica_2l',/\bguarana\s*(2\s*l|2\s*litros?)\b/]];
+ const drinkAliases=[['coca_zero_2l',/\b(coca zero|zero)\s*(2\s*l|2\s*litros?)\b/],['coca_cola_2l',/\b(cocas?|coca cola)\s*(2\s*l|2\s*litros?)\b/],['coca_cola_350ml',/\b(coca|coca cola)\s*(lata|350)\b/],['guarana_antartica_2l',/\bguarana\s*(2\s*l|2\s*litros?)\b/]];
  for(const [id,re] of drinkAliases){const item=data.drinks.find(d=>d.id===id);if(item&&re.test(t))return item;}
  const full=[...data.drinks].sort((a,b)=>b.label.length-a.label.length).find(d=>t.includes(norm(d.label)));return full||null;
 }
@@ -61,15 +61,15 @@ function respond(message,s,data){
  if(!t)return answer('Pode me contar o que deseja pedir? 🍕');
  if(human.test(t)){s.human=true;return answer('Claro! Vou encaminhar para uma pessoa da equipe. Nesta demonstração não há atendentes conectados, então nenhum contato foi enviado.');}
  if(s.human)return answer('Você solicitou atendimento humano. Na operação real o robô pausaria até a equipe assumir. Aqui, use “Reiniciar conversa” para testar novamente.');
- if(cancelAll.test(t)){s.cart=[];s.draft=null;s.pendingCombo=null;s.address=null;s.payment=null;return answer('Tudo bem, cancelei o carrinho desta simulação. Não havia pedido real registrado. Quer começar outro?');}
+ if(cancelAll.test(t)){s.cart=[];s.draft=null;s.pendingCombo=null;s.pendingDrink=false;s.address=null;s.payment=null;return answer('Tudo bem, cancelei o carrinho desta simulação. Não havia pedido real registrado. Quer começar outro?');}
  if(confirm.test(t))return answer('Entendi sua intenção de confirmar! Porém ainda precisamos de cotação válida de cada item, disponibilidade, taxa e revisão final. Nesta demonstração não vou registrar nem cobrar um pedido real. 🍕\n'+describeCart(s,data)+'\n'+nextMissing(s));
  if(/\b(meu ultimo pedido|igual (ao|o) ultimo|mesmo endereco|o de sempre|repete o pedido)\b/.test(t))return answer('Consigo ajudar, sim! 😊 Mas esta demonstração não acessa seu histórico nem endereço anterior. Você pode me dizer o tamanho e sabores, ou o endereço completo, para eu conferir?');
  if(/\b(tira|remove|exclui)\s+(a\s+)?(pizza|coca|bebida|refrigerante)\b/.test(t)){
-  const kind=/coca|bebida|refrigerante/.test(t)?'drink':'pizza';const n=s.cart.findLastIndex(x=>x.kind===kind);if(n>=0){const item=s.cart.splice(n,1)[0];return answer('Certo, retirei '+(item.kind==='drink'?item.label:'a pizza')+' do carrinho da simulação. ✅\n'+describeCart(s,data));}return answer('Não encontrei esse item no seu carrinho. Pode me dizer qual deseja retirar?');
+  const kind=/coca|bebida|refrigerante/.test(t)?'drink':'pizza';const hits=s.cart.filter(x=>x.kind===kind);if(hits.length>1)return answer('Tenho mais de um item desse tipo no seu carrinho. Qual exatamente você quer retirar?');const n=s.cart.findLastIndex(x=>x.kind===kind);if(n>=0){const item=s.cart.splice(n,1)[0];return answer('Certo, retirei '+(item.kind==='drink'?item.label:'a pizza')+' do carrinho da simulação. ✅\n'+describeCart(s,data));}return answer('Não encontrei esse item no seu carrinho. Pode me dizer qual deseja retirar?');
  }
  if(/\b(troca|trocar|substitui|muda)\b/.test(t)&&s.cart.some(x=>x.kind==='pizza')){
   const [fromText,toText]=t.split(/\bpor\b/);const from=flavorsIn(fromText||'',data)[0];const target=flavorsIn(toText||'',data)[0];const idx=s.cart.findLastIndex(x=>x.kind==='pizza');const pizza=s.cart[idx];
-  if(from&&target){const fi=pizza.flavors.indexOf(from);if(fi!==-1){pizza.flavors[fi]=target;return answer('Pronto, troquei o sabor. A pizza ficou: '+pizza.flavors.map(id=>data.flavors.find(f=>f.id===id)?.label).join(' + ')+'. Vou recalcular quando tivermos preços oficiais atualizados.');}}
+  if(from&&target){const matches=s.cart.filter(x=>x.kind==='pizza'&&x.flavors.includes(from));if(matches.length!==1||matches[0].quantity!==1)return answer('Você tem mais de uma pizza com esse sabor. Qual delas deseja alterar? Me diga o tamanho e qual pizza, para eu não trocar a errada.');const fi=pizza.flavors.indexOf(from);if(fi!==-1){pizza.flavors[fi]=target;return answer('Pronto, troquei o sabor. A pizza ficou: '+pizza.flavors.map(id=>data.flavors.find(f=>f.id===id)?.label).join(' + ')+'. Vou recalcular quando tivermos preços oficiais atualizados.');}}
   return answer('Claro! Qual sabor você quer retirar e qual vai entrar no lugar? Por exemplo: “troca calabresa por portuguesa”.');
  }
  if(/\b(sem\s+(cebola|azeitona|oregano|milho|pimentao|tomate)|borda\s+(catupiry|cheddar)|extra\s+queijo|bem passada|pouco molho)\b/.test(t)&&s.cart.some(x=>x.kind==='pizza')){
@@ -85,12 +85,29 @@ function respond(message,s,data){
    const several=parseSeveralPizzas();
    if(several){s.cart.push(...several);s.draft=null;return answer('Anotei as '+several.length+' pizzas separadamente! 🍕\n'+describeCart(s,data)+'\n'+nextMissing(s));}
  }
+ // Leia todos os dados informados na MESMA mensagem antes de pedir uma informação de novo.
+ const street=message.match(/\b(?:rua|avenida|av\.?|travessa|alameda|estrada)\s+[^,;\n]{3,100}?\s*,?\s*\d{1,5}\b(?:[^;\n]{0,120})?/i);
+ if(street && /\b(rua|avenida|av|travessa|alameda|estrada)\b/.test(t))s.address=street[0].trim();
+ if(/\b(pix|cartao|debito|credito|dinheiro)\b/.test(t))s.payment=/\bpix\b/.test(t)?'PIX':/\b(cartao|debito|credito)\b/.test(t)?'CARTAO':'DINHEIRO';
+ if(/\b(retirar|retirada|buscar|balcao)\b/.test(t)){s.delivery='RETIRADA';s.address=null;}
  const size=sizeFrom(t),ids=flavorsIn(t,data),drink=drinkIn(t,data),wantsItem=isOrder(t);
- if(/\b(o que (leva|tem)|ingredientes?|alergicos?|composicao|vai o que)\b/.test(t)&&ids.length){return answer(ids.slice(0,3).map(id=>{const f=data.flavors.find(x=>x.id===id);return f.label+' leva: '+f.ingredients.join(', ')+'.';}).join('\n')+'\nIngredientes declarados no cardápio; informações sobre alergênicos precisam ser confirmadas com a cozinha.');}
+ // Referência ao último sabor citado em diálogo: 'uma grande dela'. Não usa histórico de outro cliente.
+ if(!ids.length && s.lastMentionedFlavor && /\b(dela|desse sabor|dessa pizza|daquela|dessa)\b/.test(t) && /\b(quero|faz|manda|coloca|uma|pizza)\b/.test(t))ids.push(s.lastMentionedFlavor);
+ if(ids.length===1)s.lastMentionedFlavor=ids[0];
+ // “Uma Coca” não especifica embalagem; pergunte sem inventar 350ml ou 2 litros.
+ const vagueCoca=/\b(coca|coca cola)\b/.test(t)&&!/\b(2\s*l|2\s*litros?|350\s*ml|lata|zero)\b/.test(t);
+ if(vagueCoca && !drink && /\b(quero|manda|coloca|adiciona|bota|inclui|uma|um)\b/.test(t))s.pendingDrink=true;
+ if(s.pendingDrink&&/^(2\s*l|2\s*litros?|dois litros|lata|350\s*ml)$/.test(t)){
+   const id=/lata|350/.test(t)?'coca_cola_350ml':'coca_cola_2l';
+   const chosen=data.drinks.find(d=>d.id===id);
+   if(chosen){s.cart.push({kind:'drink',id:chosen.id,label:chosen.label,quantity:1});s.pendingDrink=false;return answer('Anotei '+chosen.label+'! 🥤\n'+nextMissing(s));}
+ }
+
+ if(/\b(o que (leva|tem|vai)|o que vai na|o que tem na|ingredientes?|alergicos?|composicao|vai o que|que vai na|que tem na)\b/.test(t)&&ids.length){return answer(ids.slice(0,3).map(id=>{const f=data.flavors.find(x=>x.id===id);return f.label+' leva: '+f.ingredients.join(', ')+'.';}).join('\n')+'\nIngredientes declarados no cardápio; informações sobre alergênicos precisam ser confirmadas com a cozinha.');}
  if(/\b(quanto custa|preco|valor|quanto fica)\b/.test(t)&&ids.length){const f=data.flavors.find(x=>x.id===ids[0]);return answer('O cardápio anuncia '+f.label+' a partir de '+money(f.startingPriceCents)+'. O preço exato depende do tamanho, combinações e promoções válidas. Qual tamanho você gostaria?');}
  if(/\b(tem |têm |voces tem|voces possuem|vende|vendem)\b/.test(t)&&ids.length&&!wantsItem){return answer('O sabor '+data.flavors.find(f=>f.id===ids[0]).label+' aparece no nosso cardápio. 😊 Posso explicar os ingredientes; a disponibilidade atual será confirmada pela equipe.');}
- if(drink && /\b(quero|manda|adiciona|coloca|inclui|pede|pedir|mais|bota|uma|um)\b/.test(t)){
-  const q=quantity(t);s.cart.push({kind:'drink',id:drink.id,label:drink.label,quantity:q});
+ if(drink && (/\b(quero|manda|adiciona|coloca|inclui|pede|pedir|mais|bota|uma|um|ve)\b/.test(t)||/\b(2|3|4|duas|dois|tres|quatro)\s+(?:cocas?|refrigerantes?|garrafas?|latas?)\b/.test(t))){
+  const countMatch=t.match(/\b(2|3|4|duas|dois|tres|quatro)\s+(?:cocas?|refrigerantes?|garrafas?|latas?)\b/);const drinkCount={duas:2,dois:2,tres:3,quatro:4};const q=countMatch?(drinkCount[countMatch[1]]||Number(countMatch[1])):1;s.cart.push({kind:'drink',id:drink.id,label:drink.label,quantity:q});
   if(!size&&!ids.length)return answer('Incluí '+q+'x '+drink.label+' no carrinho desta simulação. 🥤\n'+nextMissing(s));
  }
  if(size||ids.length||s.draft){
@@ -106,9 +123,11 @@ function respond(message,s,data){
   if(!draft.flavors.length){s.draft=draft;return answer('Perfeito, pizza '+names[draft.size]+'. Qual sabor gostaria? Pode escolher até dois.');}
   if(draft.waitingSecond){s.draft=draft;return answer('Anotei a primeira metade! Qual sabor deseja na outra metade?');}
   if(s.pendingCombo){s.draft=draft;return answer('Anotei a pizza '+names[draft.size]+' de '+draft.flavors.map(id=>data.flavors.find(f=>f.id===id)?.label).join(' + ')+'. Como é um combo anunciado, ainda precisamos validar as regras e os demais itens com a equipe antes de adicionar como venda.');}
+  const extraNote=t.match(/\b(sem\s+(?:cebola|azeitona|oregano|milho|pimentao|tomate)|borda\s+(?:catupiry|cheddar)|extra\s+queijo|bem passada|pouco molho)\b/);if(extraNote&&!draft.notes.includes(extraNote[0]))draft.notes.push(extraNote[0]);
   s.cart.push({kind:'pizza',size:draft.size,flavors:draft.flavors,quantity:draft.quantity,notes:draft.notes});s.draft=null;
-  return answer('Perfeito! 🍕 Coloquei no carrinho da simulação: '+draft.quantity+'x pizza '+names[draft.size]+' ('+draft.flavors.map(id=>data.flavors.find(f=>f.id===id).label).join(' + ')+').\n'+nextMissing(s));
+  return answer('Perfeito! 🍕 Coloquei no carrinho da simulação: '+draft.quantity+'x pizza '+names[draft.size]+' ('+draft.flavors.map(id=>data.flavors.find(f=>f.id===id).label).join(' + ')+').\n'+(s.pendingDrink?'Você quer Coca-Cola lata ou 2 litros?':nextMissing(s)));
  }
+ if(s.pendingDrink)return answer('Claro! Para eu anotar certinho, você quer Coca-Cola lata ou 2 litros?');
  if(/\b(retirar|retirada|buscar|balcao)\b/.test(t)){s.delivery='RETIRADA';s.address=null;return answer('Anotei retirada no balcão. O horário e a confirmação da loja precisam ser validados. Como prefere pagar?');}
  if(/\b(endereco|rua|avenida|av\s|travessa)\b/.test(t)&& /\d{1,5}/.test(t)){
    s.address=message.trim();return answer('Anotei o endereço informado. ✅ Ainda preciso validar a área atendida e a taxa no sistema conectado. '+nextMissing(s));

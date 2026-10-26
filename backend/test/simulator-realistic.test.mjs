@@ -9,7 +9,7 @@ const ctx={Intl};vm.createContext(ctx);vm.runInContext(fs.readFileSync(new URL('
 const {createSession,respond}=ctx.GutoSimulator;
 for(const scenario of suite.cases){
  test('conversa realista — '+scenario.id,()=>{
-   const s=createSession();let last='';for(const message of scenario.messages){last=respond(message,s,catalog);assert.equal(typeof last,'string');assert.ok(last.length>15);}
+   const s=createSession();let last='';for(const [i,message] of scenario.messages.entries()){last=respond(message,s,catalog);assert.equal(typeof last,'string');assert.ok(last.length>15);if(scenario.turnChecks?.[i]!=null)assert.match(last,new RegExp(scenario.turnChecks[i],'i'),scenario.id+': resposta à mensagem '+(i+1));assert.doesNotMatch(last,/pedido (foi )?(confirmado|enviado para a cozinha)|pagamento aprovado/i,'simulação não pode inventar operação real');}
    const e=scenario.expect;
    if(e.pizzas!=null)assert.equal(s.cart.filter(c=>c.kind==='pizza').length,e.pizzas,scenario.id+': pizzas');
    if(e.drinks!=null)assert.equal(s.cart.filter(c=>c.kind==='drink').length,e.drinks,scenario.id+': bebidas');
