@@ -62,7 +62,7 @@ for (const scenario of cases) {
     if (scenario.delivery) assert.equal(session.delivery,scenario.delivery);
     if (scenario.human) assert.equal(session.human,true);
     if (scenario.combo) assert.equal(session.pendingCombo,scenario.combo);
-    if (scenario.notes) assert.deepEqual(pizzas[0]?.notes,scenario.notes);
+    if (scenario.notes) assert.deepEqual([...(pizzas[0]?.notes||[])],scenario.notes);
     if (scenario.last) assert.match(answer,scenario.last);
   });
 }
