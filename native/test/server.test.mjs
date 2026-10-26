@@ -59,3 +59,21 @@ test('conexão manual: verifica correspondência WABA e criptografa token sem ex
  const c=app.store.snapshot().channels[0];assert.ok(c.tokenEncrypted);assert.equal(c.tokenEncrypted.includes(token),false);
  const st=await request('/api/status',{headers:{cookie}});const s=JSON.stringify(await st.json());assert.equal(s.includes(token),false);assert.equal(s.includes(c.tokenEncrypted),false);
 });
+
+test('deploy em homologação: inicia sem segredos Meta e mantém webhooks desabilitados',async t=>{
+ const minimal={ADMIN_PASSWORD:'admin-pass-secure-for-staging',APP_SECRET:'a-development-secret-with-over-32-characters',NODE_ENV:'production',RENDER_EXTERNAL_URL:'https://example-render-staging.onrender.com',DATA_FILE:'./data/state.json'};
+ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'native-staging-'));
+ const app=createNativeServer({env:minimal,dataFile:path.join(tmp,'state.json')});
+ const addr=await app.start(0);const url=`http://127.0.0.1:${addr.port}`;
+ t.after(async()=>{await app.stop();fs.rmSync(tmp,{recursive:true,force:true});});
+ const h=await fetch(url+'/health');assert.equal(h.status,200);assert.equal((await h.json()).ready,false);
+ const g=await fetch(url+'/webhooks/meta?hub.mode=subscribe&hub.verify_token=123&hub.challenge=123');assert.equal(g.status,503);
+ const w=await fetch(url+'/webhooks/meta',{method:'POST',body:'{}'});assert.equal(w.status,503);
+ const a=await fetch(url+'/api/status');assert.equal(a.status,401);
+ const p=await fetch(url+'/painel');assert.equal(p.status,200);
+});
+test('deploy em homologação: rejeita URL HTTP e armazenamento não persistente',()=>{
+ const base={ADMIN_PASSWORD:'admin-pass-secure-for-staging',APP_SECRET:'a-development-secret-with-over-32-characters',NODE_ENV:'production',DATA_FILE:'./data/state.json'};
+ assert.throws(()=>createNativeServer({env:{...base,APP_PUBLIC_URL:'http://insecure.example'}}),/HTTPS/);
+ assert.throws(()=>createNativeServer({env:{...base,RENDER_EXTERNAL_URL:'https://server.example',DATA_FILE:''}}),/persistente/);
+});
