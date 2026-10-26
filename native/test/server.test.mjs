@@ -77,3 +77,14 @@ test('deploy em homologação: rejeita URL HTTP e armazenamento não persistente
  assert.throws(()=>createNativeServer({env:{...base,APP_PUBLIC_URL:'http://insecure.example'}}),/HTTPS/);
  assert.throws(()=>createNativeServer({env:{...base,RENDER_EXTERNAL_URL:'https://server.example',DATA_FILE:''}}),/persistente/);
 });
+
+test('Docker/Render: DATA_FILE absoluto respeita volume sem duplicar /app',async t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'guto-absolute-state-'));
+ const abs=path.join(dir,'disk','state.json');
+ t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const minimal={ADMIN_PASSWORD:'admin-pass-secure-for-staging',APP_SECRET:'a-development-secret-with-over-32-characters',NODE_ENV:'production',RENDER_EXTERNAL_URL:'https://example.onrender.com',DATA_FILE:abs};
+ const app=createNativeServer({env:minimal});
+ assert.equal(app.store.path,abs);
+ await app.store.change(d=>{d.settings.autoReply=false;});
+ assert.equal(fs.existsSync(abs),true);
+});
