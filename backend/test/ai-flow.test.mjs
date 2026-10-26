@@ -40,7 +40,7 @@ test('solicitação humana interrompe fluxo sem chamada externa',async()=>{
  assert.match(reply,/equipe/);assert.equal(s.mode,'HUMAN');
 });
 
-test('verificação de IA exige chave e resposta do provedor',async()=>{
+test('verificação de IA exige chave e resposta real do provedor',async()=>{
  await assert.rejects(()=>testAIConnection({}),/OPENAI_API_KEY/);
  const previous=globalThis.fetch;
  globalThis.fetch=async(url,options)=>{
