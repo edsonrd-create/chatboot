@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {intelligentReply} from '../src/ai.mjs';
+import {intelligentReply,testAIConnection} from '../src/ai.mjs';
 import {newSession,getSummary} from '../src/core.mjs';
 const dirname=path.dirname(fileURLToPath(import.meta.url));
 const business=JSON.parse(fs.readFileSync(path.join(dirname,'../config/business.json'),'utf8'));
@@ -38,4 +38,18 @@ test('solicitação humana interrompe fluxo sem chamada externa',async()=>{
  const s=newSession(),b=fixture();
  const reply=await intelligentReply('Quero falar com atendente humano',s,b,{apiKey:'fake_key'});
  assert.match(reply,/equipe/);assert.equal(s.mode,'HUMAN');
+});
+
+test('verificação de IA exige chave e resposta do provedor',async()=>{
+ await assert.rejects(()=>testAIConnection({}),/OPENAI_API_KEY/);
+ const previous=globalThis.fetch;
+ globalThis.fetch=async(url,options)=>{
+  assert.equal(url,'https://api.openai.com/v1/responses');
+  const body=JSON.parse(options.body);
+  assert.equal(body.store,false);
+  assert.equal(body.tools,undefined);
+  return {ok:true,json:async()=>({output_text:'OK',output:[]})};
+ };
+ try{const out=await testAIConnection({apiKey:'fake',model:'gpt-4.1-mini'});assert.deepEqual(out,{ok:true,model:'gpt-4.1-mini'});}
+ finally{globalThis.fetch=previous;}
 });
