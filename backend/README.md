@@ -1,4 +1,4 @@
-# Guto Bot Humanizado — V1.6 (backend de homologação)
+# Guto Bot Humanizado — V1.7 (backend de homologação)
 
 Serviço Node.js 22+ e painel para **homologar** chatbot humanizado com dois canais Chatwoot, cardápio configurável, regras determinísticas de orçamento e revisão humana.
 
@@ -33,3 +33,10 @@ O arquivo `Dockerfile` é para backend Node 22 em instância única com volume p
 **Não está em produção.** Não foi testado com dois números reais nem com chamadas reais à IA. O armazenamento atual é JSON em disco (1 réplica); produção escalável exige PostgreSQL, Redis/fila durável, auditoria e políticas de backup. Não há transcrição de voz, integração PDV, cálculo de entrega por bairro, confirmação de pagamento ou atribuição automática a atendente. Não usar com clientes reais até concluir `docs/HOMOLOGACAO-V16.md`.
 
 **Documentação da assinatura Chatwoot:** https://www.chatwoot.com/hc/user-guide/articles/1677693021-how-to-use-webhooks
+
+
+## IA real na hospedagem — V1.7
+
+O simulador do backend agora exige `OPENAI_API_KEY` e exibe erro 503 se não estiver configurada; não confunda as respostas do `index.html` estático com IA. A ferramenta administrativa **Verificar conexão com a IA** faz uma chamada real e pode gerar cobrança do provedor.
+
+Corrigido o erro de transferência para humano e separadas as filas de entrada e saída do Chatwoot. O workflow de teste realiza regressão com dois canais. Para publicação de homologação controlada em hospedagem Render, consulte [docs/IA-REAL-E-DEPLOY-V17.md](docs/IA-REAL-E-DEPLOY-V17.md) e o `render.yaml` na raiz do GitHub. **Blueprint usa serviço Starter e disco persistente (podem ter custo); confirme antes de implantar.**
