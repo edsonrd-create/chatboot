@@ -51,3 +51,23 @@ A prévia não recebe WhatsApp, não faz pagamento e não cria pedidos. Para ope
 5. Manter aprovação humana, transferência de conversa e validação real por dois números antes da produção.
 
 **Privacidade:** este repositório é público. Nunca publique tokens, senhas, chaves de IA, mensagens de clientes, números de telefone ou endereços reais.
+
+## Backend humanizado V1.6
+
+A implementação técnica do chatbot de homologação agora está na pasta [backend](backend/). Ela é separada do `index.html` estático publicado pelo GitHub Pages.
+
+**Atualizações:** troca de sabor com novo resumo, alteração de somente uma unidade em duas pizzas iguais, retirada sem frete, proteção para alergênicos, nota privada de transferência no Chatwoot e teste de confirmação com API de IA simulada.
+
+Para executar o backend em ambiente Node.js 22+:
+
+```bash
+cd backend
+cp .env.example .env
+# Configure ADMIN_PASSWORD e APP_SECRET localmente; nunca publique o .env
+npm test
+npm start
+```
+
+O sistema só processa pedidos livres usando IA quando um provedor de modelo for conectado com uma chave válida. **Ainda não há Chatwoot/WhatsApps reais, preço atualizado, pagamento ou produção conectados.** Não usar para vender antes dos testes de homologação descritos em [backend/docs/HOMOLOGACAO-V16.md](backend/docs/HOMOLOGACAO-V16.md).
+
+**Testes GitHub Actions:** [Guto Bot backend tests](../../actions/workflows/guto-backend-tests.yml). A suíte antiga do simulador também é executada quando o HTML é alterado.
