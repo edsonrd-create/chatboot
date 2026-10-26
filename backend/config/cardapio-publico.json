@@ -1,0 +1,1488 @@
+{
+  "metadata": {
+    "source": "https://www.gutoexpress.com.br/cardapio?dvc=mobile&ed_mobile_iframe=1",
+    "requestedSource": "https://pedir.to/gutoexpress",
+    "requestedSourceAccessible": false,
+    "sourceCheckedOn": "2026-10-25",
+    "snapshotOnly": true,
+    "notice": "Valores públicos informativos; sem API de estoque/preço em tempo real. Confirmar antes de produzir/cobrar."
+  },
+  "sizes": [
+    {
+      "id": "broto",
+      "label": "Broto",
+      "slices": 6
+    },
+    {
+      "id": "media",
+      "label": "Média",
+      "slices": 8
+    },
+    {
+      "id": "grande",
+      "label": "Grande",
+      "slices": 10
+    },
+    {
+      "id": "big",
+      "label": "Big",
+      "slices": 12
+    },
+    {
+      "id": "gigante",
+      "label": "Gigante",
+      "slices": 16
+    }
+  ],
+  "flavors": [
+    {
+      "id": "americana",
+      "label": "Americana",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Cebola",
+        "Milho",
+        "Mussarela",
+        "Orégano",
+        "Ovos"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "bacon",
+      "label": "Bacon",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "bacon_barbecue",
+      "label": "Bacon Barbecue",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Molho",
+        "Molho Barbecue",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "bacon_com_tomate",
+      "label": "Bacon com Tomate",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Mussarela",
+        "Orégano",
+        "Tomate"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "bacon_com_cheddar",
+      "label": "Bacon com Cheddar",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Cheddar",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "baiana",
+      "label": "Baiana",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Cebola",
+        "Molho",
+        "Mussarela",
+        "Orégano",
+        "Pimentão",
+        "Presunto"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "bauru",
+      "label": "Bauru",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Mussarela",
+        "Orégano",
+        "Presunto"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "brocolis",
+      "label": "Brócolis",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Brócolis",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "calabresa",
+      "label": "Calabresa",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Calabresa",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "calabresa_com_barbecue",
+      "label": "Calabresa com Barbecue",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Barbecue",
+        "Calabresa",
+        "Molho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "calabresa_com_cebola",
+      "label": "Calabresa com Cebola",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Calabresa",
+        "Cebola",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "calabresa_com_cheddar",
+      "label": "Calabresa com Cheddar",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Calabresa",
+        "Cheddar",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "calabresa_com_tomate",
+      "label": "Calabresa com Tomate",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Calabresa",
+        "Mussarela",
+        "Orégano",
+        "Tomate"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "canadense",
+      "label": "Canadense",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Catupiry",
+        "Champignon",
+        "Lombinho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "catubresa",
+      "label": "Catubresa",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Calabresa",
+        "Catupiry",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "crocante",
+      "label": "Crocante",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Batata Palha",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "da_casa",
+      "label": "Da Casa",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Calabresa",
+        "Frango",
+        "Milho",
+        "Mussarela",
+        "Orégano",
+        "Ovos"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "dois_queijos",
+      "label": "Dois Queijos",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Catupiry",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "escarola",
+      "label": "Escarola",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Escarola",
+        "Molho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "fogazza",
+      "label": "Fogazza",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Catupiry",
+        "Mussarela",
+        "Orégano",
+        "Palmito"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "frango",
+      "label": "Frango",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Frango",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "frango_barbecue",
+      "label": "Frango Barbecue",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Barbecue",
+        "Frango ao Molho da Casa",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "frango_catupiry",
+      "label": "Frango com Catupiry",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Catupiry",
+        "Frango",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "frango_com_cheddar",
+      "label": "Frango com Cheddar",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Cheddar",
+        "Frango",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "frango_com_milho",
+      "label": "Frango com Milho",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Frango",
+        "Milho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "franpalha",
+      "label": "Franpalha",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Batata Palha",
+        "Frango",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "lombinho",
+      "label": "Lombinho",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Lombo",
+        "Molho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "lombinho_com_barbecue",
+      "label": "Lombinho com Barbecue",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Barbecue",
+        "Lombinho"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "lombinho_com_catupiry",
+      "label": "Lombinho com Catupiry",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Catupiry",
+        "Lombinho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "lombinho_com_cheddar",
+      "label": "Lombinho com Cheddar",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Cheddar",
+        "Lombinho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "lombo_com_bacon",
+      "label": "Lombo com Bacon",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Lombo",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "marguerita",
+      "label": "Marguerita",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Manjericão em Flocos (Desidratado)",
+        "Mussarela",
+        "Tomate"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "mexicana",
+      "label": "Mexicana",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Calabresa Picada",
+        "Cebola",
+        "Mussarela",
+        "Orégano",
+        "Pimenta Calabresa",
+        "Pimentão"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "milho",
+      "label": "Milho",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Milho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "milho_com_bacon",
+      "label": "Milho com Bacon",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Bacon",
+        "Milho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "mussarela",
+      "label": "Mussarela",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "napolitana",
+      "label": "Napolitana",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Mussarela",
+        "Orégano",
+        "Parmesão",
+        "Tomate"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "palmito",
+      "label": "Palmito",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Mussarela",
+        "Orégano",
+        "Palmito"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "parmegiana",
+      "label": "Parmegiana",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Mussarela",
+        "Orégano",
+        "Presunto",
+        "Tomate"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "paulista",
+      "label": "Paulista",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Calabresa",
+        "Cebola",
+        "Mussarela",
+        "Orégano",
+        "Ovos"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "portuguesa",
+      "label": "Portuguesa",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Azeitona",
+        "Cebola",
+        "Mussarela",
+        "Orégano",
+        "Ovos",
+        "Presunto"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "quatro_queijos",
+      "label": "Quatro Queijos",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Catupiry",
+        "Mussarela",
+        "Orégano",
+        "Parmesão",
+        "Provolone"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "quatro_queijos_com_tomate",
+      "label": "Quatro Queijos com Tomate",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Tomate"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "romana",
+      "label": "Romana",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Milho",
+        "Mussarela",
+        "Orégano",
+        "Presunto",
+        "Tomate"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "toscana",
+      "label": "Toscana",
+      "category": "Tradicionais",
+      "ingredients": [
+        "Azeitona",
+        "Calabresa Picada",
+        "Mussarela",
+        "Orégano",
+        "Ovos",
+        "Requeijão"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "abacaxi",
+      "label": "Abacaxi",
+      "category": "Especiais",
+      "ingredients": [
+        "Abacaxi",
+        "Chocolate Branco",
+        "Mussarela"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "atum",
+      "label": "Atum",
+      "category": "Especiais",
+      "ingredients": [
+        "Atum",
+        "Azeitona",
+        "Cebola",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "banana_nevada_ao_forno",
+      "label": "Banana Nevada ao Forno",
+      "category": "Especiais",
+      "ingredients": [
+        "Banana",
+        "Chocolate Branco",
+        "Coco Ralado",
+        "Mussarela"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "banoffe",
+      "label": "Banoffe",
+      "category": "Especiais",
+      "ingredients": [
+        "Banana",
+        "Doce de Leite",
+        "Mussarela"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "bolonhesa",
+      "label": "Bolonhesa",
+      "category": "Especiais",
+      "ingredients": [
+        "Carne Moída Temperada Com Alho e Cebola",
+        "Mussarela",
+        "Orégano",
+        "Pimentão"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "champignon",
+      "label": "Champignon",
+      "category": "Especiais",
+      "ingredients": [
+        "Champignon"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "charge",
+      "label": "Charge",
+      "category": "Especiais",
+      "ingredients": [
+        "Amendoim",
+        "Chocolate ao Leite",
+        "Doce de Leite",
+        "Mussarela"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "choconana",
+      "label": "Choconana",
+      "category": "Especiais",
+      "ingredients": [
+        "Banana",
+        "Chocolate ao Leite",
+        "Leite Condensado",
+        "Mussarela"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "cinco_queijos",
+      "label": "Cinco Queijos",
+      "category": "Especiais",
+      "ingredients": [
+        "Catupiry",
+        "Cheddar",
+        "Mussarela",
+        "Orégano",
+        "Parmesão",
+        "Provolone"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "confeti",
+      "label": "Confeti",
+      "category": "Especiais",
+      "ingredients": [
+        "Chocolate ao Leite",
+        "Confete",
+        "Mussarela"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "guto_express",
+      "label": "Guto Express",
+      "category": "Especiais",
+      "ingredients": [
+        "Azeitona",
+        "Bacon",
+        "Calabresa Picada",
+        "Cebola",
+        "Milho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "havaiana",
+      "label": "Havaiana",
+      "category": "Especiais",
+      "ingredients": [
+        "Abacaxi",
+        "Lombo",
+        "Molho",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "nachos_com_carne_moida",
+      "label": "Nachos com Carne Moída",
+      "category": "Especiais",
+      "ingredients": [
+        "Carne Moída Temperada Com Alho e Cebola",
+        "Cheddar",
+        "Doritos",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "nachos_com_frango",
+      "label": "Nachos com Frango",
+      "category": "Especiais",
+      "ingredients": [
+        "Cheddar",
+        "Doritos",
+        "Frango Desfiado",
+        "Mussarela",
+        "Orégano"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "oreo",
+      "label": "Oreo",
+      "category": "Especiais",
+      "ingredients": [
+        "Bolacha Oreo",
+        "Chocolate ao Leite",
+        "Mussarela"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "pacoquinha_especiais",
+      "label": "Paçoquinha",
+      "category": "Especiais",
+      "ingredients": [
+        "Doce de Leite",
+        "Mussarela",
+        "Paçoquinha"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "quatro_queijos_com_bacon",
+      "label": "Quatro Queijos com Bacon",
+      "category": "Especiais",
+      "ingredients": [
+        "Bacon",
+        "Catupiry",
+        "Mussarela",
+        "Orégano",
+        "Parmesão",
+        "Provolone"
+      ],
+      "startingPriceCents": 4299,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "sonho_de_valsa",
+      "label": "Sonho de Valsa",
+      "category": "Especiais",
+      "ingredients": [
+        "Chocolate ao Leite",
+        "Mussarela",
+        "Sonho de Valsa"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "strogonoff_de_carne",
+      "label": "Strogonoff de Carne",
+      "category": "Especiais",
+      "ingredients": [
+        "Batata Palha",
+        "Molho",
+        "Mussarela",
+        "Orégano",
+        "Strogonoff de Carne Preparado Com Alho e Cebola"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "strogonoff_de_frango",
+      "label": "Strogonoff de Frango",
+      "category": "Especiais",
+      "ingredients": [
+        "Batata Palha",
+        "Mussarela",
+        "Orégano",
+        "Strogonoff de Frango Preparado Com Alho e Cebola"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "vegetariana",
+      "label": "Vegetariana",
+      "category": "Especiais",
+      "ingredients": [
+        "Azeitona",
+        "Cebola",
+        "Milho",
+        "Mussarela",
+        "Orégano",
+        "Palmito",
+        "Tomate"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "banana_com_canela",
+      "label": "Banana com Canela",
+      "category": "Doces",
+      "ingredients": [
+        "Banana",
+        "Canela em Pó",
+        "Leite Condensado",
+        "Mussarela"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "beijinho",
+      "label": "Beijinho",
+      "category": "Doces",
+      "ingredients": [
+        "Chocolate Branco",
+        "Coco Ralado",
+        "Mussarela"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "brigadeiro",
+      "label": "Brigadeiro",
+      "category": "Doces",
+      "ingredients": [
+        "Chocolate ao Leite",
+        "Granulado",
+        "Mussarela"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "chocolate_ao_leite",
+      "label": "Chocolate ao Leite",
+      "category": "Doces",
+      "ingredients": [
+        "Chocolate ao Leite"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "chocolate_branco",
+      "label": "Chocolate Branco",
+      "category": "Doces",
+      "ingredients": [
+        "Chocolate Branco"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "dois_amores",
+      "label": "Dois Amores",
+      "category": "Doces",
+      "ingredients": [
+        "Chocolate ao Leite",
+        "Chocolate Branco",
+        "Mussarela"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "pacoquinha_doces",
+      "label": "Paçoquinha",
+      "category": "Doces",
+      "ingredients": [
+        "Chocolate ao Leite",
+        "Leite Condensado",
+        "Mussarela",
+        "Paçoquinha"
+      ],
+      "startingPriceCents": 4200,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "prestigio",
+      "label": "Prestígio",
+      "category": "Doces",
+      "ingredients": [
+        "Chocolate ao Leite",
+        "Coco",
+        "Mussarela"
+      ],
+      "startingPriceCents": 3499,
+      "priceType": "starting_at",
+      "available": true,
+      "availabilityVerified": false
+    }
+  ],
+  "combos": [
+    {
+      "id": "barato-dia",
+      "label": "Barato do Dia",
+      "description": "01 pizza Média de 8 fatias, até 2 sabores",
+      "publishedPriceCents": 2499,
+      "priceType": "advertised_promo",
+      "components": {
+        "pizzas": [
+          {
+            "size": "media",
+            "quantity": 1,
+            "maxFlavors": 2
+          }
+        ],
+        "drinks": []
+      },
+      "restrictions": "Promoção do dia; verificar quais dias, sabores e condições.",
+      "autoCheckoutEnabled": false,
+      "available": null
+    },
+    {
+      "id": "grande-promocional",
+      "label": "Pizza Grande Promocional",
+      "description": "01 pizza Grande de 10 fatias, até 2 sabores",
+      "publishedPriceCents": 3999,
+      "priceType": "advertised_promo",
+      "components": {
+        "pizzas": [
+          {
+            "size": "grande",
+            "quantity": 1,
+            "maxFlavors": 2
+          }
+        ],
+        "drinks": []
+      },
+      "restrictions": "Verificar elegibilidade dos sabores e eventuais adicionais.",
+      "autoCheckoutEnabled": false,
+      "available": null
+    },
+    {
+      "id": "grande-coca-2l",
+      "label": "Grande + Coca-Cola 2L",
+      "description": "01 pizza Grande + 01 Coca-Cola 2 litros",
+      "publishedPriceCents": 5899,
+      "priceType": "advertised_promo",
+      "components": {
+        "pizzas": [
+          {
+            "size": "grande",
+            "quantity": 1,
+            "maxFlavors": 2
+          }
+        ],
+        "drinks": [
+          {
+            "name": "Coca-Cola Original 2L",
+            "quantity": 1
+          }
+        ]
+      },
+      "restrictions": "Válido de terça a quinta-feira segundo anúncio. Confirmar vigência e sabores.",
+      "autoCheckoutEnabled": false,
+      "available": null
+    },
+    {
+      "id": "familia",
+      "label": "Combo Família",
+      "description": "02 pizzas Grandes, até 2 sabores cada; anúncio menciona um refrigerante 2L para cada pizza",
+      "publishedPriceCents": 9999,
+      "priceType": "advertised_promo",
+      "components": {
+        "pizzas": [
+          {
+            "size": "grande",
+            "quantity": 2,
+            "maxFlavors": 2
+          }
+        ],
+        "drinks": [
+          {
+            "name": "Refrigerante 2L",
+            "quantity": 2
+          }
+        ]
+      },
+      "restrictions": "Quantidade de refrigerantes segue texto publicitário; confirmar no checkout oficial.",
+      "autoCheckoutEnabled": false,
+      "available": null
+    },
+    {
+      "id": "big",
+      "label": "Combo Big",
+      "description": "01 pizza Big de 12 fatias + 01 Cini 2L",
+      "publishedPriceCents": 5999,
+      "priceType": "advertised_promo",
+      "components": {
+        "pizzas": [
+          {
+            "size": "big",
+            "quantity": 1,
+            "maxFlavors": 2
+          }
+        ],
+        "drinks": [
+          {
+            "name": "Cini 2L",
+            "quantity": 1
+          }
+        ]
+      },
+      "restrictions": "Confirmar escolhas válidas do combo.",
+      "autoCheckoutEnabled": false,
+      "available": null
+    },
+    {
+      "id": "gigante",
+      "label": "Combo Gigante",
+      "description": "01 pizza Gigante de 16 fatias, até 2 sabores + 01 broto doce + 01 Cini 2L",
+      "publishedPriceCents": 9699,
+      "priceType": "advertised_promo",
+      "components": {
+        "pizzas": [
+          {
+            "size": "gigante",
+            "quantity": 1,
+            "maxFlavors": 2
+          },
+          {
+            "size": "broto",
+            "quantity": 1,
+            "sweet": true
+          }
+        ],
+        "drinks": [
+          {
+            "name": "Cini 2L",
+            "quantity": 1
+          }
+        ]
+      },
+      "restrictions": "Confirmar sabores e valor vigente.",
+      "autoCheckoutEnabled": false,
+      "available": null
+    },
+    {
+      "id": "super-big",
+      "label": "Combo Super Big",
+      "description": "02 pizzas Big de 12 fatias, até 2 sabores cada + 01 broto doce + 01 Coca-Cola 2L",
+      "publishedPriceCents": 12599,
+      "priceType": "advertised_promo",
+      "components": {
+        "pizzas": [
+          {
+            "size": "big",
+            "quantity": 2,
+            "maxFlavors": 2
+          },
+          {
+            "size": "broto",
+            "quantity": 1,
+            "sweet": true
+          }
+        ],
+        "drinks": [
+          {
+            "name": "Coca-Cola Original 2L",
+            "quantity": 1
+          }
+        ]
+      },
+      "restrictions": "Confirmar regras da promoção antes da venda.",
+      "autoCheckoutEnabled": false,
+      "available": null
+    }
+  ],
+  "drinks": [
+    {
+      "id": "cini_abacaxi_2l",
+      "label": "Cini Abacaxi 2L",
+      "priceCents": 850,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "cini_framboesa_2l",
+      "label": "Cini Framboesa 2L",
+      "priceCents": 850,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "cini_guarana_2l",
+      "label": "Cini Guaraná 2L",
+      "priceCents": 850,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "cini_laranjinha_2l",
+      "label": "Cini Laranjinha 2L",
+      "priceCents": 850,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "coca_cola_1l",
+      "label": "Coca-Cola 1L",
+      "priceCents": 998,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "coca_cola_350ml",
+      "label": "Coca-Cola lata 350ml",
+      "priceCents": 600,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "coca_cola_2l",
+      "label": "Coca-Cola Original 2L",
+      "priceCents": 1500,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "coca_cola_250ml",
+      "label": "Coca-Cola 250ml",
+      "priceCents": 400,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "coca_cola_600ml",
+      "label": "Coca-Cola 600ml",
+      "priceCents": 700,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "coca_zero_2l",
+      "label": "Coca-Cola Zero 2L",
+      "priceCents": 1500,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "coca_zero_1l",
+      "label": "Coca-Cola Zero 1L",
+      "priceCents": 998,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "coca_zero_lata",
+      "label": "Coca-Cola Zero lata 350ml",
+      "priceCents": 600,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "del_valle_frut_1l",
+      "label": "Del Valle Frut Laranja 1L",
+      "priceCents": 800,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "fanta_laranja_2l",
+      "label": "Fanta Laranja 2L",
+      "priceCents": 1400,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "fanta_uva_2l",
+      "label": "Fanta Uva 2L",
+      "priceCents": 1400,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "guarana_antartica_350ml",
+      "label": "Guaraná Antarctica lata 350ml",
+      "priceCents": 600,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "guarana_antartica_2l",
+      "label": "Guaraná Antarctica 2L",
+      "priceCents": 1400,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "sprite_2l",
+      "label": "Sprite Limão 2L",
+      "priceCents": 1300,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "agua_sem_gas",
+      "label": "Água sem gás",
+      "priceCents": 300,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    },
+    {
+      "id": "del_valle_laranja_1l",
+      "label": "Del Valle Laranja 1L",
+      "priceCents": 1000,
+      "priceType": "published_fixed",
+      "available": true,
+      "availabilityVerified": false
+    }
+  ]
+}

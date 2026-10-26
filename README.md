@@ -53,3 +53,15 @@ No GitHub, abra **Settings → Pages → Build and deployment**. Escolha **Deplo
 
 ---
 Pizzaria Guto Express — protótipo V1.3.
+
+
+## Treinamento realista V1.4
+
+O simulador no `index.html` usa `simulator.js` com estado de carrinho e dois canais independentes. Testa mensagens sequenciais: múltiplas pizzas, meio a meio, alteração, bebida, endereço, pagamento, combo e bloqueio de confirmação sem orçamento.
+
+- [Casos sintéticos de teste](training/realistic-cases.json)
+- [Manual de comportamento e limites](docs/TREINAMENTO-REALISTA.md)
+- [Backend para implantação](backend/README.md)
+- Execute os testes do backend com `cd backend && npm test` (Node.js 22+).
+
+Esta interface publicada no GitHub Pages é apenas uma simulação com regras locais. O chatbot real requer infraestrutura, credenciais e homologação com Chatwoot/WhatsApp.

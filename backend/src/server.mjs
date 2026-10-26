@@ -1,0 +1,187 @@
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+import {FileStore} from './store.mjs';
+import {verifyChatwootSignature,normalizeEvent,newSession,getSummary} from './core.mjs';
+import {intelligentReply,wantsHuman,quoteText} from './ai.mjs';
+
+const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
+const env=process.env;
+const PORT=Number(env.PORT||8080);
+const HOST=env.HOST||'127.0.0.1';
+const ADMIN_PASSWORD=env.ADMIN_PASSWORD||'';
+const APP_SECRET=env.APP_SECRET||'';
+const CHATWOOT_WEBHOOK_SECRET=env.CHATWOOT_WEBHOOK_SECRET||'';
+const CW_ACCOUNT=Number(env.CHATWOOT_ACCOUNT_ID||0);
+const INBOXES=[env.CHATWOOT_INBOX_1,env.CHATWOOT_INBOX_2].map(Number).filter(x=>Number.isSafeInteger(x)&&x>0);
+const DATA_FILE=path.resolve(projectRoot,env.DATA_FILE||'./data/state.json');
+const BUSINESS_FILE=path.resolve(projectRoot,env.BUSINESS_FILE||'./config/business.json');
+const CW_HOST=env.CHATWOOT_BASE_URL||'';
+const CW_TOKEN=env.CHATWOOT_API_TOKEN||'';
+const BASE_URL=env.APP_PUBLIC_URL||'';
+const ONLINE=Boolean(CHATWOOT_WEBHOOK_SECRET&&CW_ACCOUNT&&INBOXES.length===2&&new Set(INBOXES).size===2&&CW_HOST&&CW_TOKEN);
+if(ADMIN_PASSWORD.length<12||APP_SECRET.length<32)throw new Error('Defina ADMIN_PASSWORD (12+ caracteres) e APP_SECRET (32+ caracteres) no .env.');
+if(env.NODE_ENV==='production'&&!BASE_URL.startsWith('https://'))throw new Error('APP_PUBLIC_URL HTTPS é obrigatório em produção.');
+if(CW_HOST && !CW_HOST.startsWith('https://'))throw new Error('CHATWOOT_BASE_URL exige HTTPS.');
+if(ONLINE && env.NODE_ENV==='production' && env.DATA_FILE?.includes('tmp'))throw new Error('Use volume persistente para DATA_FILE.');
+const store=new FileStore(DATA_FILE).init();
+if(!fs.existsSync(BUSINESS_FILE)){fs.mkdirSync(path.dirname(BUSINESS_FILE),{recursive:true});fs.copyFileSync(path.join(projectRoot,'config','business.json'),BUSINESS_FILE);}
+let business=JSON.parse(fs.readFileSync(BUSINESS_FILE,'utf8'));
+const PUBLIC=path.join(projectRoot,'public');
+
+const json=(res,status,obj,headers={})=>respond(res,status,JSON.stringify(obj),{'content-type':'application/json; charset=utf-8',...headers});
+const respond=(res,status,data,headers={})=>{res.writeHead(status,{'x-content-type-options':'nosniff','referrer-policy':'no-referrer','cache-control':'no-store','x-frame-options':'DENY','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",...headers});res.end(data);};
+const safe=(a,b)=>{const x=Buffer.from(String(a));const y=Buffer.from(String(b));return x.length===y.length&&crypto.timingSafeEqual(x,y);};
+const sign=(value)=>crypto.createHmac('sha256',APP_SECRET).update(value).digest('hex');
+const cookie=(req)=>{try{return Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split('=').map(decodeURIComponent)).filter(x=>x.length===2));}catch{return {};}};
+function authed(req){const raw=cookie(req).guto_sid||'';const i=raw.lastIndexOf('.');if(i<0)return false;const payload=raw.slice(0,i),sig=raw.slice(i+1);if(!safe(sign(payload),sig))return false;const [u,exp]=payload.split(':');return u==='admin'&&Number(exp)>Date.now()&&Number(exp)<Date.now()+86400000;}
+const clientIp=(req)=>req.socket.remoteAddress||'unknown';
+const attempts=new Map();
+function checkRate(req){const key=clientIp(req),now=Date.now();let b=attempts.get(key)||{n:0,start:now};if(now-b.start>15*60e3)b={n:0,start:now};b.n++;attempts.set(key,b);return b.n<=12;}
+function sameOrigin(req){if(!['POST','PUT','PATCH','DELETE'].includes(req.method))return true;const origin=req.headers.origin;const host=BASE_URL||`http://${req.headers.host}`;return req.headers['sec-fetch-site']!=='cross-site'&&(!origin||origin===host);}
+async function readBody(req,limit=128*1024){let length=0,chunks=[];for await (const chunk of req){length+=chunk.length;if(length>limit)throw Object.assign(new Error('Payload muito grande'),{status:413});chunks.push(chunk);}return Buffer.concat(chunks);}
+const webData=()=>{const d=store.snapshot();return {onlineConfigured:ONLINE,aiConfigured:!!env.OPENAI_API_KEY,inboxes:INBOXES.map((id,i)=>({id,label:`WhatsApp ${i+1}`})),conversations:Object.entries(d.sessions).map(([key,s])=>({key,mode:s.mode,updatedAt:s.updatedAt||'',customer:s.sender||'Cliente',inboxId:s.inboxId,items:s.cart.length,lastMessage:s.history.at(-1)?.content||''})).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))),orders:d.orders.map(o=>({...o})).reverse(),stats:{orders:d.orders.length,pending:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length,conversations:Object.keys(d.sessions).length}};};
+function validateBusiness(b){
+ if(!b||typeof b!=='object'||typeof b.businessName!=='string'||b.businessName.length>120||!Array.isArray(b.sizes)||!Array.isArray(b.flavors)||!Array.isArray(b.drinks)||!b.faq||typeof b.faq!=='object')return false;
+ if(!b.sizes.every(s=>typeof s.id==='string'&&Number.isInteger(s.slices)&&s.slices>0&&s.slices<=32))return false;
+ if(!b.flavors.every(f=>typeof f.id==='string'&&typeof f.available==='boolean'))return false;
+ if(!b.drinks.every(d=>typeof d.id==='string'&&typeof d.available==='boolean'&&(d.priceCents===null||(Number.isSafeInteger(d.priceCents)&&d.priceCents>=0))))return false;
+ if(![null,'MAX','AVERAGE'].includes(b.halfHalfPricing))return false;
+ if(!(b.deliveryFeeCents===null||(Number.isSafeInteger(b.deliveryFeeCents)&&b.deliveryFeeCents>=0)))return false;
+ for(const prices of Object.values(b.pizzas||{})) for(const p of Object.values(prices||{}))if(!(p===null||(Number.isSafeInteger(p)&&p>=0)))return false;
+ return true;
+}
+const orderSummary=(s)=>({cart:getSummary(s,business).items,address:s.address,payment:s.payment});
+
+async function postMessage(accountId,conversationId,content){
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),12000);
+ try{
+  const url=`${CW_HOST.replace(/\/$/,'')}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+  const r=await fetch(url,{method:'POST',signal:controller.signal,headers:{api_access_token:CW_TOKEN,'content-type':'application/json'},body:JSON.stringify({content,message_type:'outgoing',private:false})});
+  if(!r.ok)throw new Error(`Chatwoot HTTP ${r.status}`);
+ }finally{clearTimeout(timer);}
+}
+
+// Webhook ingress -> durably persisted inbox -> one serialized worker; single-instance MVP.
+async function acceptWebhook(event,delivery){
+ const n=normalizeEvent(event,INBOXES,CW_ACCOUNT);if(!n)return {accepted:false,ignored:true};
+ const id=n.eventKey;
+ return store.tx(d=>{if(d.events[id])return {accepted:true,duplicate:true};d.events[id]={id,n,delivery,attempts:0,nextAt:Date.now(),state:'pending',receivedAt:new Date().toISOString()};return {accepted:true,duplicate:false};});
+}
+let pumping=false;
+async function pump(){
+ if(pumping)return;pumping=true;
+ try{
+  const now=Date.now();const events=Object.values(store.snapshot().events).filter(x=>x.state==='pending'&&x.nextAt<=now).sort((a,b)=>a.receivedAt.localeCompare(b.receivedAt));
+  for(const e of events){
+   try{
+    // All business writes are committed together with marking the event processed.
+    const result=await store.tx(async d=>{
+     const evt=d.events[e.id];if(!evt||evt.state!=='pending')return null;
+     const {n}=evt;const session=d.sessions[n.key]||newSession();
+     session.sender=n.sender;session.inboxId=n.inboxId;session.updatedAt=new Date().toISOString();
+     if(session.mode==='BOT'){
+       let reply;
+       try{reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}
+       catch(error){reply='Tive uma dificuldade para consultar as informações agora. Vou encaminhar sua conversa para a equipe. 🙏';session.mode='HUMAN';session.reason='Falha no processamento de IA';}
+       if(session.mode==='HUMAN'&&wantsHuman(n.content))reply='Claro! Vou encaminhar seu atendimento para nossa equipe. 😊';
+       session.history.push({role:'user',content:n.content.slice(0,2000)});
+       session.history.push({role:'assistant',content:reply.slice(0,3000)});
+       session.history=session.history.slice(-30);
+       const oid=`reply:${evt.id}`;
+       if(!d.outbox[oid])d.outbox[oid]={id:oid,accountId:n.accountId,conversationId:n.conversationId,content:reply.slice(0,3000),state:'pending',attempts:0,nextAt:Date.now()};
+       if(session.lastConfirmed){
+         if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId)){
+           d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:n.accountId,inboxId:n.inboxId,conversationId:n.conversationId,customer:n.sender,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote});
+         }
+         delete session.lastConfirmed;
+       }
+     }
+     d.sessions[n.key]=session;evt.state='done';evt.processedAt=new Date().toISOString();return true;
+    });
+   }catch(error){console.error('event processing error',e.id,error.message);await store.tx(d=>{const x=d.events[e.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8)x.state='dead';}});}
+  }
+  const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());
+  for(const o of outgoing){
+    if(!ONLINE)continue;
+    try{await postMessage(o.accountId,o.conversationId,o.content);await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();}});}
+    catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8)x.state='failed';}});}
+  }
+ }finally{pumping=false;}
+}
+
+async function router(req,res){
+ const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);const p=url.pathname;
+ if(p==='/health')return json(res,200,{ok:true,service:'guto-bot',configured:ONLINE});
+ if(p==='/webhooks/chatwoot'&&req.method==='POST'){
+  if(!CHATWOOT_WEBHOOK_SECRET||!ONLINE)return json(res,503,{error:'Integração ainda não configurada'});
+  const body=await readBody(req);
+  const signature=req.headers['x-chatwoot-signature'];const timestamp=req.headers['x-chatwoot-timestamp'];
+  if(!verifyChatwootSignature(body,timestamp,signature,CHATWOOT_WEBHOOK_SECRET))return json(res,401,{error:'Assinatura inválida'});
+  let event;try{event=JSON.parse(body.toString('utf8'));}catch{return json(res,400,{error:'JSON inválido'});}
+  const result=await acceptWebhook(event,req.headers['x-chatwoot-delivery']||'');
+  setImmediate(()=>pump());return json(res,202,result);
+ }
+ if(p==='/api/login'&&req.method==='POST'){
+  if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
+  if(!checkRate(req))return json(res,429,{error:'Muitas tentativas. Tente mais tarde.'});
+  let payload;try{payload=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+  if(!safe(payload.password||'',ADMIN_PASSWORD))return json(res,401,{error:'Senha incorreta'});
+  const token=`admin:${Date.now()+8*60*60*1000}`;const secured=BASE_URL.startsWith('https://')?'; Secure':'';
+  return json(res,200,{ok:true},{'set-cookie':`guto_sid=${token}.${sign(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${secured}`});
+ }
+ if(p==='/api/logout'&&req.method==='POST'){
+  if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
+  return json(res,200,{ok:true},{'set-cookie':'guto_sid=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'});
+ }
+ if(p.startsWith('/api/')){
+   if(!authed(req))return json(res,401,{error:'Faça login para acessar'});
+   if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
+   if(p==='/api/dashboard'&&req.method==='GET')return json(res,200,webData());
+   if(p==='/api/business'&&req.method==='GET')return json(res,200,business);
+   if(p==='/api/business'&&req.method==='PUT'){
+     let b;try{b=JSON.parse((await readBody(req,200*1024)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+     if(!validateBusiness(b))return json(res,422,{error:'Cardápio inválido: confira preços em centavos, tamanhos, bebidas e políticas de meia a meia.'});
+     const temp=BUSINESS_FILE+'.tmp';fs.writeFileSync(temp,JSON.stringify(b,null,2));fs.renameSync(temp,BUSINESS_FILE);business=b;return json(res,200,{ok:true});
+   }
+   if(p==='/api/simulate'&&req.method==='POST'){
+     let m;try{m=JSON.parse((await readBody(req,10000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+     if(typeof m.content!=='string'||!m.content.trim()||m.content.length>2000)return json(res,422,{error:'Mensagem inválida'});
+     const key='demo:0:1';const session=store.snapshot().sessions[key]||newSession();
+     if(session.mode==='HUMAN')return json(res,200,{reply:'A conversa está com um atendente. Reinicie o teste para retornar ao bot.',session});
+     let reply;
+     try{reply=await intelligentReply(m.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}catch(e){return json(res,503,{error:'IA indisponível: '+e.message});}
+     session.history.push({role:'user',content:m.content},{role:'assistant',content:reply});session.history=session.history.slice(-30);
+     await store.tx(d=>{if(session.lastConfirmed){if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId))d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:0,inboxId:0,conversationId:1,customer:'Cliente (simulador)',status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote,demo:true});delete session.lastConfirmed;}d.sessions[key]=session;});
+     return json(res,200,{reply,summary:getSummary(session,business),mode:session.mode});
+   }
+   if(p==='/api/simulate/reset'&&req.method==='POST'){
+     await store.tx(d=>{delete d.sessions['demo:0:1'];});return json(res,200,{ok:true});
+   }
+   const handoff=p.match(/^\/api\/conversations\/([^/]+)\/mode$/);
+   if(handoff&&req.method==='POST'){
+     const key=decodeURIComponent(handoff[1]);let b;try{b=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+     if(!['BOT','HUMAN'].includes(b.mode))return json(res,422,{error:'Modo inválido'});
+     const ok=await store.tx(d=>{if(!d.sessions[key])return false;d.sessions[key].mode=b.mode;return true;});return json(res,ok?200:404,{ok});
+   }
+   const orderRoute=p.match(/^\/api\/orders\/([\w-]+)\/status$/);
+   if(orderRoute&&req.method==='POST'){
+     let b;try{b=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+     const allowed={PENDING_STAFF_REVIEW:['CONFIRMED','REJECTED'],CONFIRMED:['PREPARING','CANCELED'],PREPARING:['READY','CANCELED'],READY:['DISPATCHED','CANCELED'],DISPATCHED:['DELIVERED']};
+     const result=await store.tx(d=>{const o=d.orders.find(x=>x.id===orderRoute[1]);if(!o)return 'missing';if(!allowed[o.status]?.includes(b.status))return 'invalid';o.status=b.status;o.updatedAt=new Date().toISOString();return 'ok';});
+     return json(res,result==='ok'?200:result==='missing'?404:422,{ok:result==='ok',result});
+   }
+   return json(res,404,{error:'Rota não encontrada'});
+ }
+ if(req.method!=='GET')return json(res,405,{error:'Método não permitido'});
+ const assets={'/':'index.html','/app.js':'app.js','/style.css':'style.css'};
+ if(!assets[p])return json(res,404,{error:'Não encontrado'});
+ const filename=path.join(PUBLIC,assets[p]);
+ const mime=p.endsWith('.js')?'text/javascript; charset=utf-8':p.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';
+ return respond(res,200,fs.readFileSync(filename),{'content-type':mime});
+}
+export function startServer(){const server=http.createServer((req,res)=>router(req,res).catch(e=>{console.error('request error',e.message);if(!res.headersSent)json(res,e.status||500,{error:e.status?'Solicitação rejeitada':'Erro interno'});}));server.listen(PORT,HOST,()=>console.log(`Guto Bot ${HOST}:${PORT} | Chatwoot ${ONLINE?'configurado':'não configurado'} | IA ${env.OPENAI_API_KEY?'configurada':'modo local'}`));const timer=setInterval(pump,2500);timer.unref();setImmediate(pump);return server;}
+if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url))startServer();

@@ -1,0 +1,405 @@
+{
+  "version": "1.0",
+  "description": "Exemplos sintéticos inspirados na linguagem cotidiana de pedidos via WhatsApp. Não são conversas de clientes reais.",
+  "cases": [
+    {
+      "id": "pedido-completo",
+      "messages": [
+        "Oi boa noite",
+        "Quero uma grande meio calabresa e meio frango com catupiry",
+        "coloca uma coca 2 litros",
+        "sem cebola",
+        "Rua das Flores 123 centro Colombo",
+        "vou pagar no pix",
+        "resumo"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "drinks": 1,
+        "pizzaSize": "grande",
+        "pizzaFlavors": [
+          "calabresa",
+          "frango_catupiry"
+        ],
+        "payment": "PIX",
+        "address": true,
+        "text": "preços atualizados"
+      }
+    },
+    {
+      "id": "faltou-tamanho",
+      "messages": [
+        "quero calabresa",
+        "grande"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "drinks": 0,
+        "pizzaSize": "grande",
+        "pizzaFlavors": [
+          "calabresa"
+        ]
+      }
+    },
+    {
+      "id": "faltou-sabor",
+      "messages": [
+        "manda uma big",
+        "portuguesa"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "pizzaSize": "big",
+        "pizzaFlavors": [
+          "portuguesa"
+        ]
+      }
+    },
+    {
+      "id": "metade-em-duas-mensagens",
+      "messages": [
+        "quero uma pizza media metade calabresa",
+        "a outra metade quatro queijos"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "pizzaSize": "media",
+        "pizzaFlavors": [
+          "calabresa",
+          "quatro_queijos"
+        ]
+      }
+    },
+    {
+      "id": "giria",
+      "messages": [
+        "e ai parceiro",
+        "manda 2 pizzas grandes de calabreza"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "pizzaQuantity": 2,
+        "pizzaSize": "grande",
+        "pizzaFlavors": [
+          "calabresa"
+        ]
+      }
+    },
+    {
+      "id": "frango-catupa",
+      "messages": [
+        "boa!",
+        "faz uma gigante frango catupa"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "pizzaSize": "gigante",
+        "pizzaFlavors": [
+          "frango_catupiry"
+        ]
+      }
+    },
+    {
+      "id": "mudou-ideia",
+      "messages": [
+        "uma grande metade calabresa metade frango com catupiry",
+        "troca calabresa por portuguesa"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "pizzaFlavors": [
+          "portuguesa",
+          "frango_catupiry"
+        ]
+      }
+    },
+    {
+      "id": "tira-bebida",
+      "messages": [
+        "uma média de calabresa",
+        "adiciona coca 2 litros",
+        "tira a coca"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "drinks": 0
+      }
+    },
+    {
+      "id": "remove-pizza",
+      "messages": [
+        "pizza grande de calabresa",
+        "tira a pizza"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "drinks": 0
+      }
+    },
+    {
+      "id": "cancela-tudo",
+      "messages": [
+        "uma grande de calabresa",
+        "cancela tudo"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "drinks": 0
+      }
+    },
+    {
+      "id": "duas-conversas-isoladas",
+      "messages": [
+        "uma grande de calabresa"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "drinks": 0,
+        "pizzaSize": "grande"
+      }
+    },
+    {
+      "id": "alergia",
+      "messages": [
+        "sou alérgico a leite, tem alguma pizza segura?"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "drinks": 0,
+        "text": "cozinha"
+      }
+    },
+    {
+      "id": "pedir-antigo",
+      "messages": [
+        "faz igual meu último pedido"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "drinks": 0,
+        "text": "não acessa"
+      }
+    },
+    {
+      "id": "mesmo-endereco",
+      "messages": [
+        "o mesmo endereço de sempre"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "drinks": 0,
+        "address": false,
+        "text": "endereço"
+      }
+    },
+    {
+      "id": "confirmar-sem-orcamento",
+      "messages": [
+        "Quero pizza grande calabresa",
+        "confirmo"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "text": "não vou registrar"
+      }
+    },
+    {
+      "id": "oferta-big",
+      "messages": [
+        "Qual o combo big?"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "drinks": 0,
+        "text": "confirm"
+      }
+    },
+    {
+      "id": "oferta-familia",
+      "messages": [
+        "tenho 5 pessoas, como é o combo família?"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "drinks": 0,
+        "text": "confirma"
+      }
+    },
+    {
+      "id": "composicao-portuguesa",
+      "messages": [
+        "O que leva a portuguesa?"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "text": "ovos"
+      }
+    },
+    {
+      "id": "preco-sem-promessa",
+      "messages": [
+        "quanto custa uma calabresa grande?"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "text": "a partir"
+      }
+    },
+    {
+      "id": "retirada",
+      "messages": [
+        "quero uma grande calabresa",
+        "vou retirar no balcão"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "delivery": "RETIRADA"
+      }
+    },
+    {
+      "id": "dinheiro",
+      "messages": [
+        "uma média de portuguesa",
+        "pago em dinheiro"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "payment": "DINHEIRO"
+      }
+    },
+    {
+      "id": "cartao",
+      "messages": [
+        "uma grande marguerita",
+        "cartão de crédito"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "payment": "CARTAO"
+      }
+    },
+    {
+      "id": "atendente",
+      "messages": [
+        "preciso falar com um atendente"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "human": true
+      }
+    },
+    {
+      "id": "pedido-e-duvida",
+      "messages": [
+        "tem calabresa?",
+        "boa, quero uma grande dela"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "text": "sabor"
+      }
+    },
+    {
+      "id": "borda-extra",
+      "messages": [
+        "uma grande calabresa",
+        "borda cheddar"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "notes": [
+          "borda cheddar"
+        ],
+        "text": "valor"
+      }
+    },
+    {
+      "id": "repeticao-nao-confirma",
+      "messages": [
+        "quero uma pizza grande calabresa",
+        "confirmo",
+        "confirmo"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "text": "não vou registrar"
+      }
+    },
+    {
+      "id": "combo-nao-vende-sem-verificar",
+      "messages": [
+        "quero combo gigante"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "drinks": 0,
+        "pendingCombo": "gigante",
+        "text": "validar"
+      }
+    },
+    {
+      "id": "resposta-pergunta",
+      "messages": [
+        "quais tamanhos tem?"
+      ],
+      "expect": {
+        "pizzas": 0,
+        "text": "16 fatias"
+      }
+    },
+    {
+      "id": "dois-canais",
+      "messages": [
+        "uma broto de bacon"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "pizzaSize": "broto"
+      }
+    },
+    {
+      "id": "duas-pizzas-tamanhos-distintos",
+      "messages": [
+        "quero uma grande de calabresa e uma media de portuguesa"
+      ],
+      "expect": {
+        "pizzas": 2,
+        "drinks": 0,
+        "text": "separadamente"
+      }
+    },
+    {
+      "id": "multi-quantidades",
+      "messages": [
+        "quero duas grandes de calabresa e mais uma media de portuguesa"
+      ],
+      "expect": {
+        "pizzas": 2,
+        "drinks": 0,
+        "text": "separadamente"
+      }
+    },
+    {
+      "id": "valor-total-sem-calculo",
+      "messages": [
+        "quero uma grande de calabresa",
+        "quanto fica meu pedido"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "text": "preços atualizados"
+      }
+    },
+    {
+      "id": "bebida-antes-pizza",
+      "messages": [
+        "coloca uma coca 2 litros",
+        "e uma pizza grande de portuguesa"
+      ],
+      "expect": {
+        "pizzas": 1,
+        "drinks": 1
+      }
+    }
+  ]
+}

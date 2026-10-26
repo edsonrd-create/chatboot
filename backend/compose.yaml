@@ -1,0 +1,23 @@
+# O projeto é um MVP de processo único com armazenamento em disco.
+# NÃO escale para múltiplas réplicas antes de migrar a persistência e a fila ao PostgreSQL/Redis.
+services:
+  guto-bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: '8080'
+      DATA_FILE: /app/data/state.json
+      BUSINESS_FILE: /app/data/business.json
+    volumes:
+      - guto_data:/app/data
+    ports:
+      - '127.0.0.1:8080:8080'
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok) process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  guto_data:
