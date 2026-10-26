@@ -68,9 +68,33 @@ test('regressão realista: sem IA, webhook encaminha dois canais para humanos, s
  }
  assert.equal(db.events['9:811'].state,'done');assert.equal(db.events['9:822'].state,'done');
  assert.equal(db.sessions['9:11:711'].mode,'HUMAN');assert.equal(db.sessions['9:22:722'].mode,'HUMAN');
- assert.match(db.sessions['9:11:711'].history.at(-1).content,/indisponível/);
+ assert.match(db.sessions['9:11:711'].history.at(-1).content,/Preciso fazer um pedido/);
  for(const id of ['9:811','9:822']){
   assert.equal(db.outbox[`handoff:${id}`].private,true,'nota interna de handoff deve existir');
-  assert.match(db.outbox[`reply:${id}`].content,/equipe/);
+  assert.equal(db.outbox[`reply:${id}`],undefined,'sem resposta automática antes da homologação');
  }
+});
+
+
+test('configurações PDV: login, persistência no servidor e bloqueio de escrita',async t=>{
+ const {base,tmp}=await start(t);
+ const page=await fetch(base+'/configuracoes');assert.equal(page.status,200);assert.match(await page.text(),/Configurações e integrações/);
+ assert.equal((await fetch(base+'/settings.js')).status,200);
+ assert.equal((await fetch(base+'/api/settings')).status,401);
+ const login=await fetch(base+'/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:'testing_password_for_admin'})});
+ const cookie=login.headers.get('set-cookie').split(';')[0];
+ const request=(endpoint,init={})=>fetch(base+endpoint,{headers:{cookie,'content-type':'application/json'},...init});
+ const first=await (await request('/api/settings')).json();
+ assert.equal(first.pdv.enabled,false);assert.equal(first.readiness.ready,false);assert.equal(first.readiness.canAutoReply,false);
+ assert.equal((await request('/api/pdv/test',{method:'POST'})).status,409);
+ const evil=await request('/api/settings',{method:'PUT',body:JSON.stringify({pdv:{enabled:true,baseUrl:'https://127.0.0.1',ordersMode:'DISABLED'}})});
+ assert.equal(evil.status,422);
+ const unsafe=await request('/api/settings',{method:'PUT',body:JSON.stringify({pdv:{enabled:true,baseUrl:'https://pdvgutoexpress.com.br',ordersMode:'ACTIVE'}})});
+ assert.equal(unsafe.status,422);
+ const save=await request('/api/settings',{method:'PUT',body:JSON.stringify({pdv:{enabled:true,baseUrl:'https://pdvgutoexpress.com.br/',ordersMode:'DISABLED'}})});
+ assert.equal(save.status,200);
+ const saved=(await (await request('/api/settings')).json()).pdv;
+ assert.equal(saved.baseUrl,'https://pdvgutoexpress.com.br');
+ assert.equal(JSON.parse(fs.readFileSync(path.join(tmp,'state.json'),'utf8')).settings.pdv.enabled,true);
+ assert.equal((await (await request('/api/readiness')).json()).ready,false);
 });
