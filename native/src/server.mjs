@@ -28,6 +28,8 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   // Homologação pode iniciar sem credenciais Meta; webhooks ficam desligados até configurá-las.
   // Não gerar ou simular segredos Meta, números conectados nem mensagens reais.
   if(!env.ADMIN_PASSWORD||env.ADMIN_PASSWORD.length<12||!env.APP_SECRET||env.APP_SECRET.length<32){throw new Error('ADMIN_PASSWORD (12+) e APP_SECRET (32+) são exigidos.');}
+  // Render Free: dados locais não persistem. Proibido conectar WhatsApp real neste modo.
+  const freePreview=String(env.FREE_PREVIEW_MODE||'').toLowerCase()==='true';
   const appUrl=String(env.APP_PUBLIC_URL||env.RENDER_EXTERNAL_URL||'');
   if(env.NODE_ENV==='production' && (!/^https:\/\/[^/]+$/.test(appUrl)||!env.DATA_FILE&&!dataFile))throw new Error('Produção exige APP_PUBLIC_URL ou RENDER_EXTERNAL_URL HTTPS e armazenamento persistente.');
   const statePath=dataFile||path.resolve(root,env.DATA_FILE||'data/state.json');
@@ -39,7 +41,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   const business=JSON.parse(fs.readFileSync(path.join(root,'config','business.json'),'utf8'));
   const version=graphVersion(env.META_GRAPH_VERSION);
   const configuredChannels=d=>d.channels.map(c=>{const phoneId=c.phoneId||String(env[`META_PHONE_ID_${c.slot}`]||'');return {...c,phoneId};});
-  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d);return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:false,reason:'Liberação integral pendente: prova real de 2 números, PDV e IA',channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(env.OPENAI_API_KEY),model:env.OPENAI_MODEL||'gpt-4.1-mini',realTest:!!d.aiTest?.ok,testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
+  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d);return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:false,reason:'Liberação integral pendente: prova real de 2 números, PDV e IA',hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(env.OPENAI_API_KEY),model:env.OPENAI_MODEL||'gpt-4.1-mini',realTest:!!d.aiTest?.ok,testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
   function authed(req){const raw=cookieValue(req);const n=raw.lastIndexOf('.');if(n<0)return false;const payload=raw.slice(0,n),mac=raw.slice(n+1);if(!safeCompare(sign(payload,env.APP_SECRET),mac))return false;const parts=payload.split(':');return parts[0]==='admin'&&Number(parts[1])>clock()&&Number(parts[1])<clock()+86400000;}
   function checkLoginRate(req){const ip=req.socket?.remoteAddress||'unknown',now=clock();let old=attempts.get(ip)||{at:now,n:0};if(now-old.at>15*60e3)old={at:now,n:0};old.n++;attempts.set(ip,old);return old.n<=12;}
   function append(t,m){t.messages.push(m);if(t.messages.length>250)t.messages=t.messages.slice(-250);t.updatedAt=m.at;}
@@ -82,14 +84,16 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   }finally{pumping=false;}}
   const fileRoutes={'/':'index.html','/painel':'index.html','/app.css':'app.css','/app.js':'app.js'};
   async function router(req,res){const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`),p=url.pathname;
-    if(p==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'guto-bot-nativo',ready:false});
+    if(p==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'guto-bot-nativo',ready:false,freePreview});
     if(p==='/webhooks/meta'&&req.method==='GET'){
+      if(freePreview)return json(res,503,{error:'Prévia gratuita: WhatsApp real desativado porque o armazenamento é temporário'});
       if(!env.META_APP_SECRET||!env.META_VERIFY_TOKEN)return json(res,503,{error:'Webhook Meta não configurado para homologação'});
       const ok=url.searchParams.get('hub.mode')==='subscribe'&&safeCompare(url.searchParams.get('hub.verify_token'),env.META_VERIFY_TOKEN);
       const challenge=url.searchParams.get('hub.challenge')||'';
       return ok&&/^\d{1,200}$/.test(challenge)?respond(res,200,challenge,{'content-type':'text/plain; charset=utf-8'}):json(res,403,{error:'Token de verificação inválido'});
     }
     if(p==='/webhooks/meta'&&req.method==='POST'){
+      if(freePreview)return json(res,503,{error:'Prévia gratuita: WhatsApp real desativado porque o armazenamento é temporário'});
       if(!env.META_APP_SECRET||!env.META_VERIFY_TOKEN)return json(res,503,{error:'Webhook Meta não configurado para homologação'});
       const raw=await readBody(req,1024*1024);
       if(!verifyMetaSignature(raw,req.headers['x-hub-signature-256'],env.META_APP_SECRET))return json(res,401,{error:'Assinatura Meta inválida'});
@@ -110,6 +114,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
     if(p.startsWith('/api/')){
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
+      if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
       if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
       if(p==='/api/conversations'&&req.method==='GET'){
         const d=store.snapshot();const slot=Number(url.searchParams.get('slot')||0);

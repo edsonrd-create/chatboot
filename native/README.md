@@ -79,3 +79,7 @@ Foi analisado `edsonrd-create/guto-express-pdv`. O código disponibiliza:
 - Meta Cloud API — https://www.postman.com/meta/whatsapp-business-platform/overview
 - Embedded Signup — https://www.postman.com/meta/whatsapp-business-platform/documentation/du6gzjv/embedded-signup
 - Cadastro/coexistência — https://developers.facebook.com/documentation/business-messaging/whatsapp/embedded-signup/onboarding-business-app-users
+
+## Render gratuito — somente demonstração
+
+Na branch de homologação, `render.yaml` utiliza `plan: free` e `FREE_PREVIEW_MODE=true`. O modo gratuito bloqueia WhatsApp real, envios, integração ativa e IA paga, pois o armazenamento JSON é **efêmero**. O serviço pode hibernar. Consulte `docs/PUBLICAR-HOMOLOGACAO-RENDER.md`.
