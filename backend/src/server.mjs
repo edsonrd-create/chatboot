@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {FileStore} from './store.mjs';
 import {verifyChatwootSignature,normalizeEvent,newSession,getSummary} from './core.mjs';
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
+import {PDV_DEFAULTS,validatePdvSettings,pdvReadStatus,buildReadiness} from './pdv-integration.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
@@ -32,6 +33,12 @@ const store=new FileStore(DATA_FILE).init();
 if(!fs.existsSync(BUSINESS_FILE)){fs.mkdirSync(path.dirname(BUSINESS_FILE),{recursive:true});fs.copyFileSync(path.join(projectRoot,'config','business.json'),BUSINESS_FILE);}
 let business=JSON.parse(fs.readFileSync(BUSINESS_FILE,'utf8'));
 const PUBLIC=path.join(projectRoot,'public');
+const PDV_ALLOWED_HOSTS=(env.PDV_ALLOWED_HOSTS||'pdvgutoexpress.com.br').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+const LIVE_BOT_ENABLED=env.BOT_LIVE_ENABLED==='true';
+const pdvSettings=()=>validatePdvSettings(store.snapshot().settings?.pdv||PDV_DEFAULTS,{allowedHosts:PDV_ALLOWED_HOSTS});
+const pdvTestStatus=()=>store.snapshot().settings?.pdvTest||null;
+const readiness=()=>buildReadiness({aiKeyConfigured:Boolean(env.OPENAI_API_KEY),chatwootConfigured:ONLINE,liveEnabled:LIVE_BOT_ENABLED,pdvTest:pdvTestStatus()});
+
 
 const json=(res,status,obj,headers={})=>respond(res,status,JSON.stringify(obj),{'content-type':'application/json; charset=utf-8',...headers});
 const respond=(res,status,data,headers={})=>{res.writeHead(status,{'x-content-type-options':'nosniff','referrer-policy':'no-referrer','cache-control':'no-store','x-frame-options':'DENY','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; frame-ancestors 'none'",...headers});res.end(data);};
@@ -105,7 +112,12 @@ async function pump(){
      // Keep incoming messages visible to human attendants even after handoff.
      session.history.push({role:'user',content:n.content.slice(0,2000)});
      session.history=session.history.slice(-100);
-     if(session.mode==='BOT'){
+     if(session.mode==='BOT' && !readiness().canAutoReply){
+       session.mode='HUMAN';session.reason='Atendimento automático bloqueado até homologação';
+       const oid=`handoff:${evt.id}`;
+       if(!d.outbox[oid])d.outbox[oid]={id:oid,accountId:n.accountId,conversationId:n.conversationId,content:'[Guto Bot] Nova mensagem recebida. IA bloqueada até homologação; atendimento humano necessário.',private:true,state:'pending',attempts:0,nextAt:Date.now()};
+     }
+     if(session.mode==='BOT' && readiness().canAutoReply){
        const previouslyHuman = session.mode === 'HUMAN';
        let reply;
        if(!env.OPENAI_API_KEY){
@@ -152,7 +164,7 @@ async function flushOutbox(){
 
 async function router(req,res){
  const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);const p=url.pathname;
- if(p==='/health')return json(res,200,{ok:true,service:'guto-bot',configured:ONLINE});
+ if(p==='/health')return json(res,200,{ok:true,service:'guto-bot',configured:ONLINE,productionReady:false});
  if(p==='/webhooks/chatwoot'&&req.method==='POST'){
   if(!CHATWOOT_WEBHOOK_SECRET||!ONLINE)return json(res,503,{error:'Integração ainda não configurada'});
   const body=await readBody(req);
@@ -178,6 +190,31 @@ async function router(req,res){
    if(!authed(req))return json(res,401,{error:'Faça login para acessar'});
    if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
    if(p==='/api/dashboard'&&req.method==='GET')return json(res,200,webData());
+   if(p==='/api/readiness'&&req.method==='GET')return json(res,200,readiness());
+   if(p==='/api/settings'&&req.method==='GET')return json(res,200,{pdv:pdvSettings(),pdvTest:pdvTestStatus(),ai:{configured:Boolean(env.OPENAI_API_KEY),model:env.OPENAI_MODEL||'não configurado',liveEnabled:LIVE_BOT_ENABLED},whatsapp:{configured:ONLINE,inboxes:channelStatus()},readiness:readiness()});
+   if(p==='/api/settings'&&req.method==='PUT'){
+     let payload;try{payload=JSON.parse((await readBody(req,4096)).toString('utf8'));}catch{return json(res,400,{error:'JSON inválido'});}
+     let validated;try{validated=validatePdvSettings(payload?.pdv,{allowedHosts:PDV_ALLOWED_HOSTS});}catch(e){return json(res,422,{error:e.message});}
+     await store.tx(d=>{d.settings||={};d.settings.pdv=validated;d.settings.pdvTest=null;});
+     return json(res,200,{ok:true,pdv:validated,notice:'Configuração gravada. Leitura exige teste separado; pedidos automáticos ao PDV permanecem bloqueados.'});
+   }
+   if(p==='/api/pdv/test'&&req.method==='POST'){
+     const settings=pdvSettings();
+     if(!settings.enabled)return json(res,409,{ok:false,error:'Ative primeiro a leitura do PDV nas configurações.'});
+     try{
+       const {catalog,operation}=await pdvReadStatus(settings,{allowedHosts:PDV_ALLOWED_HOSTS});
+       const at=new Date().toISOString();
+       await store.tx(d=>{d.settings||={};d.settings.pdvTest={ok:true,at,items:catalog.items.length,storeOpen:operation.open};});
+       return json(res,200,{ok:true,at,items:catalog.items.length,storeOpen:operation.open,delivery:operation.delivery,pickup:operation.pickup,notice:'Consulta somente leitura validada. Pedidos continuam bloqueados.'});
+     }catch(e){
+       await store.tx(d=>{d.settings||={};d.settings.pdvTest={ok:false,at:new Date().toISOString()};});
+       return json(res,503,{ok:false,error:'Não foi possível validar as APIs do PDV; confira o domínio e o serviço.',reason:e.message});
+     }
+   }
+   if(p==='/api/pdv/menu'&&req.method==='GET'){
+     const settings=pdvSettings();if(!settings.enabled)return json(res,409,{ok:false,error:'Integração PDV desativada'});
+     try{const {catalog,operation}=await pdvReadStatus(settings,{allowedHosts:PDV_ALLOWED_HOSTS});return json(res,200,{ok:true,...catalog,operation});}catch(e){return json(res,503,{ok:false,error:'Cardápio do PDV indisponível',reason:e.message});}
+   }
    if(p==='/api/channels/status'&&req.method==='GET')return json(res,200,{provider:'Chatwoot / Meta Cloud API',channels:channelStatus(),qrGenerated:false,notice:'O QR Code ou código de verificação, quando disponível, é gerado apenas pela Meta no fluxo oficial.'});
    if(p==='/api/inbox/conversations'&&req.method==='GET')return json(res,200,{items:inboxRows(),channels:channelStatus()});
    const inboxDetail=p.match(/^\/api\/inbox\/conversations\/([^/]+)$/);
@@ -250,7 +287,7 @@ async function router(req,res){
    return json(res,404,{error:'Rota não encontrada'});
  }
  if(req.method!=='GET')return json(res,405,{error:'Método não permitido'});
- const assets={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/inbox':'inbox.html','/inbox.js':'inbox.js','/inbox.css':'inbox.css'};
+ const assets={'/configuracoes':'settings.html','/settings.js':'settings.js','/settings.css':'settings.css','/':'index.html','/app.js':'app.js','/style.css':'style.css','/inbox':'inbox.html','/inbox.js':'inbox.js','/inbox.css':'inbox.css'};
  if(!assets[p])return json(res,404,{error:'Não encontrado'});
  const filename=path.join(PUBLIC,assets[p]);
  const mime=p.endsWith('.js')?'text/javascript; charset=utf-8':p.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';
