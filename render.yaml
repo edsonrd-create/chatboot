@@ -1,14 +1,20 @@
+# Guto Bot Nativo — ambiente de HOMOLOGACAO, nao producao.
+# Plano Starter com disco persistente tem custo mensal. Confirmar no Render antes de criar.
+# Nao cadastrar tokens de clientes / Meta / IA neste repositorio publico.
 services:
   - type: web
-    name: guto-bot-homologacao
+    name: guto-bot-nativo-homologacao
     runtime: docker
     plan: starter
+    region: ohio
+    numInstances: 1
+    branch: feature/guto-bot-nativo-meta-v2
     autoDeployTrigger: off
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerContext: ./native
+    dockerfilePath: ./native/Dockerfile
     healthCheckPath: /health
     disk:
-      name: guto-bot-state
+      name: guto-bot-homologacao-dados
       mountPath: /app/data
       sizeGB: 1
     envVars:
@@ -20,13 +26,11 @@ services:
         value: '8080'
       - key: DATA_FILE
         value: /app/data/state.json
-      - key: BUSINESS_FILE
-        value: /app/data/business.json
-      - key: ADMIN_PASSWORD
-        sync: false
       - key: APP_SECRET
         generateValue: true
-      - key: OPENAI_API_KEY
+      - key: ADMIN_PASSWORD
         sync: false
+      - key: PDV_ALLOWED_HOSTS
+        value: pdvgutoexpress.com.br
       - key: OPENAI_MODEL
         value: gpt-4.1-mini
