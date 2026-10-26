@@ -90,3 +90,11 @@ O sistema só processa pedidos livres usando IA quando um provedor de modelo for
 Para mensagens reais, o projeto dispõe de API autenticada e tela `/inbox` no backend hospedado, mas exige dois inboxes Chatwoot conectados, integração oficial com a Meta e credenciais privadas. O QR Code de coexistência pode ser exibido **somente pelo procedimento da Meta**. Não geramos QR falsos no frontend.
 
 Documentação: [DUPLO-WHATSAPP-V18.md](backend/docs/DUPLO-WHATSAPP-V18.md).
+
+## Nova central de WhatsApp (V1.8)
+
+- [Prévia visual offline: dois números](central-demo.html) — contatos fictícios, sem conexão WhatsApp.
+- [Código da central no backend](backend/public/inbox.html) — acessível em `/inbox` após login quando o backend estiver hospedado.
+- [Guia de conexão oficial e QR](backend/docs/DOIS-WHATSAPPS-E-CENTRAL.md).
+
+O GitHub Pages é apenas uma prévia estática; o QR de autenticação da Meta não pode ser criado por um HTML isolado. Nenhum número real está conectado.
