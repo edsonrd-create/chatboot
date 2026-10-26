@@ -42,3 +42,7 @@ O painel estático do GitHub Pages **não executa IA**. Para testar perguntas re
 Foi corrigida a falha `previouslyHuman is not defined` na transferência, e agora o envio de mensagens ao Chatwoot roda em fila separada para não bloquear o próximo atendimento. Incluímos um botão **Verificar conexão com a IA** no painel, que gera uma chamada real ao provedor e pode consumir saldo.
 
 O repositório contém `render.yaml` para publicação controlada na Render (plano Starter e disco persistente **podem gerar cobrança**, confirme preços antes de aceitar). A implantação é opcional; nenhuma credencial é distribuída com os arquivos. Consulte [docs/IA-REAL-E-DEPLOY-V17.md](docs/IA-REAL-E-DEPLOY-V17.md).
+
+## Central de conversas V1.8
+
+Depois de entrar no painel do backend, abra **`/inbox`** para a nova interface responsiva: WhatsApp 01/02, busca, histórico, pausa da IA, transferências e mensagens manuais na fila Chatwoot. A conexão por QR Code, quando apresentada, acontece **somente dentro do fluxo oficial de cadastro incorporado da Meta**, no Chatwoot; o painel não gera um QR de pareamento artificial. Leia [a configuração detalhada](docs/DOIS-WHATSAPPS-E-CENTRAL.md). Nenhum número real estará conectado até a homologação.
