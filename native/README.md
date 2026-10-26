@@ -2,6 +2,14 @@
 
 Sistema próprio de atendimento da Guto Express. **Não depende de Chatwoot, QR de WhatsApp Web, Neemo, plataformas intermediárias de atendimento ou navegador de celular aberto.** Opera diretamente com a **Meta WhatsApp Cloud API**, sob sua própria aplicação Meta e com dois números independentes.
 
+## Publicação da homologação em Render
+
+[Publicar Guto Bot V2 no Render (branch isolada)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fedsonrd-create%2Fchatboot%2Ftree%2Ffeature%2Fguto-bot-nativo-meta-v2)
+
+Blueprint de hospedagem: [render.yaml](../render.yaml). Instruções, riscos de cobrança e checagens: [PUBLICAR-HOMOLOGACAO-RENDER.md](docs/PUBLICAR-HOMOLOGACAO-RENDER.md).
+
+**Atenção:** a implantação de homologação inicia sem credenciais Meta, sem IA e sem criação de pedidos reais. A hospedagem precisa de `ADMIN_PASSWORD` cadastrada no painel de segredos e utiliza plano Starter com disco persistente (pode ser cobrado).
+
 ## Situação: HOMOLOGAÇÃO — NÃO USAR PARA PEDIDOS REAIS
 
 A IA automática está travada (não há opção administrativa para liberar sem homologação). O laboratório usa IA real somente com chave de API configurada. O envio manual depende de conexão verificada por número, janela de 24 horas e autenticação. O PDV está em modo **somente leitura**. O banco atual é um arquivo JSON transacional para uma única instância: deve ser substituído por PostgreSQL + worker durável antes de produção.
