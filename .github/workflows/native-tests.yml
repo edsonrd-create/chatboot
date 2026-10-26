@@ -1,0 +1,30 @@
+name: Guto Bot Nativo - verificacao
+on:
+  push:
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-tests.yml'
+  pull_request:
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-tests.yml'
+permissions:
+  contents: read
+jobs:
+  native-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check de sintaxe
+        run: |
+          node --check src/server.mjs
+          node --check src/meta.mjs
+          node --check public/app.js
+      - name: Testes de integração local
+        run: npm test
