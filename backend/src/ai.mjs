@@ -85,6 +85,13 @@ async function callOpenAI(body,apiKey,model){
  }finally{clearTimeout(timer);}
 }
 
+export async function testAIConnection({apiKey,model='gpt-4.1-mini'}={}) {
+ if(!apiKey)throw new Error('OPENAI_API_KEY ausente');
+ const response=await callOpenAI({model,input:[{role:'user',content:'Responda apenas: OK'}],max_output_tokens:32,store:false},apiKey,model);
+ if(!extractText(response))throw new Error('Resposta vazia do modelo');
+ return {ok:true,model};
+}
+
 export async function intelligentReply(userText,session,business,{apiKey,model='gpt-4.1-mini'}={}){
  // Transferência humana deve funcionar mesmo se o modelo não colaborar.
  if(flagsAllergy(userText)){session.mode='HUMAN';session.reason='Dúvida sobre alergênicos';return 'Para sua segurança, vou pedir que nossa equipe confirme os ingredientes e os cuidados com contaminação cruzada. Não consigo garantir ausência de alergênicos. 🙏';}
