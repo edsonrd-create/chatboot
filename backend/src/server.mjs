@@ -16,7 +16,8 @@ const ADMIN_PASSWORD=env.ADMIN_PASSWORD||'';
 const APP_SECRET=env.APP_SECRET||'';
 const CHATWOOT_WEBHOOK_SECRET=env.CHATWOOT_WEBHOOK_SECRET||'';
 const CW_ACCOUNT=Number(env.CHATWOOT_ACCOUNT_ID||0);
-const INBOXES=[env.CHATWOOT_INBOX_1,env.CHATWOOT_INBOX_2].map(Number).filter(x=>Number.isSafeInteger(x)&&x>0);
+const RAW_INBOXES=[env.CHATWOOT_INBOX_1,env.CHATWOOT_INBOX_2].map(Number);
+const INBOXES=RAW_INBOXES.filter(x=>Number.isSafeInteger(x)&&x>0);
 const DATA_FILE=path.resolve(projectRoot,env.DATA_FILE||'./data/state.json');
 const BUSINESS_FILE=path.resolve(projectRoot,env.BUSINESS_FILE||'./config/business.json');
 const CW_HOST=env.CHATWOOT_BASE_URL||'';
@@ -54,6 +55,23 @@ function validateBusiness(b){
  for(const prices of Object.values(b.pizzas||{})) for(const p of Object.values(prices||{}))if(!(p===null||(Number.isSafeInteger(p)&&p>=0)))return false;
  return true;
 }
+// Credentials configured does not prove that the WhatsApp number is connected or eligible.
+function channelStatus(){
+ return [0,1].map(index=>({
+   slot:index+1,
+   inboxId:Number.isSafeInteger(RAW_INBOXES[index]) && RAW_INBOXES[index]>0 ? RAW_INBOXES[index]:null,
+   accountConfigured:Boolean(CW_ACCOUNT),connection:'UNVERIFIED',
+   setup:'META_EMBEDDED_SIGNUP',
+   configured:Boolean(ONLINE && Number.isSafeInteger(RAW_INBOXES[index]) && RAW_INBOXES[index]>0),
+   chatwootUrl:CW_HOST && CW_HOST.startsWith('https://') ? CW_HOST : null,
+   caption:ONLINE && RAW_INBOXES[index] ? 'Credenciais informadas · conexão ainda não verificada':'Aguardando configuração oficial'
+ }));
+}
+const validSessionKey=key=>/^\d+:\d+:\d+$/.test(key) && INBOXES.includes(Number(key.split(':')[1])) && Number(key.split(':')[0])===CW_ACCOUNT;
+const inboxRows=()=>Object.entries(store.snapshot().sessions)
+ .filter(([key,s])=>validSessionKey(key)&&s&&Array.isArray(s.history))
+ .map(([key,s])=>({key,name:s.sender||'Cliente',inboxId:s.inboxId,mode:s.mode,updatedAt:s.updatedAt||'',preview:s.history.at(-1)?.content?.slice(0,160)||'',messages:s.history.length,items:s.cart?.length||0}))
+ .sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
 const orderSummary=(s)=>({cart:getSummary(s,business).items,address:s.address,payment:s.payment});
 
 async function postMessage(accountId,conversationId,content,isPrivate=false){
@@ -84,6 +102,9 @@ async function pump(){
      const evt=d.events[e.id];if(!evt||evt.state!=='pending')return null;
      const {n}=evt;const session=d.sessions[n.key]||newSession();
      session.sender=n.sender;session.inboxId=n.inboxId;session.updatedAt=new Date().toISOString();
+     // Keep incoming messages visible to human attendants even after handoff.
+     session.history.push({role:'user',content:n.content.slice(0,2000)});
+     session.history=session.history.slice(-100);
      if(session.mode==='BOT'){
        const previouslyHuman = session.mode === 'HUMAN';
        let reply;
@@ -98,9 +119,8 @@ async function pump(){
          const noteId=`handoff:${evt.id}`;
          if(!d.outbox[noteId])d.outbox[noteId]={id:noteId,accountId:n.accountId,conversationId:n.conversationId,content:`[Guto Bot] Atendimento humano solicitado. Motivo: ${String(session.reason||'necessita conferência').slice(0,200)}. IA pausada para esta conversa.`,private:true,state:'pending',attempts:0,nextAt:Date.now()};
        }
-       session.history.push({role:'user',content:n.content.slice(0,2000)});
-       session.history.push({role:'assistant',content:reply.slice(0,3000)});
-       session.history=session.history.slice(-30);
+       session.history.push({role:'assistant',content:reply.slice(0,3000),delivery:'queued',outboxId:`reply:${evt.id}`});
+       session.history=session.history.slice(-100);
        const oid=`reply:${evt.id}`;
        if(!d.outbox[oid])d.outbox[oid]={id:oid,accountId:n.accountId,conversationId:n.conversationId,content:reply.slice(0,3000),state:'pending',attempts:0,nextAt:Date.now()};
        if(session.lastConfirmed){
@@ -124,8 +144,8 @@ async function flushOutbox(){
   if(!ONLINE)return;
   const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());
   for(const o of outgoing){
-    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();}});}
-    catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8)x.state='failed';}});}
+    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});}
+    catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8){x.state='failed';for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='failed';}}}});}
   }
  }finally{flushing=false;}
 }
@@ -158,6 +178,36 @@ async function router(req,res){
    if(!authed(req))return json(res,401,{error:'Faça login para acessar'});
    if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
    if(p==='/api/dashboard'&&req.method==='GET')return json(res,200,webData());
+   if(p==='/api/channels/status'&&req.method==='GET')return json(res,200,{provider:'Chatwoot / Meta Cloud API',channels:channelStatus(),qrGenerated:false,notice:'O QR Code ou código de verificação, quando disponível, é gerado apenas pela Meta no fluxo oficial.'});
+   if(p==='/api/inbox/conversations'&&req.method==='GET')return json(res,200,{items:inboxRows(),channels:channelStatus()});
+   const inboxDetail=p.match(/^\/api\/inbox\/conversations\/([^/]+)$/);
+   if(inboxDetail&&req.method==='GET'){
+     const key=decodeURIComponent(inboxDetail[1]);if(!validSessionKey(key))return json(res,404,{error:'Conversa não encontrada'});
+     const session=store.snapshot().sessions[key];if(!session)return json(res,404,{error:'Conversa não encontrada'});
+     return json(res,200,{key,name:session.sender||'Cliente',inboxId:session.inboxId,mode:session.mode,updatedAt:session.updatedAt||'',history:(session.history||[]).slice(-100).map((m,i)=>({id:m.outboxId||String(i),role:m.role==='user'?'incoming':m.manual?'human':'bot',content:m.content,delivery:m.delivery||null})),summary:getSummary(session,business)});
+   }
+   const inboxMessage=p.match(/^\/api\/inbox\/conversations\/([^/]+)\/messages$/);
+   if(inboxMessage&&req.method==='POST'){
+     if(!ONLINE)return json(res,503,{error:'Dois canais Chatwoot ainda não estão configurados.'});
+     const key=decodeURIComponent(inboxMessage[1]);if(!validSessionKey(key))return json(res,404,{error:'Conversa não encontrada'});
+     let body;try{body=JSON.parse((await readBody(req,8192)).toString('utf8'));}catch{return json(res,400,{error:'JSON inválido'});}
+     if(typeof body.content!=='string'||!body.content.trim()||body.content.length>2000||typeof body.requestId!=='string'||!/^[-a-zA-Z0-9_]{8,90}$/.test(body.requestId))return json(res,422,{error:'Mensagem ou chave de idempotência inválida'});
+     const oid=`manual:${key}:${body.requestId}`;
+     const result=await store.tx(d=>{
+       const session=d.sessions[key];if(!session)return 'not_found';
+       if(session.mode!=='HUMAN')return 'requires_human';
+       if(d.outbox[oid])return 'duplicate';
+       const [accountId,inboxId,conversationId]=key.split(':').map(Number);
+       d.outbox[oid]={id:oid,accountId,conversationId,content:body.content.trim(),private:false,state:'pending',attempts:0,nextAt:Date.now()};
+       session.history.push({role:'assistant',manual:true,content:body.content.trim(),delivery:'queued',outboxId:oid});
+       session.history=session.history.slice(-100);session.updatedAt=new Date().toISOString();return 'queued';
+     });
+     if(result==='queued'){setImmediate(flushOutbox);return json(res,202,{queued:true,requestId:body.requestId});}
+     if(result==='duplicate')return json(res,200,{queued:true,duplicate:true,requestId:body.requestId});
+     if(result==='requires_human')return json(res,409,{error:'Desative a IA e assuma a conversa antes de responder manualmente.'});
+     return json(res,404,{error:'Conversa não encontrada'});
+   }
+
    if(p==='/api/business'&&req.method==='GET')return json(res,200,business);
    if(p==='/api/business'&&req.method==='PUT'){
      let b;try{b=JSON.parse((await readBody(req,200*1024)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
@@ -186,7 +236,7 @@ async function router(req,res){
    }
    const handoff=p.match(/^\/api\/conversations\/([^/]+)\/mode$/);
    if(handoff&&req.method==='POST'){
-     const key=decodeURIComponent(handoff[1]);let b;try{b=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+     const key=decodeURIComponent(handoff[1]);if(!validSessionKey(key))return json(res,404,{error:'Conversa não encontrada'});let b;try{b=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
      if(!['BOT','HUMAN'].includes(b.mode))return json(res,422,{error:'Modo inválido'});
      const ok=await store.tx(d=>{if(!d.sessions[key])return false;d.sessions[key].mode=b.mode;return true;});return json(res,ok?200:404,{ok});
    }
@@ -200,7 +250,7 @@ async function router(req,res){
    return json(res,404,{error:'Rota não encontrada'});
  }
  if(req.method!=='GET')return json(res,405,{error:'Método não permitido'});
- const assets={'/':'index.html','/app.js':'app.js','/style.css':'style.css'};
+ const assets={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/inbox':'inbox.html','/inbox.js':'inbox.js','/inbox.css':'inbox.css'};
  if(!assets[p])return json(res,404,{error:'Não encontrado'});
  const filename=path.join(PUBLIC,assets[p]);
  const mime=p.endsWith('.js')?'text/javascript; charset=utf-8':p.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';
