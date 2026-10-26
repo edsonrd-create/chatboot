@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {FileStore} from './store.mjs';
 import {verifyChatwootSignature,normalizeEvent,newSession,getSummary} from './core.mjs';
-import {intelligentReply,wantsHuman,quoteText} from './ai.mjs';
+import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
@@ -21,7 +21,7 @@ const DATA_FILE=path.resolve(projectRoot,env.DATA_FILE||'./data/state.json');
 const BUSINESS_FILE=path.resolve(projectRoot,env.BUSINESS_FILE||'./config/business.json');
 const CW_HOST=env.CHATWOOT_BASE_URL||'';
 const CW_TOKEN=env.CHATWOOT_API_TOKEN||'';
-const BASE_URL=env.APP_PUBLIC_URL||'';
+const BASE_URL=env.APP_PUBLIC_URL||env.RENDER_EXTERNAL_URL||'';
 const ONLINE=Boolean(CHATWOOT_WEBHOOK_SECRET&&CW_ACCOUNT&&INBOXES.length===2&&new Set(INBOXES).size===2&&CW_HOST&&CW_TOKEN);
 if(ADMIN_PASSWORD.length<12||APP_SECRET.length<32)throw new Error('Defina ADMIN_PASSWORD (12+ caracteres) e APP_SECRET (32+ caracteres) no .env.');
 if(env.NODE_ENV==='production'&&!BASE_URL.startsWith('https://'))throw new Error('APP_PUBLIC_URL HTTPS é obrigatório em produção.');
@@ -43,7 +43,7 @@ const attempts=new Map();
 function checkRate(req){const key=clientIp(req),now=Date.now();let b=attempts.get(key)||{n:0,start:now};if(now-b.start>15*60e3)b={n:0,start:now};b.n++;attempts.set(key,b);return b.n<=12;}
 function sameOrigin(req){if(!['POST','PUT','PATCH','DELETE'].includes(req.method))return true;const origin=req.headers.origin;const host=BASE_URL||`http://${req.headers.host}`;return req.headers['sec-fetch-site']!=='cross-site'&&(!origin||origin===host);}
 async function readBody(req,limit=128*1024){let length=0,chunks=[];for await (const chunk of req){length+=chunk.length;if(length>limit)throw Object.assign(new Error('Payload muito grande'),{status:413});chunks.push(chunk);}return Buffer.concat(chunks);}
-const webData=()=>{const d=store.snapshot();return {onlineConfigured:ONLINE,aiConfigured:!!env.OPENAI_API_KEY,inboxes:INBOXES.map((id,i)=>({id,label:`WhatsApp ${i+1}`})),conversations:Object.entries(d.sessions).map(([key,s])=>({key,mode:s.mode,updatedAt:s.updatedAt||'',customer:s.sender||'Cliente',inboxId:s.inboxId,items:s.cart.length,lastMessage:s.history.at(-1)?.content||''})).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))),orders:d.orders.map(o=>({...o})).reverse(),stats:{orders:d.orders.length,pending:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length,conversations:Object.keys(d.sessions).length}};};
+const webData=()=>{const d=store.snapshot();return {onlineConfigured:ONLINE,aiConfigured:!!env.OPENAI_API_KEY,aiMode:env.OPENAI_API_KEY?'MODEL_CONFIGURED':'UNCONFIGURED',inboxes:INBOXES.map((id,i)=>({id,label:`WhatsApp ${i+1}`})),conversations:Object.entries(d.sessions).map(([key,s])=>({key,mode:s.mode,updatedAt:s.updatedAt||'',customer:s.sender||'Cliente',inboxId:s.inboxId,items:s.cart.length,lastMessage:s.history.at(-1)?.content||''})).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))),orders:d.orders.map(o=>({...o})).reverse(),stats:{orders:d.orders.length,pending:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length,conversations:Object.keys(d.sessions).length}};};
 function validateBusiness(b){
  if(!b||typeof b!=='object'||typeof b.businessName!=='string'||b.businessName.length>120||!Array.isArray(b.sizes)||!Array.isArray(b.flavors)||!Array.isArray(b.drinks)||!b.faq||typeof b.faq!=='object')return false;
  if(!b.sizes.every(s=>typeof s.id==='string'&&Number.isInteger(s.slices)&&s.slices>0&&s.slices<=32))return false;
@@ -72,6 +72,7 @@ async function acceptWebhook(event,delivery){
  return store.tx(d=>{if(d.events[id])return {accepted:true,duplicate:true};d.events[id]={id,n,delivery,attempts:0,nextAt:Date.now(),state:'pending',receivedAt:new Date().toISOString()};return {accepted:true,duplicate:false};});
 }
 let pumping=false;
+let flushing=false;
 async function pump(){
  if(pumping)return;pumping=true;
  try{
@@ -84,9 +85,14 @@ async function pump(){
      const {n}=evt;const session=d.sessions[n.key]||newSession();
      session.sender=n.sender;session.inboxId=n.inboxId;session.updatedAt=new Date().toISOString();
      if(session.mode==='BOT'){
+       const previouslyHuman = session.mode === 'HUMAN';
        let reply;
-       try{reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}
-       catch(error){reply='Tive uma dificuldade para consultar as informações agora. Vou encaminhar sua conversa para a equipe. 🙏';session.mode='HUMAN';session.reason='Falha no processamento de IA';}
+       if(!env.OPENAI_API_KEY){
+         // Never claim to have an AI agent responding when the model is not configured.
+         session.mode='HUMAN';session.reason='Modelo de IA não configurado';
+         reply='Nosso atendimento automático está indisponível no momento. Vou encaminhar sua conversa à equipe. 😊';
+       }else try{reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}
+       catch(error){console.error('AI processing failure',error.message);reply='Tive uma dificuldade para consultar as informações agora. Vou encaminhar sua conversa para a equipe. 🙏';session.mode='HUMAN';session.reason='Falha no processamento de IA';}
        if(session.mode==='HUMAN'&&wantsHuman(n.content))reply='Claro! Vou encaminhar seu atendimento para nossa equipe. 😊';
        if(!previouslyHuman && session.mode==='HUMAN'){
          const noteId=`handoff:${evt.id}`;
@@ -108,13 +114,20 @@ async function pump(){
     });
    }catch(error){console.error('event processing error',e.id,error.message);await store.tx(d=>{const x=d.events[e.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8)x.state='dead';}});}
   }
+ }finally{pumping=false;}
+ // Independent outbox: a slow Chatwoot delivery must not block the next inbound message.
+ void flushOutbox();
+}
+async function flushOutbox(){
+ if(flushing)return;flushing=true;
+ try{
+  if(!ONLINE)return;
   const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());
   for(const o of outgoing){
-    if(!ONLINE)continue;
     try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();}});}
     catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8)x.state='failed';}});}
   }
- }finally{pumping=false;}
+ }finally{flushing=false;}
 }
 
 async function router(req,res){
@@ -151,7 +164,13 @@ async function router(req,res){
      if(!validateBusiness(b))return json(res,422,{error:'Cardápio inválido: confira preços em centavos, tamanhos, bebidas e políticas de meia a meia.'});
      const temp=BUSINESS_FILE+'.tmp';fs.writeFileSync(temp,JSON.stringify(b,null,2));fs.renameSync(temp,BUSINESS_FILE);business=b;return json(res,200,{ok:true});
    }
+   if(p==='/api/ai/check'&&req.method==='POST'){
+     if(!env.OPENAI_API_KEY)return json(res,503,{ok:false,error:'IA real não configurada. Configure OPENAI_API_KEY somente no servidor.'});
+     try {const result=await testAIConnection({apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});return json(res,200,{ok:true,model:result.model,message:'Modelo respondeu ao teste de conectividade.'});}
+     catch(error){console.error('AI connectivity failure',error.message);return json(res,503,{ok:false,error:'Conexão com IA falhou. Confira a chave, o modelo e a disponibilidade do provedor no servidor.'});}
+   }
    if(p==='/api/simulate'&&req.method==='POST'){
+     if(!env.OPENAI_API_KEY)return json(res,503,{error:'O atendimento por IA real ainda não está configurado. Adicione OPENAI_API_KEY à hospedagem para ativar o simulador.'});
      let m;try{m=JSON.parse((await readBody(req,10000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
      if(typeof m.content!=='string'||!m.content.trim()||m.content.length>2000)return json(res,422,{error:'Mensagem inválida'});
      const key='demo:0:1';const session=store.snapshot().sessions[key]||newSession();
