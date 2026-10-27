@@ -87,14 +87,63 @@ async function callOpenAI(body,apiKey,model){
 
 
 const geminiTools=()=>[{functionDeclarations:tools.map(t=>{const clean=JSON.parse(JSON.stringify(t.parameters,(k,val)=>k==='additionalProperties'?undefined:val));return Object.keys(clean.properties||{}).length?{name:t.name,description:t.description,parameters:clean}:{name:t.name,description:t.description};})}];
+// Mensagens públicas deliberadamente curtas: nunca reutilizar bodies ou headers do provedor.
+const GEMINI_DIAG={
+  400:['AI_BAD_REQUEST','O Gemini rejeitou a solicitação. Confira o modelo e o formato das ferramentas do chatbot.',502],
+  401:['AI_KEY_INVALID','A chave Gemini não foi aceita. Substitua a credencial no servidor.',503],
+  402:['AI_BILLING','Não há créditos disponíveis no projeto Gemini. Verifique faturamento e limites.',503],
+  403:['AI_PERMISSION','A chave não tem permissão para esse modelo ou a API está bloqueada no projeto.',503],
+  404:['AI_MODEL_UNAVAILABLE','O modelo Gemini selecionado não está disponível para essa chave. Confira GEMINI_MODEL.',503],
+  408:['AI_TIMEOUT','A conexão com o Gemini demorou demais. Tente novamente.',504],
+  429:['AI_QUOTA','O Gemini atingiu o limite de requisições ou da cota do projeto.',429],
+  500:['AI_UPSTREAM','A API do Gemini está indisponível temporariamente.',502],
+  502:['AI_UPSTREAM','A API do Gemini está indisponível temporariamente.',502],
+  503:['AI_UPSTREAM','A API do Gemini está indisponível temporariamente.',503],
+  504:['AI_TIMEOUT','O Gemini não respondeu no tempo esperado.',504]
+};
+const aiFault=(code,message,httpStatus=502)=>Object.assign(new Error(message),{aiCode:code,httpStatus});
+export function describeAIError(err,provider='gemini'){
+ const code=typeof err?.aiCode==='string'?err.aiCode:'AI_INTERNAL';
+ const allow={
+  AI_BAD_REQUEST:[502,'O provedor rejeitou a solicitação; confira o modelo e o formato do pedido.'],
+  AI_KEY_INVALID:[503,'Chave Gemini inválida ou expirada. Atualize-a nas configurações privadas do servidor.'],
+  AI_BILLING:[503,'Sem créditos disponíveis no projeto Gemini. Confira o faturamento.'],
+  AI_PERMISSION:[503,'A chave não possui permissão para acessar o Gemini ou o modelo configurado.'],
+  AI_MODEL_UNAVAILABLE:[503,'Modelo Gemini indisponível para sua chave; confira GEMINI_MODEL.'],
+  AI_QUOTA:[429,'Cota ou limite de chamadas da API Gemini atingido.'],
+  AI_TIMEOUT:[504,'Tempo limite ao consultar o provedor de IA.'],
+  AI_NETWORK:[502,'Não foi possível conectar ao provedor de IA.'],
+  AI_UPSTREAM:[503,'O serviço de IA está temporariamente indisponível.'],
+  AI_INVALID_RESPONSE:[502,'O provedor retornou uma resposta inválida.'],
+  AI_EMPTY_RESPONSE:[502,'O modelo não gerou texto utilizável nesta tentativa.'],
+  AI_INTERNAL:[500,'Falha interna no laboratório de IA. Consulte o identificador do erro nos logs do servidor.']
+ };
+ const [httpStatus,message]=allow[code]||allow.AI_INTERNAL;
+ return {code:allow[code]?code:'AI_INTERNAL',status:httpStatus,error:message,provider};
+}
 async function callGemini(body,apiKey,model){
-if(!/^[a-z][a-z0-9._-]{2,70}$/i.test(String(model||'')))throw new Error('Modelo Gemini inválido. Configure GEMINI_MODEL com um ID oficial.');
-const ac=new AbortController();const timer=setTimeout(()=>ac.abort(),25000);
-try{
-const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',signal:ac.signal,headers:{'x-goog-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify(body)});
-if(!response.ok)throw new Error(`Falha na API Gemini (HTTP ${response.status})`);
-return await response.json();
-}finally{clearTimeout(timer);}
+ if(!/^[a-z][a-z0-9._-]{2,70}$/i.test(String(model||'')))throw aiFault('AI_MODEL_UNAVAILABLE','Modelo Gemini inválido');
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),25000);
+ try{
+  let response;
+  try{
+   response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+    method:'POST',signal:controller.signal,headers:{'x-goog-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify(body)});
+  }catch{
+   if(controller.signal.aborted)throw aiFault('AI_TIMEOUT','Gemini excedeu o tempo de resposta',504);
+   throw aiFault('AI_NETWORK','Falha de rede na API Gemini',502);
+  }
+  if(!response.ok){
+   const [code,message,httpStatus]=GEMINI_DIAG[response.status]||['AI_UPSTREAM','A API Gemini não concluiu a solicitação.',502];
+   throw aiFault(code,message,httpStatus);
+  }
+  try{
+   const result=await response.json();
+   if(!result||typeof result!=='object')throw new Error('empty');
+   return result;
+  }catch{throw aiFault('AI_INVALID_RESPONSE','Resposta JSON inválida do Gemini');}
+ }finally{clearTimeout(timer);}
 }
 const geminiText=r=>(r?.candidates?.[0]?.content?.parts||[]).filter(p=>p.text&&!p.thought).map(p=>p.text).join('').trim();
 async function geminiLoop(system,userText,session,business,{apiKey,model}){
@@ -103,7 +152,7 @@ for(let attempt=0;attempt<6;attempt++){
 const r=await callGemini({systemInstruction:{parts:[{text:system}]},contents,tools:geminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:1500}},apiKey,model);
 const parts=r?.candidates?.[0]?.content?.parts||[];
 const calls=parts.filter(p=>p.functionCall);
-if(!calls.length){const reply=geminiText(r);if(!reply)throw new Error('Gemini não retornou uma resposta de texto válida; verifique permissões, quota ou bloqueios do modelo.');return reply.slice(0,3000);}
+if(!calls.length){const reply=geminiText(r);if(!reply)throw aiFault('AI_EMPTY_RESPONSE','Gemini não retornou uma resposta de texto válida; verifique permissões, quota ou bloqueios do modelo.');return reply.slice(0,3000);}
 contents.push({role:'model',parts});
 const responses=[];
 for(const p of calls){
