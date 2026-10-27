@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {newSession,getSummary} from '../src/core.mjs';
-import {testAIConnection,intelligentReply} from '../src/ai.mjs';
+import {testAIConnection,intelligentReply,describeAIError} from '../src/ai.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const business=JSON.parse(fs.readFileSync(path.join(root,'config/business.json'),'utf8'));
