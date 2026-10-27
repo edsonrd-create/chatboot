@@ -44,7 +44,7 @@ test('Gemini usa funções reais do carrinho e apresenta orçamento determiníst
  };
  try{
   const reply=await intelligentReply('Quero uma grande calabresa, entrega Rua das Acácias 100 Centro Curitiba, pix',session,b,{apiKey:key,provider:'gemini',model});
-  assert.match(reply,/Total: R\\$\\s*66,99/);
+  assert.match(reply,/Total: R\$\s*66,99/);
   assert.match(reply,/Confirmo/);
   assert.equal(session.cart.length,1);
   assert.equal(getSummary(session,b).totalCents,6699);
