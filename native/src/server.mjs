@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {JsonStore,safeCompare,protectToken,revealToken} from './storage.mjs';
 import {verifyMetaSignature,parseMetaWebhook,checkMetaPhone,sendMetaText,exchangeSignupCode,verifyPhoneInWaba,subscribeWaba,graphVersion} from './meta.mjs';
 import {newSession,getSummary} from './core.mjs';
-import {intelligentReply,testAIConnection} from './ai.mjs';
+import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -206,15 +206,22 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
       }
       if(p==='/api/ai/test'&&req.method==='POST'){
         if(!aiCfg.apiKey)return json(res,409,{error:'Chave da IA não configurada no servidor'});
-        try{const v=await testAIConnection(aiCfg);await store.change(d=>{d.aiTest={ok:true,provider:aiCfg.provider,model:aiCfg.model,at:new Date(clock()).toISOString()};});return json(res,200,v);}catch(e){return json(res,503,{error:e.message});}
+        try{const v=await testAIConnection(aiCfg);await store.change(d=>{d.aiTest={ok:true,provider:aiCfg.provider,model:aiCfg.model,at:new Date(clock()).toISOString()};});return json(res,200,v);}
+        catch(e){const fault=describeAIError(e,aiCfg.provider),errorId=crypto.randomUUID().slice(0,12);console.error('[GutoBot AI]',JSON.stringify({errorId,code:fault.code,status:fault.status,operation:'test'}));return json(res,fault.status,{error:fault.error,code:fault.code,errorId,provider:aiCfg.provider});}
       }
       if(p==='/api/simulate'&&req.method==='POST'){
         let v;try{v=JSON.parse((await readBody(req,7000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(typeof v.text!=='string'||!v.text.trim()||v.text.length>2000)return json(res,422,{error:'Mensagem inválida'});
         if(!aiCfg.apiKey)return json(res,503,{error:`Modelo de IA indisponível: configure ${aiCfg.provider==='gemini'?'GEMINI_API_KEY':'OPENAI_API_KEY'} no servidor. Não há resposta simulada.`});
-        let reply,summary,mode;
-        await store.change(async d=>{const session=d.simulation||newSession();reply=await intelligentReply(v.text,session,business,aiCfg);session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
-        return json(res,200,{reply,summary,mode,demo:true});
+        try{
+          let reply,summary,mode;
+          await store.change(async d=>{const session=d.simulation||newSession();reply=await intelligentReply(v.text,session,business,aiCfg);session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
+          return json(res,200,{reply,summary,mode,demo:true,provider:aiCfg.provider});
+        }catch(e){
+          const fault=describeAIError(e,aiCfg.provider),errorId=crypto.randomUUID().slice(0,12);
+          console.error('[GutoBot AI]',JSON.stringify({errorId,code:fault.code,status:fault.status,operation:'simulate'}));
+          return json(res,fault.status,{error:fault.error,code:fault.code,errorId,provider:aiCfg.provider});
+        }
       }
       if(p==='/api/simulate/reset'&&req.method==='POST'){await store.change(d=>{delete d.simulation;});return json(res,200,{ok:true});}
       if(p==='/api/settings'&&req.method==='GET'){const d=store.snapshot();return json(res,200,{pdv:d.settings.pdv,approval:{autoReply:false,production:false},meta:{appConfigured:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),version,webhookUrl:appUrl?appUrl+'/webhooks/meta':null,verifyTokenConfigured:!!env.META_VERIFY_TOKEN},readiness:status()});}
