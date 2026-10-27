@@ -122,22 +122,30 @@ export function describeAIError(err,provider='gemini'){
  return {code:allow[code]?code:'AI_INTERNAL',status:httpStatus,error:message,provider};
 }
 async function callGeminiOnce(body,apiKey,model){
-const ac=new AbortController();const timer=setTimeout(()=>ac.abort(),40000);
-try{
-const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',signal:ac.signal,headers:{'x-goog-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify(body)});
-if(!response.ok)throw Object.assign(new Error(`Falha na API Gemini (HTTP ${response.status})`),{status:response.status});
-return await response.json();
-}finally{clearTimeout(timer);}
+ if(!/^[a-z][a-z0-9._-]{2,70}$/i.test(String(model||'')))throw aiFault('AI_MODEL_UNAVAILABLE','Modelo Gemini inválido');
+ const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),25000);
+ try{
+  let response;
+  try{
+   response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',signal:ac.signal,headers:{'x-goog-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify(body)});
+  }catch{
+   if(ac.signal.aborted)throw aiFault('AI_TIMEOUT','Tempo limite da API Gemini',504);
+   throw aiFault('AI_NETWORK','Falha de rede na API Gemini');
+  }
+  if(!response.ok){
+   const [code,message,httpStatus]=GEMINI_DIAG[response.status]||['AI_UPSTREAM','A API Gemini não concluiu a solicitação.',502];
+   throw aiFault(code,message,httpStatus);
+  }
+  try{
+   const result=await response.json();
+   if(!result||typeof result!=='object')throw new Error('Resposta inválida');
+   return result;
+  }catch{throw aiFault('AI_INVALID_RESPONSE','Gemini retornou JSON inválido');}
+ }finally{clearTimeout(timer);}
 }
-// Reenvio com espera e modelo reserva: 429/500/503/timeout sao temporarios no Gemini.
-async function callGemini(body,apiKey,model){
-const models=[model,model==='gemini-flash-lite-latest'?null:'gemini-flash-lite-latest'].filter(Boolean);
-let last;
-for(const m of models){for(let tryN=0;tryN<2;tryN++){
-try{return await callGeminiOnce(body,apiKey,m);}catch(e){last=e;const temp=e.name==='AbortError'||[429,500,502,503,504].includes(e.status);if(!temp)throw e;await new Promise(r=>setTimeout(r,1500*(tryN+1)));}
-}}
-throw last;
-}
+// Não trocar de modelo automaticamente: o usuário precisa saber se seu modelo está inacessível.
+// Limites/quota do Google devem ser diagnosticados, não mascarados por outra chamada paga.
+async function callGemini(body,apiKey,model){return callGeminiOnce(body,apiKey,model);}
 const geminiText=r=>(r?.candidates?.[0]?.content?.parts||[]).filter(p=>p.text&&!p.thought).map(p=>p.text).join('').trim();
 async function geminiLoop(system,userText,session,business,{apiKey,model}){
 const contents=[...session.history.slice(-10).map(x=>({role:x.role==='assistant'?'model':'user',parts:[{text:String(x.content)}]})),{role:'user',parts:[{text:userText}]}];
