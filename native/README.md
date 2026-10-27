@@ -10,6 +10,14 @@ Blueprint de hospedagem: [render.yaml](../render.yaml). Instruções, riscos de 
 
 **Atenção:** a implantação de homologação inicia sem credenciais Meta, sem IA e sem criação de pedidos reais. A hospedagem precisa de `ADMIN_PASSWORD` cadastrada no painel de segredos e utiliza plano Starter com disco persistente (pode ser cobrado).
 
+## Integração Google Gemini
+
+A integração direta com o Google Gemini está implementada no backend, em modo de **homologação**. Selecione o provedor com `AI_PROVIDER=gemini`, configure `GEMINI_MODEL=gemini-3.5-flash-lite` e armazene a **nova** `GEMINI_API_KEY` exclusivamente nas variáveis privadas do servidor. O teste real ocorre no painel administrativo; conversas e chamadas a funções podem ser verificadas sem cadastrar pedidos no PDV.
+
+**A versão gratuita pública permanece somente leitura: o Gemini não é ativado nela e nenhuma chave deve ser cadastrada nesse ambiente.** A chave compartilhada em mensagens precisa ser revogada e substituída.
+
+Instruções completas: [Integração Gemini e testes](docs/INTEGRACAO-GEMINI.md).
+
 ## Situação: HOMOLOGAÇÃO — NÃO USAR PARA PEDIDOS REAIS
 
 A IA automática está travada (não há opção administrativa para liberar sem homologação). O laboratório usa IA real somente com chave de API configurada. O envio manual depende de conexão verificada por número, janela de 24 horas e autenticação. O PDV está em modo **somente leitura**. O banco atual é um arquivo JSON transacional para uma única instância: deve ser substituído por PostgreSQL + worker durável antes de produção.
