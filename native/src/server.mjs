@@ -45,9 +45,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   // Seleção explícita do provedor; chave NUNCA é devolvida ao navegador.
   const aiProvider=String(env.AI_PROVIDER||(env.GEMINI_API_KEY?'gemini':'openai')).trim().toLowerCase();
   if(!['gemini','openai'].includes(aiProvider))throw new Error('AI_PROVIDER deve ser gemini ou openai.');
-  const aiCfg=aiProvider==='gemini'
-
-// ===== WhatsApp por QR Code (Baileys, canal NÃO oficial; ative com WA_QR_ENABLED=true) =====
+  // ===== WhatsApp por QR Code (Baileys, canal NÃO oficial; ative com WA_QR_ENABLED=true) =====
 const qrEnabled=!freePreview&&String(env.WA_QR_ENABLED||'').toLowerCase()==='true';
 const qrAutoReply=String(env.WA_QR_AUTOREPLY||'').toLowerCase()==='true';
 let qr=null;
@@ -68,6 +66,8 @@ catch(e){console.error('[QR IA]',String(e.message||e).slice(0,160));}
 if(reply){try{const r=await qr.send(m.slot,m.jid,reply);await store.change(d=>{const t=d.threads[tid];if(t)append(t,{id:r.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA'});});}catch(e){console.error('[QR envio]',String(e.message||e).slice(0,160));}}
 }
 if(qrEnabled){qr=createQrManager({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,log:x=>console.log(x)});setTimeout(()=>qr.resume(),1500);}
+const aiCfg=aiProvider==='gemini'
+
     ?{provider:'gemini',apiKey:env.GEMINI_API_KEY||'',model:env.GEMINI_MODEL||'gemini-3.5-flash-lite'}
     :{provider:'openai',apiKey:env.OPENAI_API_KEY||'',model:env.OPENAI_MODEL||'gpt-4.1-mini'};
   const configuredChannels=d=>d.channels.map(c=>{const phoneId=c.phoneId||String(env[`META_PHONE_ID_${c.slot}`]||'');return {...c,phoneId};});
