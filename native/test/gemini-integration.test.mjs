@@ -69,7 +69,7 @@ test('erros da API não revelam a chave na mensagem',async()=>{
  globalThis.fetch=async()=>({ok:false,status:403});
  try{
   await assert.rejects(()=>testAIConnection({apiKey:key,provider:'gemini',model}),(err)=>{
-   assert.match(err.message,/HTTP 403/);
+   assert.equal(describeAIError(err,'gemini').code,'AI_PERMISSION');
    assert.equal(err.message.includes(key),false);
    return true;
   });
