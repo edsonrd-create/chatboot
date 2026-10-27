@@ -118,7 +118,7 @@ session.mode='HUMAN';session.reason='Limite de ferramentas de IA';return 'Para g
 }
 
 export async function testAIConnection({apiKey,model='gpt-4.1-mini',provider='openai'}={}){
- if(!apiKey)throw new Error('Chave da IA ausente');
+ if(!apiKey)throw new Error(provider==='gemini'?'GEMINI_API_KEY ausente':'OPENAI_API_KEY ausente');
 if(provider==='gemini'){const r=await callGemini({contents:[{role:'user',parts:[{text:'Responda apenas: OK'}]}],generationConfig:{maxOutputTokens:256}},apiKey,model);if(!geminiText(r))throw new Error('Resposta vazia do Gemini');return {ok:true,model};}
  const response=await callOpenAI({model,input:[{role:'user',content:'Responda apenas: OK'}],max_output_tokens:32,store:false},apiKey,model);
  if(!extractText(response))throw new Error('Resposta vazia do modelo');
