@@ -207,7 +207,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
       if(p==='/api/ai/test'&&req.method==='POST'){
         if(!aiCfg.apiKey)return json(res,409,{error:'Chave da IA não configurada no servidor'});
         try{const v=await testAIConnection(aiCfg);await store.change(d=>{d.aiTest={ok:true,provider:aiCfg.provider,model:aiCfg.model,at:new Date(clock()).toISOString()};});return json(res,200,v);}
-        catch(e){const fault=describeAIError(e,aiCfg.provider),errorId=crypto.randomUUID().slice(0,12);console.error('[GutoBot AI]',JSON.stringify({errorId,code:fault.code,status:fault.status,operation:'test'}));return json(res,fault.status,{error:fault.error,code:fault.code,errorId,provider:aiCfg.provider});}
+        catch(e){const fault=describeAIError(e,aiCfg.provider),errorId=crypto.randomUUID().replaceAll('-','').slice(0,12);console.error('[GutoBot AI]',JSON.stringify({errorId,code:fault.code,status:fault.status,operation:'test'}));return json(res,fault.status,{error:fault.error,code:fault.code,errorId,provider:aiCfg.provider});}
       }
       if(p==='/api/simulate'&&req.method==='POST'){
         let v;try{v=JSON.parse((await readBody(req,7000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
@@ -218,7 +218,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
           await store.change(async d=>{const session=d.simulation||newSession();reply=await intelligentReply(v.text,session,business,aiCfg);session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
           return json(res,200,{reply,summary,mode,demo:true,provider:aiCfg.provider});
         }catch(e){
-          const fault=describeAIError(e,aiCfg.provider),errorId=crypto.randomUUID().slice(0,12);
+          const fault=describeAIError(e,aiCfg.provider),errorId=crypto.randomUUID().replaceAll('-','').slice(0,12);
           console.error('[GutoBot AI]',JSON.stringify({errorId,code:fault.code,status:fault.status,operation:'simulate'}));
           return json(res,fault.status,{error:fault.error,code:fault.code,errorId,provider:aiCfg.provider});
         }
