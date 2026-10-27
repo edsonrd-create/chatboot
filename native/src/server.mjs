@@ -41,6 +41,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   let timer;
   const business=JSON.parse(fs.readFileSync(path.join(root,'config','business.json'),'utf8'));
   const version=graphVersion(env.META_GRAPH_VERSION);
+const aiCfg=env.GEMINI_API_KEY?{provider:'gemini',apiKey:env.GEMINI_API_KEY,model:env.GEMINI_MODEL||'gemini-2.5-flash'}:{provider:'openai',apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'};
   const configuredChannels=d=>d.channels.map(c=>{const phoneId=c.phoneId||String(env[`META_PHONE_ID_${c.slot}`]||'');return {...c,phoneId};});
   // Conversas fictícias, somente para revisão do layout; nunca números telefônicos reais.
   const sampleMessages=[
@@ -52,7 +53,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
     {id:'demo:2',slot:2,customer:'CLIENTE-FICTICIO-02',customerName:'Exemplo fictício · Bruno',mode:'HUMAN',unread:0,updatedAt:'2026-10-26T18:02:00.000Z',messages:[{id:'demo-b-1',direction:'incoming',text:'Quais são as opções de pizza gigante? É para retirar no balcão.',type:'text',at:'2026-10-26T18:02:00.000Z',delivery:'received',source:'EXEMPLO FICTÍCIO'}]},
   ];
   const previewStatus=()=>({mode:'PREVIA_PUBLICA',ready:false,autoReplyEnabled:false,reason:'Prévia visual somente leitura; nenhum WhatsApp ou PDV conectado',hosting:{freePreview:true,ephemeralData:true,customerMessagingDisabled:true,readOnly:true},channels:[1,2].map(slot=>({slot,phoneId:'',number:'Não conectado',apiVerifiedAt:null,lastInboundAt:null,lastOutboundAt:null,hasToken:false,status:'NOT_VERIFIED'})),ai:{configured:false,model:'',realTest:false,testAt:null},pdv:{enabled:false,baseUrl:'https://pdvgutoexpress.com.br',ordersMode:'DISABLED',lastTest:null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:2,messages:3,pendingOrders:0},oauth:{available:false,appId:null,configId:null}});
-  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d);return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:false,reason:'Liberação integral pendente: prova real de 2 números, PDV e IA',hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(env.OPENAI_API_KEY),model:env.OPENAI_MODEL||'gpt-4.1-mini',realTest:!!d.aiTest?.ok,testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
+  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d);return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:false,reason:'Liberação integral pendente: prova real de 2 números, PDV e IA',hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(aiCfg.apiKey),model:aiCfg.model,provider:aiCfg.provider,realTest:!!d.aiTest?.ok,testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
   function authed(req){const raw=cookieValue(req);const n=raw.lastIndexOf('.');if(n<0)return false;const payload=raw.slice(0,n),mac=raw.slice(n+1);if(!safeCompare(sign(payload,env.APP_SECRET),mac))return false;const parts=payload.split(':');return parts[0]==='admin'&&Number(parts[1])>clock()&&Number(parts[1])<clock()+86400000;}
   function checkLoginRate(req){const ip=req.socket?.remoteAddress||'unknown',now=clock();let old=attempts.get(ip)||{at:now,n:0};if(now-old.at>15*60e3)old={at:now,n:0};old.n++;attempts.set(ip,old);return old.n<=12;}
   function append(t,m){t.messages.push(m);if(t.messages.length>250)t.messages=t.messages.slice(-250);t.updatedAt=m.at;}
@@ -199,15 +200,15 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
         return json(res,200,{ok:true,slot:v.slot,notice:'Autorização concluída; faltam teste real de webhook e envio e validação da elegibilidade do número.'});
       }
       if(p==='/api/ai/test'&&req.method==='POST'){
-        if(!env.OPENAI_API_KEY)return json(res,409,{error:'Chave da IA não configurada no servidor'});
-        try{const v=await testAIConnection({apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});await store.change(d=>{d.aiTest={ok:true,at:new Date(clock()).toISOString()};});return json(res,200,v);}catch(e){return json(res,503,{error:e.message});}
+        if(!aiCfg.apiKey)return json(res,409,{error:'Chave da IA não configurada no servidor'});
+        try{const v=await testAIConnection(aiCfg);await store.change(d=>{d.aiTest={ok:true,at:new Date(clock()).toISOString()};});return json(res,200,v);}catch(e){return json(res,503,{error:e.message});}
       }
       if(p==='/api/simulate'&&req.method==='POST'){
         let v;try{v=JSON.parse((await readBody(req,7000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(typeof v.text!=='string'||!v.text.trim()||v.text.length>2000)return json(res,422,{error:'Mensagem inválida'});
-        if(!env.OPENAI_API_KEY)return json(res,503,{error:'Modelo de IA real indisponível: configure OPENAI_API_KEY no servidor. Não há resposta simulada.'});
+        if(!aiCfg.apiKey)return json(res,503,{error:'Modelo de IA real indisponível: configure OPENAI_API_KEY no servidor. Não há resposta simulada.'});
         let reply,summary,mode;
-        await store.change(async d=>{const session=d.simulation||newSession();reply=await intelligentReply(v.text,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
+        await store.change(async d=>{const session=d.simulation||newSession();reply=await intelligentReply(v.text,session,business,aiCfg);session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
         return json(res,200,{reply,summary,mode,demo:true});
       }
       if(p==='/api/simulate/reset'&&req.method==='POST'){await store.change(d=>{delete d.simulation;});return json(res,200,{ok:true});}
