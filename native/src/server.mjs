@@ -99,7 +99,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
       }catch(e){await store.change(d=>{const entry=d.outbox[o.id];if(!entry)return;entry.attempts++;entry.nextAt=clock()+Math.min(300000,1000*2**entry.attempts);if(entry.attempts>=7 || /abort|timeout|network|fetch failed|HTTP 5\d\d|HTTP 429/i.test(String(e.message||''))){entry.state='failed';entry.delivery='needs_review';const msg=d.threads[entry.threadId]?.messages.find(m=>m.outboxId===o.id);if(msg)msg.delivery='failed';}});}
     }
   }finally{pumping=false;}}
-  const fileRoutes={'/':'index.html','/painel':'index.html','/app.css':'app.css','/app.js':'app.js','/privacidade':'privacidade.html','/privacidade.html':'privacidade.html'};
+  const fileRoutes={'/':'index.html','/painel':'index.html','/app.css':'app.css','/app.js':'app.js','/privacidade':'privacidade.html','/privacidade.html':'privacidade.html','/logo.png':'logo.png','/favicon.png':'favicon.png'};
   async function router(req,res){const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`),p=url.pathname;
     if(p==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'guto-bot-nativo',ready:false,freePreview});
     // A prévia Free atende somente GETs seguros; todos os POSTs/PUTs são bloqueados sem exceção.
@@ -239,7 +239,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
     }
     if(req.method!=='GET')return json(res,405,{error:'Método não permitido'});
     const file=fileRoutes[p];if(!file)return json(res,404,{error:'Arquivo não encontrado'});
-    const mime=file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';
+    const mime=file.endsWith('.png')?'image/png':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';
     const headers={'content-type':mime,'content-security-policy':"default-src 'self'; connect-src 'self' https://graph.facebook.com; script-src 'self' https://connect.facebook.net; style-src 'self'; img-src 'self' data: https://*.fbcdn.net; frame-src https://*.facebook.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"};
     return respond(res,200,fs.readFileSync(path.join(STATIC,file)),headers);
   }
