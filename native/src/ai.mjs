@@ -88,6 +88,7 @@ async function callOpenAI(body,apiKey,model){
 
 const geminiTools=()=>[{functionDeclarations:tools.map(t=>{const clean=JSON.parse(JSON.stringify(t.parameters,(k,val)=>k==='additionalProperties'?undefined:val));return Object.keys(clean.properties||{}).length?{name:t.name,description:t.description,parameters:clean}:{name:t.name,description:t.description};})}];
 async function callGemini(body,apiKey,model){
+if(!/^[a-z][a-z0-9._-]{2,70}$/i.test(String(model||'')))throw new Error('Modelo Gemini inválido. Configure GEMINI_MODEL com um ID oficial.');
 const ac=new AbortController();const timer=setTimeout(()=>ac.abort(),25000);
 try{
 const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',signal:ac.signal,headers:{'x-goog-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify(body)});
@@ -102,7 +103,7 @@ for(let attempt=0;attempt<6;attempt++){
 const r=await callGemini({systemInstruction:{parts:[{text:system}]},contents,tools:geminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:1500}},apiKey,model);
 const parts=r?.candidates?.[0]?.content?.parts||[];
 const calls=parts.filter(p=>p.functionCall);
-if(!calls.length){const reply=geminiText(r);return (reply||'Posso te ajudar a escolher sua pizza?').slice(0,3000);}
+if(!calls.length){const reply=geminiText(r);if(!reply)throw new Error('Gemini não retornou uma resposta de texto válida; verifique permissões, quota ou bloqueios do modelo.');return reply.slice(0,3000);}
 contents.push({role:'model',parts});
 const responses=[];
 for(const p of calls){
@@ -117,9 +118,9 @@ contents.push({role:'user',parts:responses});
 session.mode='HUMAN';session.reason='Limite de ferramentas de IA';return 'Para garantir que seu pedido fique correto, vou encaminhar à nossa equipe. 😊';
 }
 
-export async function testAIConnection({apiKey,model='gpt-4.1-mini',provider='openai'}={}){
+export async function testAIConnection({apiKey,provider='openai',model=provider==='gemini'?'gemini-3.5-flash-lite':'gpt-4.1-mini'}={}){
  if(!apiKey)throw new Error(provider==='gemini'?'GEMINI_API_KEY ausente':'OPENAI_API_KEY ausente');
-if(provider==='gemini'){const r=await callGemini({contents:[{role:'user',parts:[{text:'Responda apenas: OK'}]}],generationConfig:{maxOutputTokens:256}},apiKey,model);if(!geminiText(r))throw new Error('Resposta vazia do Gemini');return {ok:true,model};}
+if(provider==='gemini'){const r=await callGemini({contents:[{role:'user',parts:[{text:'Responda apenas: OK'}]}],generationConfig:{maxOutputTokens:256}},apiKey,model);if(!geminiText(r))throw new Error('Resposta vazia do Gemini');return {ok:true,model,provider:'gemini'};}
  const response=await callOpenAI({model,input:[{role:'user',content:'Responda apenas: OK'}],max_output_tokens:32,store:false},apiKey,model);
  if(!extractText(response))throw new Error('Resposta vazia do modelo');
  return {ok:true,model};
