@@ -8,6 +8,7 @@ import {verifyMetaSignature,parseMetaWebhook,checkMetaPhone,sendMetaText,exchang
 import {newSession,getSummary} from './core.mjs';
 import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
+import {createQrManager} from './wa-qr.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const STATIC=path.join(root,'public');
@@ -45,6 +46,28 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   const aiProvider=String(env.AI_PROVIDER||(env.GEMINI_API_KEY?'gemini':'openai')).trim().toLowerCase();
   if(!['gemini','openai'].includes(aiProvider))throw new Error('AI_PROVIDER deve ser gemini ou openai.');
   const aiCfg=aiProvider==='gemini'
+
+// ===== WhatsApp por QR Code (Baileys, canal NÃO oficial; ative com WA_QR_ENABLED=true) =====
+const qrEnabled=!freePreview&&String(env.WA_QR_ENABLED||'').toLowerCase()==='true';
+const qrAutoReply=String(env.WA_QR_AUTOREPLY||'').toLowerCase()==='true';
+let qr=null;
+async function onQrIncoming(m){
+let reply=null;const tid=`qr${m.slot}:${m.from}`;
+await store.change(async d=>{
+const now=new Date(clock()).toISOString();
+const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
+t.via='qr';t.jid=m.jid;if(m.name)t.customerName=m.name;
+if(t.messages.some(x=>x.id===m.id))return;
+append(t,{id:m.id,direction:'incoming',text:m.text||`[${m.type}: encaminhar ao atendente]`,type:m.type,at:now,delivery:'received',source:'WhatsApp QR'});
+t.unread=(t.unread||0)+1;t.lastInboundAt=now;d.threads[tid]=t;
+if(qrAutoReply&&t.mode==='BOT'&&m.text&&aiCfg.apiKey){
+try{reply=await intelligentReply(m.text,t.session,business,aiCfg);t.session.history.push({role:'user',content:m.text},{role:'assistant',content:reply});t.session.history=t.session.history.slice(-30);if(t.session.mode==='HUMAN')t.mode='HUMAN';}
+catch(e){console.error('[QR IA]',String(e.message||e).slice(0,160));}
+}
+});
+if(reply){try{const r=await qr.send(m.slot,m.jid,reply);await store.change(d=>{const t=d.threads[tid];if(t)append(t,{id:r.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA'});});}catch(e){console.error('[QR envio]',String(e.message||e).slice(0,160));}}
+}
+if(qrEnabled){qr=createQrManager({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,log:x=>console.log(x)});setTimeout(()=>qr.resume(),1500);}
     ?{provider:'gemini',apiKey:env.GEMINI_API_KEY||'',model:env.GEMINI_MODEL||'gemini-3.5-flash-lite'}
     :{provider:'openai',apiKey:env.OPENAI_API_KEY||'',model:env.OPENAI_MODEL||'gpt-4.1-mini'};
   const configuredChannels=d=>d.channels.map(c=>{const phoneId=c.phoneId||String(env[`META_PHONE_ID_${c.slot}`]||'');return {...c,phoneId};});
@@ -148,7 +171,10 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
-      if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
+      if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{enabled:qrEnabled,autoReply:qrAutoReply,slots:qr?[qr.status(1),qr.status(2)]:[]});
+const qrPath=p.match(/^\/api\/qr\/([12])\/(start|logout)$/);
+if(qrPath&&req.method==='POST'){if(!qr)return json(res,409,{error:'Conexão por QR desativada no servidor (WA_QR_ENABLED=true).'});const slot=Number(qrPath[1]);try{return json(res,200,qrPath[2]==='start'?await qr.start(slot):await qr.logout(slot));}catch(e){return json(res,503,{error:'Falha no WhatsApp QR: '+String(e.message||e).slice(0,140)});}}
+if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
       if(p==='/api/conversations'&&req.method==='GET'){
         const d=store.snapshot();const slot=Number(url.searchParams.get('slot')||0);
         const items=Object.values(d.threads).filter(t=>!slot||t.slot===slot).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))).map(userView);
@@ -170,6 +196,8 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
       if(p==='/api/reply'&&req.method==='POST'){
         let v;try{v=JSON.parse((await readBody(req,5000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(typeof v.id!=='string'||typeof v.text!=='string'||v.text.trim().length<1||v.text.length>4000)return json(res,422,{error:'Mensagem inválida'});
+const qt=store.snapshot().threads[v.id];
+if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada'});if(qt.mode!=='HUMAN')return json(res,409,{error:'Assuma a conversa antes de enviar'});try{const r=await qr.send(qt.slot,qt.jid,v.text.trim());await store.change(d=>{const t=d.threads[v.id];if(t)append(t,{id:r.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:v.text.trim(),at:new Date(clock()).toISOString(),delivery:'sent',source:'Atendente'});});return json(res,202,{ok:true,state:'sent'});}catch(e){return json(res,e.status||503,{error:String(e.message||e).slice(0,140)});}}
         const message=await enqueueManual(v.id,v.text.trim());setImmediate(()=>pump());return json(res,202,{ok:true,outboxId:message.id,state:'queued'});
       }
       const verifyPath=p.match(/^\/api\/channels\/([12])\/verify$/);
