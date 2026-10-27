@@ -121,29 +121,22 @@ export function describeAIError(err,provider='gemini'){
  const [httpStatus,message]=allow[code]||allow.AI_INTERNAL;
  return {code:allow[code]?code:'AI_INTERNAL',status:httpStatus,error:message,provider};
 }
+async function callGeminiOnce(body,apiKey,model){
+const ac=new AbortController();const timer=setTimeout(()=>ac.abort(),40000);
+try{
+const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{method:'POST',signal:ac.signal,headers:{'x-goog-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify(body)});
+if(!response.ok)throw Object.assign(new Error(`Falha na API Gemini (HTTP ${response.status})`),{status:response.status});
+return await response.json();
+}finally{clearTimeout(timer);}
+}
+// Reenvio com espera e modelo reserva: 429/500/503/timeout sao temporarios no Gemini.
 async function callGemini(body,apiKey,model){
- if(!/^[a-z][a-z0-9._-]{2,70}$/i.test(String(model||'')))throw aiFault('AI_MODEL_UNAVAILABLE','Modelo Gemini inválido');
- const controller=new AbortController();
- const timer=setTimeout(()=>controller.abort(),25000);
- try{
-  let response;
-  try{
-   response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
-    method:'POST',signal:controller.signal,headers:{'x-goog-api-key':apiKey,'content-type':'application/json'},body:JSON.stringify(body)});
-  }catch{
-   if(controller.signal.aborted)throw aiFault('AI_TIMEOUT','Gemini excedeu o tempo de resposta',504);
-   throw aiFault('AI_NETWORK','Falha de rede na API Gemini',502);
-  }
-  if(!response.ok){
-   const [code,message,httpStatus]=GEMINI_DIAG[response.status]||['AI_UPSTREAM','A API Gemini não concluiu a solicitação.',502];
-   throw aiFault(code,message,httpStatus);
-  }
-  try{
-   const result=await response.json();
-   if(!result||typeof result!=='object')throw new Error('empty');
-   return result;
-  }catch{throw aiFault('AI_INVALID_RESPONSE','Resposta JSON inválida do Gemini');}
- }finally{clearTimeout(timer);}
+const models=[model,model==='gemini-flash-lite-latest'?null:'gemini-flash-lite-latest'].filter(Boolean);
+let last;
+for(const m of models){for(let tryN=0;tryN<2;tryN++){
+try{return await callGeminiOnce(body,apiKey,m);}catch(e){last=e;const temp=e.name==='AbortError'||[429,500,502,503,504].includes(e.status);if(!temp)throw e;await new Promise(r=>setTimeout(r,1500*(tryN+1)));}
+}}
+throw last;
 }
 const geminiText=r=>(r?.candidates?.[0]?.content?.parts||[]).filter(p=>p.text&&!p.thought).map(p=>p.text).join('').trim();
 async function geminiLoop(system,userText,session,business,{apiKey,model}){
