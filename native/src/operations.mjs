@@ -71,7 +71,7 @@ export function audit(d,{actor='admin',action,slot,id,clock=Date.now}){
  if(!validActor(actor))reject(422,'Operador inválido');
  const e={at:stamp(clock),actor,action:String(action||'').slice(0,60),slot:slot||null,
    // Nunca registrar telefone, mensagem, chave ou texto do pedido no log.
-   ref:id?String(id).slice(0,7).replace(/[^a-z0-9:_-]/gi,''):'-'};
+   ref:id?'conversation':'-'};
  if(!Array.isArray(d.auditLog))d.auditLog=[];
  d.auditLog.push(e);
  if(d.auditLog.length>MAX_AUDIT)d.auditLog=d.auditLog.slice(-MAX_AUDIT);
