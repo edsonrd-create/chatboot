@@ -29,6 +29,27 @@ function normalizeBounds(raw, viewport) {
   return {x, y, width, height};
 }
 
+// Validação pura do layout: os conteúdos remotos jamais podem invadir painel, barra ou outra sessão.
+function parseDesktopLayout(value, viewport){
+  if(!value||typeof value!=='object'||!['single','split'].includes(value.mode)||!validSlot(value.active)||!value.panes||typeof value.panes!=='object')return null;
+  const slots=value.mode==='split'?SLOTS:[value.active];
+  const panes={};
+  for(const slot of slots){
+    const raw=value.panes[slot];
+    const rect=normalizeBounds(raw,viewport);
+    if(!rect||!raw)return null;
+    // Recusar limites fora da área renderizada em vez de permitir sobreposição em controles sensíveis.
+    if(Math.abs(rect.x-raw.x)>3||Math.abs(rect.y-raw.y)>3||Math.abs(rect.width-raw.width)>3||Math.abs(rect.height-raw.height)>3)return null;
+    panes[slot]=rect;
+  }
+  if(value.mode==='split'){
+    const a=panes[1],b=panes[2];
+    // Layout lado a lado e com separação visual mínima.
+    if(a.x+a.width+4>b.x||Math.abs(a.y-b.y)>4||Math.abs(a.height-b.height)>4)return null;
+  }
+  return {mode:value.mode,active:value.active,panes};
+}
+
 function safeDraftText(value) {
   if (typeof value !== 'string') throw new TypeError('O resumo deve ser texto');
   const content = value.trim();
@@ -36,4 +57,4 @@ function safeDraftText(value) {
   return content;
 }
 
-module.exports = {WHATSAPP_ORIGIN, SLOTS, PARTITIONS, validSlot, isWhatsAppUrl, normalizeBounds, safeDraftText};
+module.exports = {WHATSAPP_ORIGIN, SLOTS, PARTITIONS, validSlot, isWhatsAppUrl, normalizeBounds, safeDraftText, parseDesktopLayout};
