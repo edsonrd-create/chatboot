@@ -1,0 +1,41 @@
+name: Guto Bot Desktop - Windows portatil (homologacao)
+on:
+  push:
+    branches: [feature/guto-bot-nativo-meta-v2]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/guto-desktop-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package-win:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Instalar dependencias oficiais do Electron
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+      - name: Executar testes automatizados
+        working-directory: desktop
+        run: npm run check
+      - name: Empacotar executavel Windows 64 bits
+        working-directory: desktop
+        run: npx --yes @electron/packager@20.3.0 . GutoBotDesktop --platform=win32 --arch=x64 --out="${{ runner.temp }}/guto-desktop-out" --overwrite --asar
+      - name: Confirmar executavel gerado
+        shell: pwsh
+        run: |
+          $exe = "${{ runner.temp }}/guto-desktop-out/GutoBotDesktop-win32-x64/GutoBotDesktop.exe"
+          if (-not (Test-Path $exe)) { throw "Executavel Windows nao encontrado: $exe" }
+          Write-Host "Executavel de teste gerado com $((Get-Item $exe).Length) bytes. Login WhatsApp ainda precisa ser testado no computador real."
+      - name: Publicar ZIP portatil de homologacao
+        uses: actions/upload-artifact@v4
+        with:
+          name: GutoBotDesktop-Windows-x64-HOMOLOGACAO
+          path: ${{ runner.temp }}/guto-desktop-out/GutoBotDesktop-win32-x64
+          retention-days: 7
+          if-no-files-found: error
