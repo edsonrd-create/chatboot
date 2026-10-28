@@ -36,7 +36,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   if(!freePreview && env.NODE_ENV==='production' && (!/^https:\/\/[^/]+$/.test(appUrl)||!env.DATA_FILE&&!dataFile))throw new Error('Produção exige APP_PUBLIC_URL ou RENDER_EXTERNAL_URL HTTPS e armazenamento persistente.');
   const statePath=dataFile||path.resolve(root,env.DATA_FILE||'data/state.json');
   // Sem leitura de dados locais durante prévia: nenhum cliente real pode ser exposto.
-  const store=freePreview?new JsonStore(statePath):new JsonStore(statePath).init();
+  const store=freePreview?new JsonStore(statePath):new JsonStore(statePath,{databaseUrl:String(env.DATABASE_URL||''),log:x=>console.log(x)}).init();
   const allowedHosts=String(env.PDV_ALLOWED_HOSTS||'pdvgutoexpress.com.br').split(',').map(x=>x.trim()).filter(Boolean);
   const attempts=new Map();
   let pumping=false;
@@ -321,7 +321,7 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
     return respond(res,200,fs.readFileSync(path.join(STATIC,file)),headers);
   }
   const server=http.createServer((req,res)=>router(req,res).catch(e=>{if(!res.headersSent)json(res,e.status||500,{error:e.status?e.message:'Erro interno; consulte logs'});console.error('[Guto Nativo]',String(e.message||'Falha').slice(0,160));}));
-  return {server,store,receive,pump,status,start:(port=Number(env.PORT||8080),host=env.HOST||'127.0.0.1')=>new Promise(resolve=>{server.listen(port,host,()=>{timer=setInterval(pump,2500);timer.unref();resolve(server.address());});}),stop:()=>new Promise(resolve=>{clearInterval(timer);server.close(()=>resolve());})};
+  return {server,store,receive,pump,status,start:(port=Number(env.PORT||8080),host=env.HOST||'127.0.0.1')=>store.ready().then(()=>new Promise(resolve=>{server.listen(port,host,()=>{timer=setInterval(pump,2500);timer.unref();resolve(server.address());});})),stop:()=>new Promise(resolve=>{clearInterval(timer);server.close(()=>resolve());})};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(fs.existsSync(path.join(root,'.env'))&&typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(root,'.env'));
