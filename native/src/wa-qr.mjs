@@ -82,7 +82,15 @@ export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
           const msg = m.message;
           const text = msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || '';
           const type = text ? 'text' : (msg.audioMessage ? 'audio' : msg.imageMessage ? 'image' : 'other');
-          await onIncoming({slot, jid, from: jid.split('@')[0], name: m.pushName || '', id: m.key.id, text, type});
+          let audio = null;
+          if (type === 'audio') {
+            try {
+              const buffer = await baileys.downloadMediaMessage(m, 'buffer', {}, {reuploadRequest: sock.updateMediaMessage});
+              audio = {buffer, mimeType: msg.audioMessage.mimetype || 'audio/ogg', seconds: msg.audioMessage.seconds || 0};
+            } catch (e) { log(`[QR] não baixou o áudio: ${String(e.message || e).slice(0, 100)}`); }
+          }
+          try { await sock.readMessages([m.key]); } catch {}
+          await onIncoming({slot, jid, from: jid.split('@')[0], name: m.pushName || '', id: m.key.id, text, type, audio});
         } catch (e) { log(`[QR] erro ao processar mensagem: ${String(e.message || e).slice(0, 120)}`); }
       }
     });
@@ -95,6 +103,21 @@ export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
     const to = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
     const r = await s.sock.sendMessage(to, {text});
     return {id: r?.key?.id || null};
+  }
+
+  async function sendVoice(slot, jid, ogg) {
+    const s = get(slot);
+    if (!s.sock || s.state !== 'connected') throw Object.assign(new Error('WhatsApp por QR não está conectado'), {status: 409});
+    const to = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
+    const r = await s.sock.sendMessage(to, {audio: ogg, mimetype: 'audio/ogg; codecs=opus', ptt: true});
+    return {id: r?.key?.id || null};
+  }
+
+  // "digitando…" / "gravando áudio…" enquanto a IA prepara a resposta.
+  async function presence(slot, jid, kind) {
+    const s = get(slot);
+    if (!s.sock || s.state !== 'connected') return;
+    try { await s.sock.sendPresenceUpdate(kind, jid); } catch {}
   }
 
   async function logout(slot) {
@@ -119,5 +142,5 @@ export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
     }
   }
 
-  return {start, send, logout, status, resume, isConnected: slot => get(slot).state === 'connected'};
+  return {start, send, sendVoice, presence, logout, status, resume, isConnected: slot => get(slot).state === 'connected'};
 }

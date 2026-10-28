@@ -9,6 +9,7 @@ import {newSession,getSummary} from './core.mjs';
 import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 import {createQrManager} from './wa-qr.mjs';
+import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice} from './voice.mjs';
 import {channelConfig,setChannelConfig,listThreads,transition,threadInfo,operationalOverview,audit,stateOf} from './operations.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -49,22 +50,51 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   // ===== WhatsApp por QR Code (Baileys, canal NÃO oficial; ative com WA_QR_ENABLED=true) =====
 const qrEnabled=!freePreview&&String(env.WA_QR_ENABLED||'').toLowerCase()==='true';
 const qrAutoReply=String(env.WA_QR_AUTOREPLY||'').toLowerCase()==='true';
+// Homologação: se WA_QR_TEST_NUMBERS tiver números (ex.: 5541999990000,5541988887777), a IA só responde a eles.
+const qrTestNumbers=String(env.WA_QR_TEST_NUMBERS||'').split(',').map(x=>x.replace(/\D/g,'')).filter(Boolean);
+const qrVoiceEnabled=String(env.WA_QR_VOICE||'true').toLowerCase()!=='false';
+const qrAllowed=from=>!qrTestNumbers.length||qrTestNumbers.includes(String(from).replace(/\D/g,''));
 let qr=null;
 async function onQrIncoming(m){
-let reply=null;const tid=`qr${m.slot}:${m.from}`;
-await store.change(async d=>{
+const tid=`qr${m.slot}:${m.from}`;
+// 1) Áudio do cliente → texto (fora do lock do armazenamento; pode levar alguns segundos).
+let text=m.text||'',transcribed=false,audioError='';
+if(m.type==='audio'){
+  if(m.audio?.buffer&&aiCfg.provider==='gemini'&&aiCfg.apiKey){
+    try{text=await transcribeAudio({apiKey:aiCfg.apiKey,model:aiCfg.model,fetchImpl},m.audio.buffer,m.audio.mimeType);transcribed=Boolean(text);}
+    catch(e){audioError=String(e.message||e).slice(0,100);console.error('[QR áudio]',audioError);}
+  }else audioError=m.audio?.buffer?'Transcrição exige Gemini configurado':'Áudio não baixado';
+}
+const shown=m.type==='audio'?(transcribed?`🎤 ${text}`:'🎤 [áudio não transcrito — ouvir no celular]'):(text||`[${m.type}: encaminhar ao atendente]`);
+let session=null,canReply=false;
+await store.change(d=>{
 const now=new Date(clock()).toISOString();
-const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
+const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
 t.via='qr';t.jid=m.jid;if(m.name)t.customerName=m.name;
 if(t.messages.some(x=>x.id===m.id))return;
-append(t,{id:m.id,direction:'incoming',text:m.text||`[${m.type}: encaminhar ao atendente]`,type:m.type,at:now,delivery:'received',source:'WhatsApp QR'});
+append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR'});
 t.unread=(t.unread||0)+1;t.lastInboundAt=now;d.threads[tid]=t;
-if(qrAutoReply&&t.mode==='BOT'&&m.text&&aiCfg.apiKey){
-try{reply=await intelligentReply(m.text,t.session,business,aiCfg);t.session.history.push({role:'user',content:m.text},{role:'assistant',content:reply});t.session.history=t.session.history.slice(-30);if(t.session.mode==='HUMAN')t.mode='HUMAN';}
-catch(e){console.error('[QR IA]',String(e.message||e).slice(0,160));}
-}
+canReply=qrAutoReply&&qrAllowed(m.from)&&t.mode==='BOT'&&Boolean(text)&&Boolean(aiCfg.apiKey);
+if(canReply)session=structuredClone(t.session);
 });
-if(reply){try{const r=await qr.send(m.slot,m.jid,reply);await store.change(d=>{const t=d.threads[tid];if(t)append(t,{id:r.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA'});});}catch(e){console.error('[QR envio]',String(e.message||e).slice(0,160));}}
+if(!canReply)return;
+// 2) IA responde (texto é o padrão).
+const voice=qrVoiceEnabled&&aiCfg.provider==='gemini';
+await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
+let reply='';
+try{reply=await intelligentReply(text,session,business,aiCfg);}
+catch(e){console.error('[QR IA]',String(e.message||e).slice(0,160));await qr.presence(m.slot,m.jid,'paused');return;}
+session.history.push({role:'user',content:text},{role:'assistant',content:reply});session.history=session.history.slice(-30);
+// 3) Voz só quando necessário: cliente mandou áudio ou pediu áudio, e a resposta não tem valores/resumo.
+let sent=null,asVoice=false;
+if(voice&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply})){
+  try{const ogg=await synthesizeVoice({apiKey:aiCfg.apiKey,ttsModel:env.GEMINI_TTS_MODEL||'gemini-2.5-flash-preview-tts',voice:env.GEMINI_TTS_VOICE||'Kore',fetchImpl},reply);sent=await qr.sendVoice(m.slot,m.jid,ogg);asVoice=true;}
+  catch(e){console.error('[QR voz] enviando como texto:',String(e.message||e).slice(0,120));}
+}
+try{if(!sent)sent=await qr.send(m.slot,m.jid,reply);}
+catch(e){console.error('[QR envio]',String(e.message||e).slice(0,160));return;}
+finally{await qr.presence(m.slot,m.jid,'paused');}
+await store.change(d=>{const t=d.threads[tid];if(!t)return;t.session=session;if(session.mode==='HUMAN')t.mode='HUMAN';append(t,{id:sent.id||crypto.randomUUID(),direction:'outgoing',type:asVoice?'audio':'text',text:asVoice?`🔊 ${reply}`:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:asVoice?'IA · voz':'IA'});});
 }
 if(qrEnabled){qr=createQrManager({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,log:x=>console.log(x)});setTimeout(()=>qr.resume(),1500);}
 const aiCfg=aiProvider==='gemini'
@@ -180,7 +210,7 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
-      if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{enabled:qrEnabled,autoReply:qrAutoReply,slots:qr?[qr.status(1),qr.status(2)]:[]});
+      if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{enabled:qrEnabled,autoReply:qrAutoReply,voice:qrVoiceEnabled,testNumbersOnly:qrTestNumbers.length>0,slots:qr?[qr.status(1),qr.status(2)]:[]});
 const qrPath=p.match(/^\/api\/qr\/([12])\/(start|logout)$/);
 if(qrPath&&req.method==='POST'){if(!qr)return json(res,409,{error:'Conexão por QR desativada no servidor (WA_QR_ENABLED=true).'});const slot=Number(qrPath[1]);try{return json(res,200,qrPath[2]==='start'?await qr.start(slot):await qr.logout(slot));}catch(e){return json(res,503,{error:'Falha no WhatsApp QR: '+String(e.message||e).slice(0,140)});}}
 if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
