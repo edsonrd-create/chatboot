@@ -129,6 +129,8 @@ const aiCfg=aiProvider==='gemini'
 
     ?{provider:'gemini',apiKey:env.GEMINI_API_KEY||'',model:env.GEMINI_MODEL||'gemini-3.5-flash-lite'}
     :{provider:'openai',apiKey:env.OPENAI_API_KEY||'',model:env.OPENAI_MODEL||'gpt-4.1-mini'};
+  // Fonte única do status efetivo: variável ligada não significa bot pronto para responder.
+  const qrSummary=()=>qrSupportStatus({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),restricted:qrTestNumbers.length>0,slots:qr?[qr.status(1),qr.status(2)]:[]});
   const configuredChannels=d=>d.channels.map(c=>{const phoneId=c.phoneId||String(env[`META_PHONE_ID_${c.slot}`]||'');return {...c,phoneId};});
   // Conversas fictícias, somente para revisão do layout; nunca números telefônicos reais.
   const sampleMessages=[
@@ -140,7 +142,7 @@ const aiCfg=aiProvider==='gemini'
     {id:'demo:2',slot:2,customer:'CLIENTE-FICTICIO-02',customerName:'Exemplo fictício · Bruno',mode:'HUMAN',unread:0,updatedAt:'2026-10-26T18:02:00.000Z',messages:[{id:'demo-b-1',direction:'incoming',text:'Quais são as opções de pizza gigante? É para retirar no balcão.',type:'text',at:'2026-10-26T18:02:00.000Z',delivery:'received',source:'EXEMPLO FICTÍCIO'}]},
   ];
   const previewStatus=()=>({mode:'PREVIA_PUBLICA',ready:false,autoReplyEnabled:false,reason:'Prévia visual somente leitura; nenhum WhatsApp ou PDV conectado',hosting:{freePreview:true,ephemeralData:true,customerMessagingDisabled:true,readOnly:true},channels:[1,2].map(slot=>({slot,phoneId:'',number:'Não conectado',apiVerifiedAt:null,lastInboundAt:null,lastOutboundAt:null,hasToken:false,status:'NOT_VERIFIED'})),ai:{configured:false,model:'',realTest:false,testAt:null},pdv:{enabled:false,baseUrl:'https://pdvgutoexpress.com.br',ordersMode:'DISABLED',lastTest:null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:2,messages:3,pendingOrders:0},oauth:{available:false,appId:null,configId:null}});
-  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d);return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:false,reason:'Liberação integral pendente: prova real de 2 números, PDV e IA',hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(aiCfg.apiKey),model:aiCfg.model,provider:aiCfg.provider,realTest:Boolean(d.aiTest?.ok&&d.aiTest?.provider===aiCfg.provider&&d.aiTest?.model===aiCfg.model),testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
+  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d),qrState=qrSummary();return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:qrState.active,qr:qrState,reason:qrState.active?'Resposta QR configurada e conectada; criação de pedidos no PDV ainda bloqueada':qrState.help,hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(aiCfg.apiKey),model:aiCfg.model,provider:aiCfg.provider,realTest:Boolean(d.aiTest?.ok&&d.aiTest?.provider===aiCfg.provider&&d.aiTest?.model===aiCfg.model),testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
   function authed(req){const raw=cookieValue(req);const n=raw.lastIndexOf('.');if(n<0)return false;const payload=raw.slice(0,n),mac=raw.slice(n+1);if(!safeCompare(sign(payload,env.APP_SECRET),mac))return false;const parts=payload.split(':');return parts[0]==='admin'&&Number(parts[1])>clock()&&Number(parts[1])<clock()+86400000;}
   function checkLoginRate(req){const ip=req.socket?.remoteAddress||'unknown',now=clock();let old=attempts.get(ip)||{at:now,n:0};if(now-old.at>15*60e3)old={at:now,n:0};old.n++;attempts.set(ip,old);return old.n<=12;}
   function append(t,m){t.messages.push(m);if(t.messages.length>250)t.messages=t.messages.slice(-250);t.updatedAt=m.at;}
@@ -238,7 +240,7 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
-      if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{enabled:qrEnabled,autoReply:qrAutoReply,voice:qrVoiceEnabled,testNumbersOnly:qrTestNumbers.length>0,slots:qr?[qr.status(1),qr.status(2)]:[]});
+      if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{...qrSummary(),voice:qrVoiceEnabled});
 const qrPath=p.match(/^\/api\/qr\/([12])\/(start|logout)$/);
 if(qrPath&&req.method==='POST'){if(!qr)return json(res,409,{error:'Conexão por QR desativada no servidor (WA_QR_ENABLED=true).'});const slot=Number(qrPath[1]);try{return json(res,200,qrPath[2]==='start'?await qr.start(slot):await qr.logout(slot));}catch(e){return json(res,503,{error:'Falha no WhatsApp QR: '+String(e.message||e).slice(0,140)});}}
 if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
@@ -294,7 +296,19 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
       if(p==='/api/thread/mode'&&req.method==='POST'){
         let v;try{v=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(!['HUMAN','BOT'].includes(v.mode))return json(res,422,{error:'Modo inválido'});
-        if(v.mode==='BOT'){const t0=store.snapshot().threads[v.id];if(t0?.via!=='qr'||!qrAutoReply)return json(res,409,{error:qrAutoReply?'IA automática disponível só nas conversas do WhatsApp por QR':'Resposta automática desligada no servidor (WA_QR_AUTOREPLY=true)'});await store.change(d=>{const t=d.threads[v.id];if(t){t.mode='BOT';t.session.mode='BOT';t.operationalState=undefined;}});return json(res,200,{ok:true});}
+        if(v.mode==='BOT'){
+          const t0=store.snapshot().threads[v.id];
+          if(!t0)return json(res,404,{error:'Conversa não encontrada'});
+          if(t0.via!=='qr')return json(res,409,{error:'Atendimento automático por QR disponível somente para conversas recebidas por WhatsApp QR.',code:'QR_ONLY'});
+          const check=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(t0.slot),numberAllowed:qrAllowed(t0.customer),threadMode:'BOT',hasText:true});
+          if(!check.ready)return json(res,409,{error:qrBlockerMessage(check.blockers),code:'QR_NOT_READY',blockers:check.blockers});
+          await store.change(d=>{
+            const t=d.threads[v.id];if(!t)return;
+            t.mode='BOT';t.session=t.session||newSession();t.session.mode='BOT';delete t.operationalState;delete t.qrLastBlocker;
+            audit(d,{actor:'admin',action:'QR_BOT_ENABLED_BY_OPERATOR',slot:t.slot,clock});
+          });
+          return json(res,200,{ok:true,mode:'BOT',notice:'IA habilitada nesta conversa QR. Apenas novas mensagens recebidas serão respondidas automaticamente.'});
+        }
         let changed;
         try{await store.change(d=>{changed=transition(d,{id:v.id,action:'takeover',clock,actor:'admin'});});}
         catch(e){return json(res,e.status||422,{error:e.message});}
