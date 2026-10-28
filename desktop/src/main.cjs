@@ -79,11 +79,10 @@ function applyLayout(input){
 function selectChannel(slot){
   if(!validSlot(slot))return {ok:false};
   activeSlot=slot;
-  if(layoutState){
-    const next={mode:layoutState.mode,active:slot,panes:layoutState.panes};
-    return applyLayout(next);
-  }
   ensureView(slot);
+  // O renderer deve informar os novos limites antes de reconfigurar a janela.
+  // Não reutilizar bounds da aba antiga: isso poderia deixar a área vazia.
+  if(window&&!window.isDestroyed())window.webContents.send('guto:request-layout');
   return {ok:true,active:slot};
 }
 function reloadChannel(slot){
