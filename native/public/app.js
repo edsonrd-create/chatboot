@@ -192,6 +192,65 @@ for(const form of document.querySelectorAll('[data-dual-compose]'))form.onsubmit
   }catch(e){notify(e.message,true);}
 };
 
+// Configurações por número são metadados administrativos; não ativam a IA real.
+async function loadChannelConfigs(){
+  const target=$('gemini-channel-settings');
+  const data=await api('/api/operations/channels');
+  target.replaceChildren();
+  for(const cfg of data.items){
+    const slot=cfg.slot,form=x('form','gemini-channel-form');
+    form.append(x('h4','',`WhatsApp 0${slot} — Gemini`));
+    const field=(title,name,value,type='text')=>{
+      const label=x('label','',title),input=x(type==='textarea'?'textarea':'input');
+      input.name=name;if(type!=='textarea')input.type=type;input.value=value||'';
+      if(name==='instructions')input.maxLength=4000;
+      if(name==='personality')input.maxLength=160;
+      label.append(input);form.append(label);
+      if(data.readOnly)input.disabled=true;
+      return input;
+    };
+    field('Modelo Gemini','model',cfg.model);
+    field('Personalidade de atendimento','personality',cfg.personality);
+    field('Instruções e treinamento do canal','instructions',cfg.instructions,'textarea');
+    const hours=x('div','hours-row');
+    const h1=x('label','','Início'),v1=x('input');v1.type='time';v1.name='start';v1.value=cfg.hours.start;
+    const h2=x('label','','Término'),v2=x('input');v2.type='time';v2.name='end';v2.value=cfg.hours.end;
+    h1.append(v1);h2.append(v2);hours.append(h1,h2);form.append(hours);
+    const checkbox=(name,label,checked)=>{
+      const row=x('label','form-check'),input=x('input');input.type='checkbox';input.name=name;input.checked=!!checked;
+      row.append(input,x('span','',label));form.append(row);return input;
+    };
+    checkbox('humanTransfer','Transferir para humano quando necessário',cfg.humanTransfer);
+    checkbox('requestedEnabled','Solicitar ativação futura (não liga a IA)',cfg.requestedEnabled);
+    form.append(x('p','form-help','As regras são independentes por número. A automação continua bloqueada até homologação; não informe chaves aqui.'));
+    const submit=x('button','',`Salvar WhatsApp 0${slot}`);submit.type='submit';submit.disabled=!!data.readOnly;form.append(submit);
+    if(data.readOnly){v1.disabled=true;v2.disabled=true;form.querySelectorAll('input').forEach(el=>el.disabled=true);}
+    form.onsubmit=async event=>{
+      event.preventDefault();
+      const e=form.elements;
+      const body={provider:'gemini',model:e.namedItem('model').value.trim(),personality:e.namedItem('personality').value.trim(),instructions:e.namedItem('instructions').value.trim(),hours:{start:e.namedItem('start').value,end:e.namedItem('end').value},humanTransfer:e.namedItem('humanTransfer').checked,requestedEnabled:e.namedItem('requestedEnabled').checked};
+      try{
+        await api('/api/operations/channels/'+slot,{method:'PUT',body:JSON.stringify(body)});
+        notify('Configuração WhatsApp 0'+slot+' salva. Autoatendimento permanece bloqueado.');
+      }catch(ex){notify(ex.message,true);}
+    };
+    target.append(form);
+  }
+}
+// SSE envia apenas o número de revisão; a atualização real usa o endpoint autenticado.
+function beginLiveUpdates(){
+  if(ss.liveSource||ss.status?.hosting?.readOnly||typeof EventSource!=='function')return;
+  const source=new EventSource('/api/operations/events');ss.liveSource=source;
+  source.addEventListener('open',()=>{$('ops-live-status').textContent='● Atualização ao vivo';$('ops-live-status').classList.add('connected');});
+  source.addEventListener('revision',event=>{
+    let revision;try{revision=JSON.parse(event.data).revision;}catch{return;}
+    if(revision===ss.revision)return;
+    ss.revision=revision;
+    if(ss.screen==='inbox')loadInbox();
+  });
+  source.addEventListener('error',()=>{$('ops-live-status').textContent='Reconectando · sincronização periódica ativa';$('ops-live-status').classList.remove('connected');});
+}
+
 // Modo tela cheia (aberto pelo PDV): /whatsapp mostra só as conversas.
 if(location.pathname.replace(/\/+$/,'')==='/whatsapp')document.body.classList.add('full-wa');
 api('/api/status').then(async r=>{ss.status=r;$('login').hidden=true;$('app').hidden=false;renderStatus();await loadInbox();beginLiveUpdates();}).catch(()=>{$('app').hidden=true;$('login').hidden=false;});
