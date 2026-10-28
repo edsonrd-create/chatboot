@@ -94,7 +94,7 @@ test('Entradas inválidas não podem gravar modelo indevido nem segredos',()=>{
   {hours:{start:'25:00',end:'23:45'}},
   {requestedEnabled:'yes'}
  ])assert.throws(()=>setChannelConfig(d,1,bad),/inválid|autoriza|Gemini|Instruções|Horários|Ativação/);
- assert.equal(d.auditLog,undefined);
+ assert.deepEqual(d.auditLog,[]);
 });
 test('Auditoria não armazena telefone, mensagem, token ou nome do cliente',()=>{
  const d=sample(),id='1:554199990001';
