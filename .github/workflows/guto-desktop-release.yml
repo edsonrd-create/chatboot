@@ -4,6 +4,7 @@ on:
   push:
     branches: [feature/guto-bot-nativo-meta-v2]
     paths:
+      - 'desktop/**'
       - '.github/workflows/guto-desktop-release.yml'
   workflow_dispatch:
 
@@ -49,6 +50,21 @@ jobs:
           $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
           Write-Host "Arquivo para publicacao: $zip; SHA256=$hash"
           "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Executar teste de inicializacao grafica no Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:RUNNER_TEMP 'guto-desktop-out/GutoBotDesktop-win32-x64/GutoBotDesktop.exe'
+          $proc = Start-Process -FilePath $exe -PassThru
+          try {
+            Start-Sleep -Seconds 10
+            $check = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+            if ($null -eq $check) { throw 'O aplicativo encerrou inesperadamente no Windows' }
+            Write-Host 'Smoke test Windows: processo do aplicativo manteve-se em execucao durante 10 segundos.'
+          }
+          finally {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+          }
       - name: Publicar release ALPHA (sem liberar producao)
         shell: pwsh
         env:
@@ -56,16 +72,16 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tag = "desktop-v0.1.0-alpha.${{ github.run_number }}"
+          $tag = "desktop-v0.2.0-alpha.${{ github.run_number }}"
           $zip = Join-Path $env:RUNNER_TEMP 'GutoBotDesktop-Windows-x64-ALPHA.zip'
           $notes = @'
           GUTO EXPRESS - GUTO BOT DESKTOP | PRE-LANCAMENTO PARA TESTE NO WINDOWS
 
-          Aplicativo desktop com janela Electron que tenta carregar o WhatsApp Web REAL.
-          Duas sessoes isoladas, com perfis separados, e painel lateral para RASCUNHO MANUAL do pedido.
+          Aplicativo Windows Electron com WhatsApp Web ORIGINAL (URL viva: web.whatsapp.com).
+          Duas sessoes isoladas com abas ou em modo LADO A LADO; painel lateral para RASCUNHO MANUAL do pedido.
 
           NAO ESTA PRONTO PARA PRODUCAO.
-          - Os logins dos dois WhatsApps Web NAO foram testados em dois telefones reais.
+          - O QR e os logins de dois WhatsApps NAO foram validados com dois telefones reais.
           - O aplicativo NAO le mensagens automaticamente, NAO ativa Gemini e NAO envia pedidos ao PDV.
           - A compatibilidade do WhatsApp Web com Electron depende da plataforma.
           - O executavel NAO esta assinado; o Windows pode exibir aviso SmartScreen.
