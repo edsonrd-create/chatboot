@@ -71,4 +71,6 @@ lastUnread=total;}
 setInterval(()=>{if(!$('app').hidden&&ss.screen==='inbox')loadInbox();},5000);
 document.addEventListener('click',()=>{if('Notification' in window&&Notification.permission==='default')Notification.requestPermission();},{once:true});
 (()=>{const t=$('takeover');const comp=document.querySelector('.compose');if(t&&comp)comp.prepend(t);})();
+// Modo tela cheia (aberto pelo PDV): /whatsapp mostra só as conversas.
+if(location.pathname.replace(/\/+$/,'')==='/whatsapp')document.body.classList.add('full-wa');
 api('/api/status').then(async r=>{ss.status=r;$('login').hidden=true;$('app').hidden=false;renderStatus();await loadInbox();}).catch(()=>{$('app').hidden=true;$('login').hidden=false;});
