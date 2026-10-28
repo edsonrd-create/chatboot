@@ -49,7 +49,7 @@ export function stateOf(thread){
 }
 export function threadInfo(thread){
   return {id:thread.id,slot:thread.slot,customer:thread.customer,customerName:thread.customerName,
-    mode:thread.mode,state:stateOf(thread),version:thread.version||0,
+    mode:thread.mode,via:thread.via||'meta',state:stateOf(thread),version:thread.version||0,qrLastBlocker:thread.qrLastBlocker||null,qrLastErrorAt:thread.qrLastErrorAt||null,
     assignedTo:thread.assignedTo||null,favorite:!!thread.favorite,archived:!!thread.archived,
     updatedAt:thread.updatedAt,unread:thread.unread||0,lastText:thread.messages?.at(-1)?.text||'',
     messageCount:thread.messages?.length||0,orderCount:thread.orders?.length||0};
