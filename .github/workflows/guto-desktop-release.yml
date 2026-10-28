@@ -1,0 +1,86 @@
+name: Guto Bot Desktop - publicar pre-lancamento Windows
+
+on:
+  push:
+    branches: [feature/guto-bot-nativo-meta-v2]
+    paths:
+      - '.github/workflows/guto-desktop-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: guto-desktop-alpha-release
+  cancel-in-progress: false
+
+jobs:
+  release-win:
+    if: github.repository == 'edsonrd-create/chatboot' && github.ref == 'refs/heads/feature/guto-bot-nativo-meta-v2'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exato do codigo publicado
+        uses: actions/checkout@v4
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Instalar Electron
+        working-directory: desktop
+        run: npm install --no-audit --no-fund
+      - name: Verificar codigo e testes
+        working-directory: desktop
+        run: npm run check
+      - name: Compilar aplicativo Windows x64
+        working-directory: desktop
+        run: npx --yes @electron/packager@20.3.0 . GutoBotDesktop --platform=win32 --arch=x64 --out="${{ runner.temp }}/guto-desktop-out" --overwrite --asar
+      - name: Verificar executavel e gerar ZIP
+        id: package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folder = Join-Path $env:RUNNER_TEMP 'guto-desktop-out/GutoBotDesktop-win32-x64'
+          $exe = Join-Path $folder 'GutoBotDesktop.exe'
+          if (-not (Test-Path $exe)) { throw 'Executavel GutoBotDesktop.exe nao foi gerado' }
+          $zip = Join-Path $env:RUNNER_TEMP 'GutoBotDesktop-Windows-x64-ALPHA.zip'
+          Compress-Archive -Path (Join-Path $folder '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+          if (-not (Test-Path $zip) -or (Get-Item $zip).Length -lt 1000000) { throw 'Arquivo ZIP invalido' }
+          $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Arquivo para publicacao: $zip; SHA256=$hash"
+          "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Publicar release ALPHA (sem liberar producao)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "desktop-v0.1.0-alpha.${{ github.run_number }}"
+          $zip = Join-Path $env:RUNNER_TEMP 'GutoBotDesktop-Windows-x64-ALPHA.zip'
+          $notes = @'
+          GUTO EXPRESS - GUTO BOT DESKTOP | PRE-LANCAMENTO PARA TESTE NO WINDOWS
+
+          Aplicativo desktop com janela Electron que tenta carregar o WhatsApp Web REAL.
+          Duas sessoes isoladas, com perfis separados, e painel lateral para RASCUNHO MANUAL do pedido.
+
+          NAO ESTA PRONTO PARA PRODUCAO.
+          - Os logins dos dois WhatsApps Web NAO foram testados em dois telefones reais.
+          - O aplicativo NAO le mensagens automaticamente, NAO ativa Gemini e NAO envia pedidos ao PDV.
+          - A compatibilidade do WhatsApp Web com Electron depende da plataforma.
+          - O executavel NAO esta assinado; o Windows pode exibir aviso SmartScreen.
+
+          INSTALACAO: baixe o ZIP, extraia a pasta inteira e execute GutoBotDesktop.exe.
+          Nao mova apenas o .exe. Confira com cuidado a procedencia e o repositorio.
+
+          Versao de homologacao. Nao insira credenciais de API ou chaves no aplicativo.
+          '@
+          gh release create $tag $zip --prerelease --title 'Guto Bot Desktop Windows - Alpha para testes' --notes $notes --target "$env:GITHUB_SHA"
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release nao foi publicado' }
+          gh release view $tag --json url,assets --jq '{url: .url, assets: [.assets[].name]}'
+      - name: Resumo do release
+        shell: pwsh
+        run: |
+          "### Windows Alpha publicada" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "Baixe em https://github.com/edsonrd-create/chatboot/releases (aba pre-releases)." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "SHA256 do arquivo: ${{ steps.package.outputs.sha256 }}" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
