@@ -9,7 +9,7 @@ A solicitação foi refinada: o usuário não quer uma reprodução do WhatsApp 
 - Aplicativo Electron Windows com interface administrativa local.
 - `WebContentsView` exibe o **WhatsApp Web oficial como uma página top-level real**, não um `iframe`, um screenshot, uma imitação da interface ou uma implementação com Chatwoot. Esta escolha segue a documentação atual do Electron, que recomenda WebContentsView para compor web conteúdos separados.
 - Dois perfis persistentes isolados: `persist:guto-express-whatsapp-01` e `persist:guto-express-whatsapp-02`. A autenticação/QR é apresentada pelo **próprio WhatsApp Web**, conforme aceitação e suporte da plataforma.
-- Barra superior seleciona WhatsApp 01 ou 02, com sessão e cookies independentes. **Não equivale a integração oficial dos dois números Meta Cloud API.**
+- Barra superior seleciona WhatsApp 01 ou 02, com sessão e cookies independentes; o botão **2 números lado a lado** pode mostrar ambas as páginas oficiais simultaneamente. **Isso não equivale à integração dos dois números pela API oficial da Meta Cloud.**
 - Painel lateral com rascunho manual de pizza, cliente e observações por canal, visível **durante a conversa**. Rascunho é copiado com um clique para revisão; não envia nem cria pedido no PDV.
 - Bloqueios de segurança: `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, `webSecurity: true`, restrição de navegação a `https://web.whatsapp.com`, permissão de mídia e janelas externas negada, IPC apenas da interface local. Não intercepta nem faz scraping de DOM, QR, mensagens ou credenciais do WhatsApp.
 
@@ -23,9 +23,24 @@ npm test
 npm start
 ```
 
-Será aberta uma janela Windows com o WhatsApp Web verdadeiro na área central. Clique em **WhatsApp 01**, depois **WhatsApp 02**. Faça o login pelo procedimento apresentado pelo próprio WhatsApp, **somente se o programa for autorizado e compatível**. O status “Página carregada” não garante login nem conexão real. As sessões são preservadas no perfil local do aplicativo do Windows.
+Será aberta uma janela Windows com o WhatsApp Web verdadeiro na área central. Clique em **WhatsApp 01**, depois **WhatsApp 02**, ou use **2 números lado a lado** para vê-los simultaneamente. Em cada sessão, faça o login pelo QR Code fornecido pelo próprio WhatsApp Web, **somente se a plataforma permitir o acesso**. O status “Página carregada” não garante login nem conexão real. As sessões são preservadas no perfil local do aplicativo do Windows.
 
-O software **não é instalador `.exe`**; é o código-fonte para homologação. Para gerar um instalador assinado, será preciso homologar a execução Windows primeiro.
+A distribuição Windows portátil é compilada no GitHub Actions e publicada em **GitHub Releases** como pré-lançamento não assinado. Baixe o ZIP completo, extraia-o e execute `GutoBotDesktop.exe`. A assinatura digital e o teste de autenticação dos dois números em computadores reais ainda estão pendentes.
+
+## Referência de interface fornecida
+
+O arquivo `WhatsApp(1).html` recebido foi confirmado como uma **cópia do bootstrap de https://web.whatsapp.com**, com centenas de scripts externos e dados gerados dinamicamente. Ele não é um aplicativo autônomo funcional e **não foi incluído no repositório**. Em vez disso, a janela Windows usa `WebContentsView` e carrega o endereço vivo, em duas sessões separadas — cada uma com sua interface oficial, contatos, conversas e QR (quando permitido).
+
+A arquitetura pode apresentar o site oficial, mas o WhatsApp pode bloquear clientes não compatíveis. O teste real de pareamento precisa ser feito no Windows e a situação deve ser reportada conforme os resultados observados, não por inspeção dos arquivos HTML.
+
+## Requisitos de atualização Windows
+
+- Preferencialmente Windows 10/11 x64 e conexão estável.
+- Abrir a versão portátil completa, não apenas o executável.
+- Selecionar WhatsApp 01 e 02 e parear **cada um com seu telefone** se o QR for oferecido.
+- Usar a visão individual para trabalhar com mais espaço; alternar para **2 números lado a lado** e verificar o isolamento.
+- O botão **▥** recolhe o painel manual de rascunho durante a conversa.
+- O teste deve registrar se ambos os números mantêm autenticação após fechar e reabrir, se as mensagens entram e se o áudio/anexos funcionam. Nenhuma dessas verificações foi feita com números reais aqui.
 
 ## O que foi testado e o que está pendente
 
