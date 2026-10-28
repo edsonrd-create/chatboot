@@ -13,7 +13,7 @@ function renderConversations(){const area=$('conversation-list');area.replaceChi
   if(!filtered.length){area.append(x('div','empty-mini','Nenhuma conversa disponível neste filtro.'));return;}
   for(const t of filtered){const b=x('button','conversation'+(ss.selected===t.id?' active':''));b.type='button';const av=x('div','avatar',(t.customerName||'C')[0].toUpperCase());const body=x('div','info');body.append(x('b','',t.customerName||t.customer),x('span','',t.lastText||'Sem mensagens'));const aside=x('div','stamp',timestamp(t.updatedAt));if(t.unread)aside.append(x('div','unread',t.unread));b.append(av,body,aside);b.addEventListener('click',()=>selectThread(t.id));area.append(b);}
 }
-async function loadInbox(){try{const data=await api('/api/conversations');ss.conversations=data.items;renderConversations();if(ss.selected && data.items.some(t=>t.id===ss.selected))await selectThread(ss.selected,false);}catch(e){notify(e.message,true);}}
+async function loadInbox(){try{const data=await api('/api/conversations');ss.conversations=data.items;renderConversations();updateBadges();if(ss.selected && data.items.some(t=>t.id===ss.selected))await selectThread(ss.selected,false);}catch(e){notify(e.message,true);}}
 async function selectThread(id,mark=true){ss.selected=id;renderConversations();try{const data=await api('/api/thread?id='+encodeURIComponent(id));const t=data.thread;const h=$('chat-header');h.replaceChildren();h.append(x('div','avatar',(t.customerName||'C')[0].toUpperCase()));const inf=x('div');inf.append(x('h2','',t.customerName||t.customer),x('p','',`WhatsApp ${t.slot} · ${t.customer} · ${t.mode==='HUMAN'?'Atendimento humano':'Automação'}`));h.append(inf);
   const area=$('messages');area.replaceChildren();for(const m of data.messages){const bubble=x('div','message '+(m.direction==='incoming'?'incoming':'outgoing'),m.text);bubble.append(x('small','',[timestamp(m.at),deliveryLabel(m.delivery||m.source)].filter(Boolean).join(' · ')));area.append(bubble);}area.scrollTop=area.scrollHeight;
   $('selected-customer').textContent=t.customerName||t.customer;const readOnly=Boolean(ss.status?.hosting?.readOnly);$('selected-mode').textContent=readOnly?'Exemplo fictício · nenhuma mensagem será enviada':t.mode==='HUMAN'?'Modo humano · respostas enviadas pelo painel':'Automação não liberada em produção';$('takeover').disabled=readOnly;$('takeover').hidden=readOnly;
@@ -60,4 +60,15 @@ else box.append(x('div','qr-empty',st.state==='connected'?'✓ WhatsApp conectad
 qrTimer=setTimeout(loadQr,2500);}
 for(const b of document.querySelectorAll('[data-qr-start]'))b.onclick=async()=>{try{await api('/api/qr/'+b.dataset.qrStart+'/start',{method:'POST',body:'{}'});notify('Gerando QR Code… aponte a câmera do celular.');loadQr();}catch(e){notify(e.message,true);}};
 for(const b of document.querySelectorAll('[data-qr-logout]'))b.onclick=async()=>{if(!confirm('Desconectar este WhatsApp do Guto Bot?'))return;try{await api('/api/qr/'+b.dataset.qrLogout+'/logout',{method:'POST',body:'{}'});notify('WhatsApp desconectado.');loadQr();}catch(e){notify(e.message,true);}};
+// ===== Notificações estilo WhatsApp (som, título da aba, contador por número) =====
+let lastUnread=null;
+function beep(){try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator(),g=a.createGain();o.type='sine';o.frequency.value=880;g.gain.setValueAtTime(.0001,a.currentTime);g.gain.exponentialRampToValueAtTime(.25,a.currentTime+.02);g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+.35);o.connect(g).connect(a.destination);o.start();o.stop(a.currentTime+.4);}catch{}}
+function updateBadges(){const per={1:0,2:0};let total=0;for(const t of ss.conversations){per[t.slot]=(per[t.slot]||0)+(t.unread||0);total+=t.unread||0;}
+for(const b of document.querySelectorAll('[data-channel]')){const n=b.dataset.channel==='0'?total:(per[b.dataset.channel]||0);const base=b.dataset.label||(b.dataset.label=b.textContent);b.textContent=n?base+' ('+n+')':base;}
+document.title=(total?'('+total+') ':'')+'Guto Bot • Central';
+if(lastUnread!==null&&total>lastUnread){beep();const t=ss.conversations.find(c=>c.unread);if('Notification' in window&&Notification.permission==='granted'&&document.hidden){try{new Notification('Nova mensagem'+(t?' de '+(t.customerName||t.customer):''),{body:t?(t.lastText||''):'',icon:'logo.png'});}catch{}}}
+lastUnread=total;}
+setInterval(()=>{if(!$('app').hidden&&ss.screen==='inbox')loadInbox();},5000);
+document.addEventListener('click',()=>{if('Notification' in window&&Notification.permission==='default')Notification.requestPermission();},{once:true});
+(()=>{const t=$('takeover');const comp=document.querySelector('.compose');if(t&&comp)comp.prepend(t);})();
 api('/api/status').then(async r=>{ss.status=r;$('login').hidden=true;$('app').hidden=false;renderStatus();await loadInbox();}).catch(()=>{$('app').hidden=true;$('login').hidden=false;});
