@@ -31,7 +31,7 @@ test('painel: resposta humana usa somente o canal correto e evento status atuali
 });
 test('regras: nenhum BOT ativo, pedido PDV desativado e simulação sem chave não mente',async t=>{const {request,login}=await fixture(t);const cookie=await login();const hdr={cookie,'content-type':'application/json'};
  const status=await (await request('/api/status',{headers:{cookie}})).json();assert.equal(status.ready,false);assert.equal(status.integration.chatwoot,false);assert.equal(status.autoReplyEnabled,false);
- assert.equal((await request('/api/thread/mode',{method:'POST',headers:hdr,body:JSON.stringify({id:'any',mode:'BOT'})})).status,409);
+ assert.equal((await request('/api/thread/mode',{method:'POST',headers:hdr,body:JSON.stringify({id:'any',mode:'BOT'})})).status,404);
  assert.equal((await request('/api/simulate',{method:'POST',headers:hdr,body:JSON.stringify({text:'Me vê uma grande'})})).status,503);
  const settings=await request('/api/settings',{headers:{cookie}});assert.equal((await settings.json()).pdv.ordersMode,'DISABLED');
 });
