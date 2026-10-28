@@ -238,3 +238,6 @@ body.full-wa #screen-inbox .inbox-layout{height:100vh;min-height:100vh;border-ra
 @media(max-width:1500px){#screen-inbox .dual-work{grid-template-columns:minmax(118px,30%) minmax(0,1fr)}}
 @media(max-width:1180px){#screen-inbox .dual-view{height:auto;min-height:600px;grid-template-columns:minmax(0,1fr)}#screen-inbox .dual-channel{min-height:490px}#screen-inbox .dual-work{grid-template-columns:minmax(170px,30%) minmax(0,1fr)}}
 @media(max-width:750px){#screen-inbox .operations-filter{flex-wrap:wrap}#screen-inbox .dual-view{gap:8px}#screen-inbox .dual-work{grid-template-columns:minmax(110px,35%) minmax(0,1fr)}.gemini-channel-settings{grid-template-columns:1fr}}
+
+/* Nunca esconder o aviso de prévia pública no layout tipo WhatsApp Web. */
+#free-preview-banner:not([hidden]){display:block!important;background:#fff3d8;border:1px solid #f2ca73;color:#73501c;font-weight:700}
