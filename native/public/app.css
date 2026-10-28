@@ -112,3 +112,52 @@ body{background:var(--bg);color:var(--txt)}
 .qr-card .actions .primary{flex:1}
 #qr-auto{margin-top:16px}
 @media(max-width:800px){.qr-grid{grid-template-columns:1fr}}
+
+/* ===== Conversas no estilo WhatsApp Web ===== */
+#screen-inbox{padding:14px 18px}
+#screen-inbox .inbox-layout{background:#fff;border:0;border-radius:10px;box-shadow:0 6px 24px #0007;height:calc(100vh - 190px);min-height:540px;color:#111b21}
+#screen-inbox .conversations{background:#fff;border-right:1px solid #e9edef}
+#screen-inbox .panel-head{padding:16px 16px 8px}
+#screen-inbox .panel-head h2{color:#111b21;font-size:21px;font-weight:700}
+#screen-inbox .panel-head p{color:#667781}
+#screen-inbox .small-btn{background:transparent;color:#54656f;font-size:18px}
+#screen-inbox .search-wrap{order:-1;margin:4px 12px 10px;background:#f0f2f5;border:0;border-radius:8px;color:#54656f}
+#screen-inbox .search-wrap input{color:#111b21;height:36px;font-size:14px}
+#screen-inbox .channels-filter{padding:0 12px 10px;gap:8px}
+#screen-inbox .chip{background:#f0f2f5;border:0;color:#54656f;font-size:14px;padding:6px 12px}
+#screen-inbox .chip.active{background:#d9fdd3;color:#008069;font-weight:600}
+#screen-inbox .conversation{padding:10px 14px;border-bottom:1px solid #f0f2f5;gap:13px;color:#111b21}
+#screen-inbox .conversation:hover{background:#f5f6f6}
+#screen-inbox .conversation.active{background:#f0f2f5}
+#screen-inbox .conversation .info b{font-size:16px;font-weight:500;color:#111b21}
+#screen-inbox .conversation .info span{font-size:14px;color:#667781}
+#screen-inbox .conversation .stamp{font-size:12px;color:#667781;text-align:right}
+#screen-inbox .avatar{width:49px;height:49px;font-size:18px;background:#dfe5e7;color:#fff;background:linear-gradient(135deg,#25d366,#128c7e)}
+#screen-inbox .unread{background:#25d366;color:#fff;font-weight:700;margin-top:6px;display:inline-block;min-width:20px;text-align:center}
+#screen-inbox .empty-mini{color:#667781}
+#screen-inbox .chat{background:#efeae2}
+#screen-inbox .chat-head{background:#f0f2f5;border-bottom:1px solid #e9edef;padding:10px 16px}
+#screen-inbox .chat-head h2{color:#111b21;font-size:16px;font-weight:500}
+#screen-inbox .chat-head p{color:#667781;font-size:13px}
+#screen-inbox .chat-head .avatar{width:40px;height:40px}
+#screen-inbox .messages{padding:20px 7%;gap:4px;background-color:#efeae2;background-image:radial-gradient(#d6cfc4 1px,transparent 1.2px),radial-gradient(#e3dcd1 1px,transparent 1.2px);background-size:26px 26px,26px 26px;background-position:0 0,13px 13px}
+#screen-inbox .message{max-width:65%;border-radius:7.5px;padding:6px 9px 8px;font-size:14.2px;line-height:19px;color:#111b21;box-shadow:0 1px .5px #0b141a21;margin-bottom:4px}
+#screen-inbox .message.incoming{background:#fff;border-top-left-radius:0}
+#screen-inbox .message.outgoing{background:#d9fdd3;color:#111b21;border-top-right-radius:0}
+#screen-inbox .message small{font-size:11px;color:#667781;margin-top:2px}
+#screen-inbox .chat-welcome{background:#ffffffd9;border-radius:12px;padding:24px;color:#54656f;box-shadow:0 1px 3px #0001}
+#screen-inbox .chat-welcome h2{color:#41525d}
+#screen-inbox .chat-welcome-icon{background:#d9fdd3;color:#008069}
+#screen-inbox .compose{background:#f0f2f5;border-top:0;padding:8px 16px}
+#screen-inbox .reply-lock{color:#8696a0;font-size:12px}
+#screen-inbox .reply-form textarea{background:#fff;border:0;border-radius:8px;font-size:15px;color:#111b21;padding:10px 12px}
+#screen-inbox .send{background:transparent;color:#54656f;font-size:24px}
+#screen-inbox .send:not(:disabled){color:#00a884}
+#screen-inbox .context{background:#fff;border-left:1px solid #e9edef}
+#screen-inbox .context-title{color:#111b21}
+#screen-inbox .context-card{background:#f7f8fa;border:1px solid #e9edef}
+#screen-inbox .context-card strong{color:#111b21}
+#screen-inbox .context-card small,#screen-inbox .context-card p,#screen-inbox .context-foot{color:#667781}
+#screen-inbox .context .secondary{background:#00a884;border:0;color:#fff}
+#screen-inbox .pill.off{background:#f0f2f5;color:#54656f}
+#screen-inbox .pill.on{background:#d9fdd3;color:#008069}
