@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('gutoDesktop',Object.freeze({
   onStatus: callback=>{
     if(typeof callback==='function')ipcRenderer.on('guto:status',(_event,value)=>callback(value));
   },
+  onUnread: callback=>{
+    if(typeof callback==='function')ipcRenderer.on('guto:unread',(_event,value)=>callback(value));
+  },
   onLayoutRequest: callback=>{
     if(typeof callback==='function')ipcRenderer.on('guto:request-layout',()=>callback());
   }

@@ -2,7 +2,7 @@
 // Auto Atendimento Express Desktop: WhatsApp Web REAL carregado diretamente no Electron.
 // NÃO intercepta conversas, NÃO automatiza o site e NÃO envia pedidos para o PDV.
 const path = require('node:path');
-const {app, BrowserWindow, WebContentsView, ipcMain, session, clipboard} = require('electron');
+const {app, BrowserWindow, WebContentsView, ipcMain, session, clipboard, shell} = require('electron');
 const {WHATSAPP_ORIGIN, SLOTS, PARTITIONS, validSlot, isWhatsAppUrl, normalizeBounds, safeDraftText, parseDesktopLayout} = require('./policy.cjs');
 
 let window = null;
@@ -13,6 +13,42 @@ let layoutState = null;
 
 if (process.platform === 'win32') app.setAppUserModelId('br.com.gutoexpress.autoatendimento');
 
+// Uma única instância: duas cópias abertas disputariam os mesmos perfis do WhatsApp e corromperiam a sessão.
+if (!app.requestSingleInstanceLock()) app.quit();
+app.on('second-instance', () => { if (window && !window.isDestroyed()) { if (window.isMinimized()) window.restore(); window.focus(); } });
+
+// O WhatsApp Web recusa navegadores que não se identificam como Chrome ("atualize o navegador").
+// Usamos o agente do Chromium embutido no próprio Electron, sem o sufixo "Electron/x".
+const CHROME_UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${String(process.versions.chrome || '140').split('.')[0]}.0.0.0 Safari/537.36`;
+app.userAgentFallback = CHROME_UA;
+
+// Somente o WhatsApp Web oficial pode pedir: notificações de mensagem, microfone (áudio) e copiar texto.
+const ALLOWED_PERMISSIONS = new Set(['notifications', 'media', 'clipboard-sanitized-write', 'fullscreen']);
+function permissionAllowed(permission, origin, details) {
+  if (!ALLOWED_PERMISSIONS.has(permission) || !isWhatsAppUrl(String(origin || ''))) return false;
+  if (permission === 'media') {
+    const types = (details && details.mediaTypes) || [];
+    return types.every(t => t === 'audio'); // áudio sim; câmera continua bloqueada
+  }
+  return true;
+}
+const unread = new Map();
+function updateUnread(slot, title) {
+  const m = /^\((\d+)\)/.exec(String(title || ''));
+  const count = m ? Number(m[1]) : 0;
+  const before = unread.get(slot) || 0;
+  unread.set(slot, count);
+  const total = [...unread.values()].reduce((a, b) => a + b, 0);
+  if (window && !window.isDestroyed()) {
+    window.setTitle((total ? `(${total}) ` : '') + 'Auto Atendimento Express | WhatsApp Web oficial');
+    window.webContents.send('guto:unread', { slot, count });
+    if (count > before && !window.isFocused()) window.flashFrame(true);
+  }
+}
+function openExternalSafe(target) {
+  try { const u = new URL(target); if (u.protocol === 'https:' || u.protocol === 'http:') shell.openExternal(u.toString()); } catch {}
+}
+
 function state(slot, status, detail=''){
   if(!validSlot(slot)) return;
   viewStatus.set(slot,{slot,status,detail});
@@ -22,8 +58,10 @@ function createWhatsAppView(slot){
   if(!validSlot(slot))throw new TypeError('Canal inválido');
   const profile = session.fromPartition(PARTITIONS[slot]);
   // Por padrão, não liberar mídia ou permissões sensíveis para páginas remotas.
-  profile.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
-  profile.setPermissionCheckHandler(()=>false);
+  profile.setUserAgent(CHROME_UA);
+  profile.setPermissionRequestHandler((wc,permission,callback,details)=>callback(permissionAllowed(permission,(details&&details.requestingUrl)||wc.getURL(),details)));
+  profile.setPermissionCheckHandler((_wc,permission,origin,details)=>permissionAllowed(permission,origin,details));
+  try{profile.setSpellCheckerLanguages(['pt-BR']);}catch{}
   const view = new WebContentsView({webPreferences:{
     partition:PARTITIONS[slot],
     sandbox:true,
@@ -34,10 +72,13 @@ function createWhatsAppView(slot){
     spellcheck:true
   }});
   const wc=view.webContents;
-  wc.setWindowOpenHandler(()=>({action:'deny'}));
+  wc.setUserAgent(CHROME_UA);
+  // Links recebidos nas conversas abrem no navegador padrão, nunca dentro do app.
+  wc.setWindowOpenHandler(({url})=>{openExternalSafe(url);return {action:'deny'};});
   wc.on('will-navigate',(event,target)=>{
-    if(!isWhatsAppUrl(target)){event.preventDefault();state(slot,'Navegação externa bloqueada');}
+    if(!isWhatsAppUrl(target)){event.preventDefault();openExternalSafe(target);}
   });
+  wc.on('page-title-updated',(_event,title)=>updateUnread(slot,title));
   wc.on('will-redirect',(event,target)=>{
     if(!isWhatsAppUrl(target)){event.preventDefault();state(slot,'Redirecionamento não autorizado bloqueado');}
   });
@@ -104,6 +145,7 @@ function createWindow(){
   });
   window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   window.webContents.on('will-navigate',event=>event.preventDefault());
+  window.on('focus',()=>window.flashFrame(false));
   window.on('resize',()=>{if(layoutState)window.webContents.send('guto:request-layout');});
   window.on('maximize',()=>window.webContents.send('guto:request-layout'));
   window.on('unmaximize',()=>window.webContents.send('guto:request-layout'));
@@ -111,7 +153,7 @@ function createWindow(){
     for(const view of views.values()){
       try{if(!view.webContents.isDestroyed())view.webContents.close();}catch{}
     }
-    views.clear();viewStatus.clear();layoutState=null;window=null;
+    views.clear();viewStatus.clear();unread.clear();layoutState=null;window=null;
   });
   window.webContents.once('did-finish-load',()=>{
     ensureView(1);
