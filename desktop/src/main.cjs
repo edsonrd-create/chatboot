@@ -121,7 +121,7 @@ function createWindow(){
   window.loadFile(path.join(__dirname,'..','renderer','host.html'));
 }
 app.whenReady().then(()=>{
-  const allowed=event=>Boolean(window&&!window.isDestroyed()&&event.sender===window.webContents);
+  const allowed=event=>Boolean(window&&!window.isDestroyed()&&event.sender === window.webContents);
   ipcMain.on('guto:layout',(event,request)=>{if(allowed(event))applyLayout(request);});
   ipcMain.handle('guto:switch',(event,slot)=>{
     if(!allowed(event))return {ok:false};
