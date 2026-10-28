@@ -1,0 +1,16 @@
+{
+  "name": "guto-bot-whatsapp-desktop",
+  "productName": "Guto Express - WhatsApp Desktop",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "description": "Janela própria com duas sessões isoladas do WhatsApp Web real e rascunho manual de pedidos",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check renderer/host.js && npm test"
+  },
+  "devDependencies": {
+    "electron": "45.1.0"
+  }
+}
