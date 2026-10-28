@@ -9,6 +9,7 @@ import {newSession,getSummary} from './core.mjs';
 import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 import {createQrManager} from './wa-qr.mjs';
+import {envFlag,qrPreflight,qrSupportStatus,qrBlockerMessage} from './qr-automation.mjs';
 import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice} from './voice.mjs';
 import {channelConfig,setChannelConfig,listThreads,transition,threadInfo,operationalOverview,audit,stateOf} from './operations.mjs';
 
@@ -27,11 +28,11 @@ const publicChannel=c=>({slot:c.slot,phoneId:c.phoneId,number:c.display,apiVerif
 const serializeMessage=m=>({id:m.id,direction:m.direction,text:m.text,type:m.type,at:m.at,delivery:m.delivery||'',source:m.source||''});
 const getToken=(c,env)=>c.tokenEncrypted?revealToken(c.tokenEncrypted,env.APP_SECRET):String(env[`META_TOKEN_${c.slot}`]||'');
 
-export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now()}={}){
+export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now(),qrManagerFactory=createQrManager,respondWithAI=intelligentReply}={}){
   // Homologação pode iniciar sem credenciais Meta; webhooks ficam desligados até configurá-las.
   // Não gerar ou simular segredos Meta, números conectados nem mensagens reais.
   // Em FREE_PREVIEW_MODE, liberar apenas prévia anônima e IMUTÁVEL; nunca credenciais reais.
-  const freePreview=String(env.FREE_PREVIEW_MODE||'').toLowerCase()==='true';
+  const freePreview=envFlag(env.FREE_PREVIEW_MODE);
   if(!freePreview && (!env.ADMIN_PASSWORD||env.ADMIN_PASSWORD.length<12||!env.APP_SECRET||env.APP_SECRET.length<32)){throw new Error('ADMIN_PASSWORD (12+) e APP_SECRET (32+) são exigidos.');}
   const appUrl=String(env.APP_PUBLIC_URL||env.RENDER_EXTERNAL_URL||'');
   if(!freePreview && env.NODE_ENV==='production' && (!/^https:\/\/[^/]+$/.test(appUrl)||!env.DATA_FILE&&!dataFile))throw new Error('Produção exige APP_PUBLIC_URL ou RENDER_EXTERNAL_URL HTTPS e armazenamento persistente.');
@@ -48,11 +49,11 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   const aiProvider=String(env.AI_PROVIDER||(env.GEMINI_API_KEY?'gemini':'openai')).trim().toLowerCase();
   if(!['gemini','openai'].includes(aiProvider))throw new Error('AI_PROVIDER deve ser gemini ou openai.');
   // ===== WhatsApp por QR Code (Baileys, canal NÃO oficial; ative com WA_QR_ENABLED=true) =====
-const qrEnabled=!freePreview&&String(env.WA_QR_ENABLED||'').toLowerCase()==='true';
-const qrAutoReply=String(env.WA_QR_AUTOREPLY||'').toLowerCase()==='true';
+const qrEnabled=!freePreview&&envFlag(env.WA_QR_ENABLED);
+const qrAutoReply=envFlag(env.WA_QR_AUTOREPLY);
 // Homologação: se WA_QR_TEST_NUMBERS tiver números (ex.: 5541999990000,5541988887777), a IA só responde a eles.
 const qrTestNumbers=String(env.WA_QR_TEST_NUMBERS||'').split(',').map(x=>x.replace(/\D/g,'')).filter(Boolean);
-const qrVoiceEnabled=String(env.WA_QR_VOICE||'true').toLowerCase()!=='false';
+const qrVoiceEnabled=!envFlag(env.WA_QR_VOICE===undefined?'true':env.WA_QR_VOICE)?false:true;
 const qrAllowed=from=>!qrTestNumbers.length||qrTestNumbers.includes(String(from).replace(/\D/g,''));
 let qr=null;
 async function onQrIncoming(m){
@@ -87,7 +88,11 @@ t.via='qr';t.jid=m.jid;if(m.name)t.customerName=m.name;
 if(t.messages.some(x=>x.id===m.id))return;
 append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR'});
 t.unread=(t.unread||0)+1;t.lastInboundAt=now;if(t.operationalState==='CLOSED'||t.operationalState==='FAILED')delete t.operationalState;t.archived=false;d.threads[tid]=t;
-canReply=qrAutoReply&&qrAllowed(m.from)&&t.mode==='BOT'&&Boolean(text)&&Boolean(aiCfg.apiKey);
+// Um thread em modo humano não vira BOT sozinho quando a variável é modificada.
+const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)});
+canReply=assessment.ready;
+if(assessment.blockers.length && t.mode==='BOT')t.qrLastBlocker=assessment.blockers[0];
+else delete t.qrLastBlocker;
 if(canReply)session=structuredClone(t.session);
 });
 if(!canReply)return;
@@ -95,8 +100,14 @@ if(!canReply)return;
 const voice=qrVoiceEnabled&&aiCfg.provider==='gemini';
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
-try{reply=await intelligentReply(text,session,business,aiCfg);}
-catch(e){console.error('[QR IA]',String(e.message||e).slice(0,160));await qr.presence(m.slot,m.jid,'paused');return;}
+try{reply=await respondWithAI(text,session,business,aiCfg);}
+catch(e){
+  const fault=describeAIError(e,aiCfg.provider);
+  console.error('[QR IA]',JSON.stringify({code:fault.code,slot:m.slot}));
+  await store.change(d=>{const t=d.threads[tid];if(t){t.qrLastBlocker=fault.code;t.qrLastErrorAt=new Date(clock()).toISOString();}});
+  await qr.presence(m.slot,m.jid,'paused');
+  return;
+}
 session.history.push({role:'user',content:text},{role:'assistant',content:reply});session.history=session.history.slice(-30);
 // 3) Voz só quando necessário: cliente mandou áudio ou pediu áudio, e a resposta não tem valores/resumo.
 let sent=null,asVoice=false;
@@ -105,11 +116,15 @@ if(voice&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply})){
   catch(e){console.error('[QR voz] enviando como texto:',String(e.message||e).slice(0,120));}
 }
 try{if(!sent)sent=await qr.send(m.slot,m.jid,reply);}
-catch(e){console.error('[QR envio]',String(e.message||e).slice(0,160));return;}
-finally{await qr.presence(m.slot,m.jid,'paused');}
-await store.change(d=>{const t=d.threads[tid];if(!t)return;t.session=session;if(session.mode==='HUMAN')t.mode='HUMAN';append(t,{id:sent.id||crypto.randomUUID(),direction:'outgoing',type:asVoice?'audio':'text',text:asVoice?`🔊 ${reply}`:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:asVoice?'IA · voz':'IA'});});
+catch(e){
+  console.error('[QR envio]',JSON.stringify({slot:m.slot,code:'QR_SEND_FAILED'}));
+  await store.change(d=>{const t=d.threads[tid];if(t){t.qrLastBlocker='QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}});
+  return;
 }
-if(qrEnabled){qr=createQrManager({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,log:x=>console.log(x)});setTimeout(()=>qr.resume(),1500);}
+finally{await qr.presence(m.slot,m.jid,'paused');}
+await store.change(d=>{const t=d.threads[tid];if(!t)return;t.session=session;delete t.qrLastBlocker;delete t.qrLastErrorAt;if(session.mode==='HUMAN')t.mode='HUMAN';append(t,{id:sent.id||crypto.randomUUID(),direction:'outgoing',type:asVoice?'audio':'text',text:asVoice?`🔊 ${reply}`:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:asVoice?'IA · voz':'IA'});});
+}
+if(qrEnabled){qr=qrManagerFactory({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,log:x=>console.log(x)});setTimeout(()=>qr.resume?.(),1500);}
 const aiCfg=aiProvider==='gemini'
 
     ?{provider:'gemini',apiKey:env.GEMINI_API_KEY||'',model:env.GEMINI_MODEL||'gemini-3.5-flash-lite'}
