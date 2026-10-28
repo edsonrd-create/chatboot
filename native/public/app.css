@@ -175,3 +175,9 @@ body{background:var(--bg);color:var(--txt)}
 #screen-inbox .chip{white-space:nowrap}
 #screen-inbox .channels-filter{overflow-x:auto}
 @media(max-width:700px){#screen-inbox .inbox-layout{height:auto}}
+
+/* ===== Tela cheia /whatsapp (atalho do PDV) ===== */
+body.full-wa .sidebar,body.full-wa .topbar,body.full-wa .notices,body.full-wa footer{display:none!important}
+body.full-wa .main{min-height:100vh}
+body.full-wa #screen-inbox{padding:0}
+body.full-wa #screen-inbox .inbox-layout{height:100vh;min-height:100vh;border-radius:0;box-shadow:none}
