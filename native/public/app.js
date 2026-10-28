@@ -74,6 +74,124 @@ lastUnread=total;}
 setInterval(()=>{if(!$('app').hidden&&ss.screen==='inbox')loadInbox();},12000);
 document.addEventListener('click',()=>{if('Notification' in window&&Notification.permission==='default')Notification.requestPermission();},{once:true});
 (()=>{const t=$('takeover');const comp=document.querySelector('.compose');if(t&&comp)comp.prepend(t);})();
+// ===== Central simultânea dos dois números (somente API interna autenticada) =====
+function matchesOperationsFilter(t){
+  const f=ss.opsFilter;
+  if(f==='archived')return !!t.archived;
+  if(t.archived)return false;
+  if(f==='unread')return (t.unread||0)>0;
+  if(f==='favorites')return !!t.favorite;
+  if(f==='waiting')return t.state==='WAITING';
+  if(f==='human')return (t.state||t.mode)==='HUMAN';
+  if(f==='closed')return t.state==='CLOSED';
+  if(f==='failed')return t.state==='FAILED';
+  return true;
+}
+function operationChoices(t){
+  const actions=[];
+  if(t.state==='CLOSED')actions.push(['reopen','Reabrir']);
+  else {
+    if((t.state||'HUMAN')!=='HUMAN')actions.push(['takeover','Assumir']);
+    actions.push(['wait','Aguardar'],['close','Finalizar']);
+  }
+  actions.push([t.favorite?'unfavorite':'favorite',t.favorite?'★ Favorito':'☆ Favorito']);
+  actions.push([t.archived?'unarchive':'archive',t.archived?'Desarquivar':'Arquivar']);
+  return actions;
+}
+async function applyOperation(thread,action){
+  if(ss.status?.hosting?.readOnly){notify('Prévia visual: nenhuma alteração permitida.',true);return;}
+  try{
+    await api('/api/operations/thread/action',{method:'POST',body:JSON.stringify({id:thread.id,action,expectedVersion:thread.version||0})});
+    await loadInbox();
+    notify('Atendimento atualizado e registrado na auditoria.');
+  }catch(e){notify(e.message,true);await loadInbox();}
+}
+function syncSplitMode(){
+  $('screen-inbox').classList.toggle('dual-mode',ss.splitMode);
+  $('dual-view').hidden=!ss.splitMode;
+  $('split-toggle').setAttribute('aria-pressed',String(ss.splitMode));
+  if(ss.splitMode)renderDualView();
+}
+$('split-toggle').onclick=()=>{
+  ss.splitMode=!ss.splitMode;
+  if(ss.splitMode){ss.slot=0;for(const b of document.querySelectorAll('[data-channel]'))b.classList.toggle('active',b.dataset.channel==='0');}
+  syncSplitMode();
+};
+$('ops-filter').onchange=event=>{
+  ss.opsFilter=event.target.value;
+  renderConversations();
+  if(ss.splitMode)renderDualView();
+};
+async function renderDualView(){
+  if(!ss.splitMode||ss.screen!=='inbox')return;
+  const q=$('search').value.trim().toLowerCase();
+  for(const slot of [1,2]){
+    const items=ss.conversations.filter(t=>t.slot===slot&&matchesOperationsFilter(t)&&(!q||[t.customer,t.customerName,t.lastText].join(' ').toLowerCase().includes(q)));
+    const list=$('dual-list-'+slot);list.replaceChildren();
+    for(const t of items){
+      const b=x('button','dual-contact'+(ss.splitSelected[slot]===t.id?' active':''));b.type='button';
+      b.append(x('b','',t.customerName||t.customer),x('small','',t.lastText||'Sem mensagens'));
+      if(t.unread)b.append(x('span','dual-unread-dot',String(t.unread)+' nova(s)'));
+      b.onclick=()=>selectDualThread(slot,t.id);
+      list.append(b);
+    }
+    if(!items.length)list.append(x('div','empty-mini','Sem conversas neste canal.'));
+    const unread=ss.conversations.filter(t=>t.slot===slot).reduce((n,t)=>n+(t.unread||0),0);
+    $('dual-unread-'+slot).textContent=unread?unread+' nova(s)':'Sem novas';
+    const c=ss.status?.channels?.find(c=>c.slot===slot);
+    $('dual-status-'+slot).textContent=c?.apiVerifiedAt?(c.number||'API verificada'):'Canal não conectado';
+    const selected=items.find(t=>t.id===ss.splitSelected[slot])?.id||items[0]?.id;
+    if(selected)await selectDualThread(slot,selected,false);
+    else{
+      ss.splitSelected[slot]=null;ss.splitThreads[slot]=null;
+      $('dual-person-'+slot).textContent='Nenhuma conversa';
+      $('dual-messages-'+slot).replaceChildren();$('dual-actions-'+slot).replaceChildren();
+      document.querySelector('[data-dual-input="'+slot+'"]').disabled=true;
+      document.querySelector('[data-dual-send="'+slot+'"]').disabled=true;
+    }
+  }
+}
+async function selectDualThread(slot,id,mark=false){
+  if(!id)return;
+  try{
+    const data=await api('/api/thread?id='+encodeURIComponent(id)),t=data.thread;
+    if(t.slot!==slot)throw new Error('Esta conversa pertence a outro WhatsApp.');
+    ss.splitSelected[slot]=id;ss.splitThreads[slot]=t;
+    const head=$('dual-person-'+slot);head.replaceChildren();
+    head.append(x('span','',t.customerName||t.customer),x('small','',`WhatsApp 0${slot} · ${t.state||t.mode} · ${t.customer}`));
+    const area=$('dual-messages-'+slot);area.replaceChildren();
+    for(const m of data.messages){
+      const bubble=x('div','dual-bubble '+(m.direction==='incoming'?'incoming':'outgoing'),m.text||'[Mídia não disponível]');
+      bubble.append(x('small','',timestamp(m.at)+' · '+deliveryLabel(m.delivery||m.source)));area.append(bubble);
+    }
+    area.scrollTop=area.scrollHeight;
+    const buttons=$('dual-actions-'+slot);buttons.replaceChildren();
+    for(const [action,label] of operationChoices(t)){
+      const b=x('button','',label);b.type='button';b.disabled=Boolean(ss.status?.hosting?.readOnly);
+      b.onclick=()=>applyOperation(t,action);buttons.append(b);
+    }
+    const enabled=!ss.status?.hosting?.readOnly&&t.mode==='HUMAN'&&(!t.state||t.state==='HUMAN');
+    document.querySelector('[data-dual-input="'+slot+'"]').disabled=!enabled;
+    document.querySelector('[data-dual-send="'+slot+'"]').disabled=!enabled;
+    if(mark&&t.unread&&!ss.status?.hosting?.readOnly){
+      await api('/api/thread/read',{method:'POST',body:JSON.stringify({id})});
+      const local=ss.conversations.find(r=>r.id===id);if(local)local.unread=0;
+      renderConversations();
+    }
+  }catch(e){notify(e.message,true);}
+}
+for(const form of document.querySelectorAll('[data-dual-compose]'))form.onsubmit=async event=>{
+  event.preventDefault();
+  const slot=Number(form.dataset.dualCompose),t=ss.splitThreads[slot],input=form.querySelector('input');
+  const text=input.value.trim();
+  if(!text||!t)return;
+  try{
+    await api('/api/reply',{method:'POST',body:JSON.stringify({id:t.id,text})});
+    input.value='';await selectDualThread(slot,t.id,false);
+    notify('Resposta encaminhada à fila do WhatsApp 0'+slot+'.');
+  }catch(e){notify(e.message,true);}
+};
+
 // Modo tela cheia (aberto pelo PDV): /whatsapp mostra só as conversas.
 if(location.pathname.replace(/\/+$/,'')==='/whatsapp')document.body.classList.add('full-wa');
 api('/api/status').then(async r=>{ss.status=r;$('login').hidden=true;$('app').hidden=false;renderStatus();await loadInbox();beginLiveUpdates();}).catch(()=>{$('app').hidden=true;$('login').hidden=false;});
