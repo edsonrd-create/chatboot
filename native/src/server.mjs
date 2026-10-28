@@ -212,11 +212,11 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
       }
       if(p==='/api/operations/events'&&req.method==='GET'){
         res.writeHead(200,{'content-type':'text/event-stream; charset=utf-8','cache-control':'no-cache, no-transform','connection':'keep-alive','x-content-type-options':'nosniff','x-accel-buffering':'no'});
-        const emitRevision=revision=>{if(!res.destroyed)res.write('event: revision\\ndata: '+JSON.stringify({revision})+'\\n\\n');};
-        res.write('retry: 5000\\n\\n');
+        const emitRevision=revision=>{if(!res.destroyed)res.write('event: revision\ndata: '+JSON.stringify({revision})+'\n\n');};
+        res.write('retry: 5000\n\n');
         emitRevision(store.snapshot().revision||0);
         const unsubscribe=store.subscribe(emitRevision);
-        const heartbeat=setInterval(()=>{if(!res.destroyed)res.write(': heartbeat\\n\\n');},20000);
+        const heartbeat=setInterval(()=>{if(!res.destroyed)res.write(': heartbeat\n\n');},20000);
         heartbeat.unref?.();
         req.once('close',()=>{unsubscribe();clearInterval(heartbeat);});
         return;
