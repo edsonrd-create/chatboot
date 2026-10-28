@@ -106,6 +106,17 @@ bridge.statusAll().then(data=>{
   }
   $('connection-status').textContent=state.statuses[state.active];
 }).catch(()=>{});
+// Contador de mensagens não lidas em cada aba (lido do título da página oficial, sem acessar conversas).
+if(typeof bridge.onUnread==='function')bridge.onUnread(value=>{
+  if(!value||![1,2].includes(value.slot))return;
+  const count=Math.max(0,Math.min(999,Number(value.count)||0));
+  const tab=document.querySelector('.tab[data-slot="'+value.slot+'"]');
+  if(!tab)return;
+  let badge=tab.querySelector('.unread-badge');
+  if(!badge){badge=document.createElement('span');badge.className='unread-badge';tab.append(badge);}
+  badge.textContent=String(count);
+  badge.hidden=count===0;
+});
 $('reload').addEventListener('click',()=>bridge.reload(state.active));
 $('order-toggle').addEventListener('click',()=>{
   $('orders-panel').classList.toggle('collapsed');
