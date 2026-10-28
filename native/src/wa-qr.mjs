@@ -39,6 +39,7 @@ export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
       browser: Browsers ? Browsers.ubuntu('Guto Bot') : ['Guto Bot', 'Chrome', '1.0'],
       markOnlineOnConnect: false,
       syncFullHistory: false,
+      shouldSyncHistoryMessage: () => true,
       ...(agent ? {agent, fetchAgent: agent} : {})
     });
     s.sock = sock;
@@ -72,27 +73,32 @@ export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
         }
       }
     });
-    sock.ev.on('messages.upsert', async ({messages, type}) => {
-      if (type !== 'notify') return;
-      for (const m of messages) {
+    const handle = async (m, {history = false} = {}) => {
+      const parsed = parseWaMessage(m);
+      if (!parsed) return;
+      let audio = null;
+      if (!history && !parsed.fromMe && parsed.type === 'audio') {
         try {
-          if (!m.message || m.key.fromMe) continue;
-          const jid = m.key.remoteJid || '';
-          if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) continue; // ignora grupos/status
-          const msg = m.message;
-          const text = msg.conversation || msg.extendedTextMessage?.text || msg.imageMessage?.caption || '';
-          const type = text ? 'text' : (msg.audioMessage ? 'audio' : msg.imageMessage ? 'image' : 'other');
-          let audio = null;
-          if (type === 'audio') {
-            try {
-              const buffer = await baileys.downloadMediaMessage(m, 'buffer', {}, {reuploadRequest: sock.updateMediaMessage});
-              audio = {buffer, mimeType: msg.audioMessage.mimetype || 'audio/ogg', seconds: msg.audioMessage.seconds || 0};
-            } catch (e) { log(`[QR] não baixou o áudio: ${String(e.message || e).slice(0, 100)}`); }
-          }
-          try { await sock.readMessages([m.key]); } catch {}
-          await onIncoming({slot, jid, from: jid.split('@')[0], name: m.pushName || '', id: m.key.id, text, type, audio});
-        } catch (e) { log(`[QR] erro ao processar mensagem: ${String(e.message || e).slice(0, 120)}`); }
+          const buffer = await baileys.downloadMediaMessage(m, 'buffer', {}, {reuploadRequest: sock.updateMediaMessage});
+          audio = {buffer, mimeType: parsed.mimeType || 'audio/ogg'};
+        } catch (e) { log(`[QR] não baixou o áudio: ${String(e.message || e).slice(0, 100)}`); }
       }
+      await onIncoming({slot, ...parsed, audio, history});
+    };
+    sock.ev.on('messages.upsert', async ({messages, type}) => {
+      if (type !== 'notify' && type !== 'append') return;
+      for (const m of messages) {
+        try { await handle(m, {history: type === 'append'}); }
+        catch (e) { log(`[QR] erro ao processar mensagem: ${String(e.message || e).slice(0, 120)}`); }
+      }
+    });
+    // Histórico enviado pelo celular ao conectar (como o WhatsApp Web carrega as conversas recentes).
+    sock.ev.on('messaging-history.set', async ({messages = []}) => {
+      const cutoff = Date.now() / 1000 - 30 * 24 * 3600;
+      const recent = messages.filter(m => Number(m.messageTimestamp || 0) >= cutoff).slice(-3000);
+      let n = 0;
+      for (const m of recent) { try { await handle(m, {history: true}); n++; } catch {} }
+      if (n) log(`[QR] WhatsApp ${slot}: ${n} mensagens do histórico importadas`);
     });
     return status(slot);
   }
@@ -143,4 +149,34 @@ export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
   }
 
   return {start, send, sendVoice, presence, logout, status, resume, isConnected: slot => get(slot).state === 'connected'};
+}
+
+// Converte a mensagem do WhatsApp (Baileys) para o formato da central. null = ignorar (grupo, status, reação, sistema).
+const unwrap = msg => {
+  let x = msg;
+  for (let i = 0; i < 5 && x; i++) {
+    const inner = x.ephemeralMessage?.message || x.viewOnceMessage?.message || x.viewOnceMessageV2?.message || x.viewOnceMessageV2Extension?.message || x.documentWithCaptionMessage?.message || x.editedMessage?.message;
+    if (!inner) break;
+    x = inner;
+  }
+  return x || {};
+};
+export function parseWaMessage(m) {
+  if (!m?.message || !m.key) return null;
+  const jid = m.key.remoteJid || '';
+  if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) return null; // grupos, status, canais
+  const msg = unwrap(m.message);
+  if (msg.protocolMessage || msg.reactionMessage || msg.senderKeyDistributionMessage && Object.keys(msg).length === 1 || msg.pollUpdateMessage) return null;
+  let type = 'text', text = msg.conversation || msg.extendedTextMessage?.text || '', mimeType = '';
+  if (msg.imageMessage) { type = 'image'; text = msg.imageMessage.caption ? `📷 ${msg.imageMessage.caption}` : '📷 Foto'; }
+  else if (msg.videoMessage) { type = 'video'; text = msg.videoMessage.caption ? `🎥 ${msg.videoMessage.caption}` : '🎥 Vídeo'; }
+  else if (msg.audioMessage) { type = 'audio'; text = ''; mimeType = msg.audioMessage.mimetype || 'audio/ogg'; }
+  else if (msg.stickerMessage) { type = 'sticker'; text = '🏷️ Figurinha'; }
+  else if (msg.documentMessage) { type = 'document'; text = `📄 ${msg.documentMessage.fileName || 'Documento'}`; }
+  else if (msg.locationMessage || msg.liveLocationMessage) { const l = msg.locationMessage || msg.liveLocationMessage; type = 'location'; text = `📍 Localização: https://maps.google.com/?q=${l.degreesLatitude},${l.degreesLongitude}`; }
+  else if (msg.contactMessage || msg.contactsArrayMessage) { type = 'contact'; text = `👤 Contato: ${msg.contactMessage?.displayName || 'contatos'}`; }
+  else if (msg.buttonsResponseMessage || msg.listResponseMessage || msg.templateButtonReplyMessage) { text = msg.buttonsResponseMessage?.selectedDisplayText || msg.listResponseMessage?.title || msg.templateButtonReplyMessage?.selectedDisplayText || ''; }
+  if (!text && type === 'text') return null;
+  const ts = Number(m.messageTimestamp?.low ?? m.messageTimestamp ?? 0);
+  return {jid, from: jid.split('@')[0], name: m.key.fromMe ? '' : (m.pushName || ''), id: m.key.id, fromMe: Boolean(m.key.fromMe), text, type, mimeType, at: ts ? new Date(ts * 1000).toISOString() : null};
 }

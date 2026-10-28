@@ -57,6 +57,19 @@ const qrAllowed=from=>!qrTestNumbers.length||qrTestNumbers.includes(String(from)
 let qr=null;
 async function onQrIncoming(m){
 const tid=`qr${m.slot}:${m.from}`;
+// Mensagens enviadas pelo próprio celular, eco das enviadas pela central e histórico: só registrar, sem IA.
+if(m.fromMe||m.history){
+  await store.change(d=>{
+    const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
+    t.via='qr';t.jid=m.jid;if(m.name&&!m.fromMe)t.customerName=m.name;
+    if(t.messages.some(x=>x.id===m.id))return;
+    const at=m.at||new Date(clock()).toISOString();
+    append(t,{id:m.id,direction:m.fromMe?'outgoing':'incoming',text:m.type==='audio'?'🎤 Áudio':m.text,type:m.type,at,delivery:m.fromMe?'sent':'received',source:m.fromMe?'Celular':'WhatsApp QR'});
+    t.messages.sort((a,b)=>String(a.at).localeCompare(String(b.at)));t.updatedAt=t.messages.at(-1).at;
+    d.threads[tid]=t;
+  });
+  return;
+}
 // 1) Áudio do cliente → texto (fora do lock do armazenamento; pode levar alguns segundos).
 let text=m.text||'',transcribed=false,audioError='';
 if(m.type==='audio'){
@@ -73,7 +86,7 @@ const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,c
 t.via='qr';t.jid=m.jid;if(m.name)t.customerName=m.name;
 if(t.messages.some(x=>x.id===m.id))return;
 append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR'});
-t.unread=(t.unread||0)+1;t.lastInboundAt=now;d.threads[tid]=t;
+t.unread=(t.unread||0)+1;t.lastInboundAt=now;if(t.operationalState==='CLOSED'||t.operationalState==='FAILED')delete t.operationalState;t.archived=false;d.threads[tid]=t;
 canReply=qrAutoReply&&qrAllowed(m.from)&&t.mode==='BOT'&&Boolean(text)&&Boolean(aiCfg.apiKey);
 if(canReply)session=structuredClone(t.session);
 });
@@ -155,7 +168,7 @@ const aiCfg=aiProvider==='gemini'
       }catch(e){await store.change(d=>{const entry=d.outbox[o.id];if(!entry)return;entry.attempts++;entry.nextAt=clock()+Math.min(300000,1000*2**entry.attempts);if(entry.attempts>=7 || /abort|timeout|network|fetch failed|HTTP 5\d\d|HTTP 429/i.test(String(e.message||''))){entry.state='failed';entry.delivery='needs_review';const msg=d.threads[entry.threadId]?.messages.find(m=>m.outboxId===o.id);if(msg)msg.delivery='failed';}});}
     }
   }finally{pumping=false;}}
-  const fileRoutes={'/':'index.html','/painel':'index.html','/whatsapp':'index.html','/app.css':'app.css','/app.js':'app.js','/privacidade':'privacidade.html','/privacidade.html':'privacidade.html','/logo.png':'logo.png','/favicon.png':'favicon.png'};
+  const fileRoutes={'/':'index.html','/painel':'index.html','/whatsapp':'wa.html','/wa.css':'wa.css','/wa.js':'wa.js','/app.css':'app.css','/app.js':'app.js','/privacidade':'privacidade.html','/privacidade.html':'privacidade.html','/logo.png':'logo.png','/favicon.png':'favicon.png'};
   async function router(req,res){const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`),p=url.pathname;
     if(p==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'guto-bot-nativo',ready:false,freePreview});
     // A prévia Free atende somente GETs seguros; todos os POSTs/PUTs são bloqueados sem exceção.
@@ -266,7 +279,7 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
       if(p==='/api/thread/mode'&&req.method==='POST'){
         let v;try{v=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(!['HUMAN','BOT'].includes(v.mode))return json(res,422,{error:'Modo inválido'});
-        if(v.mode==='BOT')return json(res,409,{error:'IA bloqueada até homologação integral de dois números e PDV'});
+        if(v.mode==='BOT'){const t0=store.snapshot().threads[v.id];if(t0?.via!=='qr'||!qrAutoReply)return json(res,409,{error:qrAutoReply?'IA automática disponível só nas conversas do WhatsApp por QR':'Resposta automática desligada no servidor (WA_QR_AUTOREPLY=true)'});await store.change(d=>{const t=d.threads[v.id];if(t){t.mode='BOT';t.session.mode='BOT';t.operationalState=undefined;}});return json(res,200,{ok:true});}
         let changed;
         try{await store.change(d=>{changed=transition(d,{id:v.id,action:'takeover',clock,actor:'admin'});});}
         catch(e){return json(res,e.status||422,{error:e.message});}
@@ -276,7 +289,7 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         let v;try{v=JSON.parse((await readBody(req,5000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(typeof v.id!=='string'||typeof v.text!=='string'||v.text.trim().length<1||v.text.length>4000)return json(res,422,{error:'Mensagem inválida'});
 const qt=store.snapshot().threads[v.id];
-if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada'});if(qt.mode!=='HUMAN')return json(res,409,{error:'Assuma a conversa antes de enviar'});try{const r=await qr.send(qt.slot,qt.jid,v.text.trim());await store.change(d=>{const t=d.threads[v.id];if(t)append(t,{id:r.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:v.text.trim(),at:new Date(clock()).toISOString(),delivery:'sent',source:'Atendente'});});return json(res,202,{ok:true,state:'sent'});}catch(e){return json(res,e.status||503,{error:String(e.message||e).slice(0,140)});}}
+if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada'});try{const r=await qr.send(qt.slot,qt.jid,v.text.trim());await store.change(d=>{const t=d.threads[v.id];if(t){t.mode='HUMAN';t.session.mode='HUMAN';}if(t)append(t,{id:r.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:v.text.trim(),at:new Date(clock()).toISOString(),delivery:'sent',source:'Atendente'});});return json(res,202,{ok:true,state:'sent'});}catch(e){return json(res,e.status||503,{error:String(e.message||e).slice(0,140)});}}
         const message=await enqueueManual(v.id,v.text.trim());setImmediate(()=>pump());return json(res,202,{ok:true,outboxId:message.id,state:'queued'});
       }
       const verifyPath=p.match(/^\/api\/channels\/([12])\/verify$/);
