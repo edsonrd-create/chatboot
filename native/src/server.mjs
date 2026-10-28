@@ -9,6 +9,7 @@ import {newSession,getSummary} from './core.mjs';
 import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 import {createQrManager} from './wa-qr.mjs';
+import {channelConfig,setChannelConfig,listThreads,transition,threadInfo,operationalOverview,audit,stateOf} from './operations.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const STATIC=path.join(root,'public');
@@ -20,7 +21,7 @@ const respond=(res,status,body,extra={})=>{res.writeHead(status,{'cache-control'
 const json=(res,status,data,extra={})=>respond(res,status,JSON.stringify(data),{'content-type':'application/json; charset=utf-8',...extra});
 async function readBody(req,limit=128000){let n=0;const chunks=[];for await(const piece of req){n+=piece.length;if(n>limit)throw Object.assign(new Error('Payload excede limite'),{status:413});chunks.push(piece);}return Buffer.concat(chunks);}
 const short=x=>String(x||'').slice(0,3000);
-const userView=t=>({id:t.id,slot:t.slot,customer:t.customer,customerName:t.customerName,mode:t.mode,updatedAt:t.updatedAt,unread:t.unread||0,lastText:t.messages?.at(-1)?.text||'',messageCount:t.messages?.length||0,orderCount:t.orders?.length||0});
+const userView=threadInfo;
 const publicChannel=c=>({slot:c.slot,phoneId:c.phoneId,number:c.display,apiVerifiedAt:c.checkedAt,lastInboundAt:c.lastInboundAt,lastOutboundAt:c.lastOutboundAt,hasToken:Boolean(c.tokenEncrypted),status:c.checkedAt?'API_VERIFIED_NOT_END_TO_END':'NOT_VERIFIED'});
 const serializeMessage=m=>({id:m.id,direction:m.direction,text:m.text,type:m.type,at:m.at,delivery:m.delivery||'',source:m.source||''});
 const getToken=(c,env)=>c.tokenEncrypted?revealToken(c.tokenEncrypted,env.APP_SECRET):String(env[`META_TOKEN_${c.slot}`]||'');
@@ -93,7 +94,9 @@ const aiCfg=aiProvider==='gemini'
         const tid=`${c.slot}:${evt.from}`,t=d.threads[tid]||{id:tid,slot:c.slot,customer:evt.from,customerName:evt.customerName||evt.from,mode:'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
         if(evt.customerName)t.customerName=evt.customerName;
         append(t,{id:evt.id,direction:'incoming',text:evt.text||`[${evt.type}: encaminhar ao atendente]`,type:evt.type,at:new Date(clock()).toISOString(),delivery:'received',source:'Meta'});
-        t.unread=(t.unread||0)+1;t.lastInboundAt=new Date(clock()).toISOString();d.threads[tid]=t;stored.lastInboundAt=new Date(clock()).toISOString();applied.push({id:evt.id,threadId:tid});
+        t.unread=(t.unread||0)+1;t.lastInboundAt=new Date(clock()).toISOString();
+        if(stateOf(t)==='CLOSED'){t.operationalState='WAITING';t.version=(t.version||0)+1;audit(d,{actor:'system',action:'THREAD_REOPENED_BY_MESSAGE',slot:t.slot,clock});}
+        d.threads[tid]=t;stored.lastInboundAt=new Date(clock()).toISOString();applied.push({id:evt.id,threadId:tid});
       } else if(evt.kind==='status'){
         const out=Object.values(d.outbox).find(x=>x.metaMessageId===evt.id&&x.slot===c.slot);
         if(out){out.delivery=evt.status;const t=d.threads[out.threadId];const msg=t?.messages.find(m=>m.outboxId===out.id);if(msg)msg.delivery=evt.status;}
@@ -129,6 +132,12 @@ const aiCfg=aiProvider==='gemini'
     if(freePreview && p.startsWith('/api/')){
       if(req.method!=='GET')return json(res,403,{error:'Prévia gratuita: somente visualização. Operações, login e conexões reais desativados.'});
       if(p==='/api/status')return json(res,200,previewStatus());
+      if(p==='/api/operations/overview'){
+        const fake={threads:Object.fromEntries(demoThreads.map(t=>[t.id,t]))};
+        return json(res,200,{...operationalOverview(fake),preview:true,readOnly:true});
+      }
+      if(p==='/api/operations/channels')return json(res,200,{items:[channelConfig({},1),channelConfig({},2)],readOnly:true});
+      if(p==='/api/operations/audit')return json(res,200,{items:[],readOnly:true});
       if(p==='/api/conversations'){
         const slot=Number(url.searchParams.get('slot')||0);
         return json(res,200,{items:demoThreads.filter(t=>!slot||t.slot===slot).map(userView)});
@@ -175,6 +184,43 @@ const aiCfg=aiProvider==='gemini'
 const qrPath=p.match(/^\/api\/qr\/([12])\/(start|logout)$/);
 if(qrPath&&req.method==='POST'){if(!qr)return json(res,409,{error:'Conexão por QR desativada no servidor (WA_QR_ENABLED=true).'});const slot=Number(qrPath[1]);try{return json(res,200,qrPath[2]==='start'?await qr.start(slot):await qr.logout(slot));}catch(e){return json(res,503,{error:'Falha no WhatsApp QR: '+String(e.message||e).slice(0,140)});}}
 if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
+      if(p==='/api/operations/overview'&&req.method==='GET'){
+        return json(res,200,operationalOverview(store.snapshot()));
+      }
+      if(p==='/api/operations/channels'&&req.method==='GET'){
+        const d=store.snapshot();
+        return json(res,200,{items:[channelConfig(d,1),channelConfig(d,2)],readOnly:false});
+      }
+      const opsChannel=p.match(/^\/api\/operations\/channels\/([12])$/);
+      if(opsChannel&&req.method==='PUT'){
+        let cfg;try{cfg=JSON.parse((await readBody(req,7000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+        let updated;
+        try{await store.change(d=>{updated=setChannelConfig(d,Number(opsChannel[1]),cfg,{clock,actor:'admin'});});}
+        catch(e){return json(res,e.status||422,{error:e.message});}
+        return json(res,200,{ok:true,channel:updated,notice:'Preferências salvas por número. IA automática continua DESATIVADA.'});
+      }
+      if(p==='/api/operations/thread/action'&&req.method==='POST'){
+        let input;try{input=JSON.parse((await readBody(req,3500)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+        let item;
+        try{await store.change(d=>{item=transition(d,{id:input.id,action:input.action,expectedVersion:input.expectedVersion,clock,actor:'admin'});});}
+        catch(e){return json(res,e.status||422,{error:e.message});}
+        return json(res,200,{ok:true,thread:item,autoReplyEnabled:false});
+      }
+      if(p==='/api/operations/audit'&&req.method==='GET'){
+        const d=store.snapshot();
+        return json(res,200,{items:(d.auditLog||[]).slice(-100).reverse(),revision:d.revision||0});
+      }
+      if(p==='/api/operations/events'&&req.method==='GET'){
+        res.writeHead(200,{'content-type':'text/event-stream; charset=utf-8','cache-control':'no-cache, no-transform','connection':'keep-alive','x-content-type-options':'nosniff','x-accel-buffering':'no'});
+        const emitRevision=revision=>{if(!res.destroyed)res.write('event: revision\\ndata: '+JSON.stringify({revision})+'\\n\\n');};
+        res.write('retry: 5000\\n\\n');
+        emitRevision(store.snapshot().revision||0);
+        const unsubscribe=store.subscribe(emitRevision);
+        const heartbeat=setInterval(()=>{if(!res.destroyed)res.write(': heartbeat\\n\\n');},20000);
+        heartbeat.unref?.();
+        req.once('close',()=>{unsubscribe();clearInterval(heartbeat);});
+        return;
+      }
       if(p==='/api/conversations'&&req.method==='GET'){
         const d=store.snapshot();const slot=Number(url.searchParams.get('slot')||0);
         const items=Object.values(d.threads).filter(t=>!slot||t.slot===slot).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))).map(userView);
@@ -191,7 +237,10 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         let v;try{v=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(!['HUMAN','BOT'].includes(v.mode))return json(res,422,{error:'Modo inválido'});
         if(v.mode==='BOT')return json(res,409,{error:'IA bloqueada até homologação integral de dois números e PDV'});
-        const ok=await store.change(d=>{const t=d.threads[v.id];if(!t)return false;t.mode='HUMAN';return true;});return json(res,ok?200:404,{ok});
+        let changed;
+        try{await store.change(d=>{changed=transition(d,{id:v.id,action:'takeover',clock,actor:'admin'});});}
+        catch(e){return json(res,e.status||422,{error:e.message});}
+        return json(res,200,{ok:true,thread:changed});
       }
       if(p==='/api/reply'&&req.method==='POST'){
         let v;try{v=JSON.parse((await readBody(req,5000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
