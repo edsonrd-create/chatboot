@@ -61,7 +61,7 @@ test('web WhatsApp não recebe a bridge privilegiada do aplicativo',()=>{
  assert.match(main,/nodeIntegration:false/);
  assert.match(main,/contextIsolation:true/);
  assert.match(main,/sandbox:true/);
- assert.match(main,/event\.sender===window\.webContents/);
+ assert.match(main,/event\.sender\s*===\s*window\.webContents/);
  assert.match(main,/setPermissionRequestHandler/);
  assert.doesNotMatch(preload,/executeJavaScript|\bprocess\.env\b|\bfs\b/);
 });
