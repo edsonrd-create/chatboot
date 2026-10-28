@@ -241,3 +241,10 @@ body.full-wa #screen-inbox .inbox-layout{height:100vh;min-height:100vh;border-ra
 
 /* Nunca esconder o aviso de prévia pública no layout tipo WhatsApp Web. */
 #free-preview-banner:not([hidden]){display:block!important;background:#fff3d8;border:1px solid #f2ca73;color:#73501c;font-weight:700}
+
+/* Barra flutuante da tela cheia /whatsapp */
+.wa-float{display:none}
+body.full-wa .wa-float{display:flex;position:fixed;right:16px;bottom:16px;z-index:50;gap:6px;padding:6px;border-radius:999px;background:#111b21;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+body.full-wa .wa-float button{border:0;border-radius:999px;padding:8px 14px;background:transparent;color:#d1d7db;font:600 13px system-ui,sans-serif;cursor:pointer}
+body.full-wa .wa-float button.on{background:#00a884;color:#fff}
+body.full-wa #screen-qr{padding:24px}

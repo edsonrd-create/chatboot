@@ -253,4 +253,6 @@ function beginLiveUpdates(){
 
 // Modo tela cheia (aberto pelo PDV): /whatsapp mostra só as conversas.
 if(location.pathname.replace(/\/+$/,'')==='/whatsapp')document.body.classList.add('full-wa');
+// Tela cheia (/whatsapp): barra flutuante para alternar Conversas ⇄ Conectar QR sem o menu lateral.
+if(document.body.classList.contains('full-wa')){const bar=document.createElement('div');bar.className='wa-float';bar.innerHTML='<button type="button" data-go="inbox" title="Conversas">▤ Conversas</button><button type="button" data-go="qr" title="Conectar WhatsApp por QR Code">▣ Conectar QR</button>';bar.addEventListener('click',e=>{const go=e.target.closest('[data-go]')?.dataset.go;if(!go)return;document.querySelector(`.nav-link[data-screen="${go}"]`)?.click();bar.querySelectorAll('[data-go]').forEach(b=>b.classList.toggle('on',b.dataset.go===go));});(document.getElementById('app')||document.body).append(bar);bar.querySelector('[data-go="inbox"]').classList.add('on');}
 api('/api/status').then(async r=>{ss.status=r;$('login').hidden=true;$('app').hidden=false;renderStatus();await loadInbox();beginLiveUpdates();}).catch(()=>{$('app').hidden=true;$('login').hidden=false;});
