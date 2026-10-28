@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'">
 <meta name="theme-color" content="#ed352b">
-<title>Guto Express | WhatsApp Web na Automação</title>
+<title>Auto Atendimento Express | WhatsApp Web</title>
 <link rel="stylesheet" href="host.css">
 <script src="host.js" defer></script>
 </head>
 <body>
-<header class="header"><div class="logo">G</div><div class="identity"><strong>GUTO EXPRESS</strong><small>CENTRAL DE ATENDIMENTO • DESKTOP</small></div><div class="header-center"><span class="live-dot"></span> WhatsApp Web integrado à janela</div><div class="stage"><span>EM HOMOLOGAÇÃO</span></div></header>
+<header class="header"><div class="logo">G</div><div class="identity"><strong>AUTO ATENDIMENTO EXPRESS</strong><small>GUTO EXPRESS • CENTRAL DE VENDAS</small></div><div class="header-center"><span class="live-dot"></span> WhatsApp Web oficial • duas sessões independentes</div><div class="stage"><span>EM HOMOLOGAÇÃO</span></div></header>
 <div class="workspace">
 <aside class="rail"><div class="rail-mark">GE</div><div class="rail-icon active" title="Conversas">▤</div><div class="rail-icon" title="Pedidos em acompanhamento">▦</div><div class="rail-spacer"></div><div class="rail-icon" title="Sistema próprio">⚙</div></aside>
 <main class="main">
@@ -19,10 +19,21 @@
    <button class="tab active" role="tab" aria-selected="true" data-slot="1"><span class="tab-circle">1</span> WhatsApp 01 <span class="tiny">SESSÃO INDEPENDENTE</span></button>
    <button class="tab" role="tab" aria-selected="false" data-slot="2"><span class="tab-circle">2</span> WhatsApp 02 <span class="tiny">SESSÃO INDEPENDENTE</span></button>
   </div>
-  <div class="toolbar-actions"><span id="connection-status">Iniciando sessão…</span><button id="reload" class="ghost" title="Recarregar WhatsApp Web">⟳</button><button id="order-toggle" class="ghost" title="Mostrar ou ocultar rascunho">▥</button></div>
+  <div class="toolbar-actions"><span id="connection-status">Iniciando sessão…</span><button id="split-view-toggle" class="view-toggle" type="button" aria-pressed="false" title="Mostrar os dois WhatsApps reais simultaneamente">◫ 2 números lado a lado</button><button id="reload" class="ghost" title="Recarregar WhatsApp Web ativo">⟳</button><button id="order-toggle" class="ghost" title="Mostrar ou ocultar rascunho do pedido">▥</button></div>
  </section>
  <div class="body-grid">
-  <section class="web-pane"><div id="whatsapp-stage" class="whatsapp-stage" aria-label="Área que exibe o WhatsApp Web real"><div class="loading-card">O WhatsApp Web real aparecerá aqui após iniciar o aplicativo no Windows.<br><small>Não é uma reprodução nem um iframe.</small></div></div></section>
+  <section class="web-pane" aria-label="WhatsApp Web original ao vivo">
+     <div class="web-stage-grid" id="web-stage-grid">
+       <section class="live-pane" id="live-pane-1" aria-label="Primeiro WhatsApp oficial">
+         <div class="live-pane-header"><b><span class="live-mini">1</span> WhatsApp Web 01</b><span id="status-1">Aguardando inicialização</span></div>
+         <div id="whatsapp-stage-1" class="whatsapp-stage" aria-label="WhatsApp Web original · número 01"><div class="loading-card">Carregando WhatsApp Web oficial...<small>QR Code exibido pelo site original, se disponível.</small></div></div>
+       </section>
+       <section class="live-pane" id="live-pane-2" aria-label="Segundo WhatsApp oficial" hidden>
+         <div class="live-pane-header"><b><span class="live-mini">2</span> WhatsApp Web 02</b><span id="status-2">Sessão independente</span></div>
+         <div id="whatsapp-stage-2" class="whatsapp-stage" aria-label="WhatsApp Web original · número 02"><div class="loading-card">Carregando WhatsApp Web oficial...<small>Perfil local separado do WhatsApp 01.</small></div></div>
+       </section>
+     </div>
+   </section>
   <aside class="orders" id="orders-panel">
    <div class="order-head"><div><span class="caption">ACOMPANHAMENTO MANUAL</span><h2>Pedido em andamento</h2></div><span class="dot-label">RASCUNHO</span></div>
    <div class="info-alert">Este painel acompanha o atendimento, mas <strong>não lê a conversa automaticamente</strong> nem envia pedidos ao PDV.</div>
@@ -38,7 +49,7 @@
    <div class="order-disclaimer">Rascunho temporário no aplicativo. Não realiza pedidos, não calcula valores e não confirma pagamento.</div>
   </aside>
  </div>
- <footer class="footer"><span>Guto Bot Desktop • dois perfis isolados</span><span id="footer-slot">Canal 01</span><span>Sem Chatwoot • WhatsApp Web real • Não homologado</span></footer>
+ <footer class="footer"><span>Auto Atendimento Express Desktop • dois perfis isolados</span><span id="footer-slot">Canal 01</span><span>WhatsApp Web real • Compatibilidade a homologar</span></footer>
 </main>
 </div>
 </body>
