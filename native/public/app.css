@@ -181,3 +181,60 @@ body.full-wa .sidebar,body.full-wa .topbar,body.full-wa .notices,body.full-wa fo
 body.full-wa .main{min-height:100vh}
 body.full-wa #screen-inbox{padding:0}
 body.full-wa #screen-inbox .inbox-layout{height:100vh;min-height:100vh;border-radius:0;box-shadow:none}
+
+
+/* AUTO ATENDIMENTO EXPRESS — inbox unificada, duas janelas e estados reais. */
+#screen-inbox .operations-filter{display:flex;align-items:center;gap:8px;padding:4px 16px 12px;background:#fff;border-bottom:1px solid #e9edef}
+#screen-inbox .operations-filter label{font-size:11px;color:#667781}
+#ops-filter{background:#f5f7f8;border:1px solid #dbe2e5;border-radius:8px;padding:6px 8px;font-size:12px;min-width:130px;max-width:180px}
+#ops-live-status{margin-left:auto;color:#667781;font-size:10px}
+#ops-live-status.connected{color:#008069}
+#screen-inbox .chip[aria-pressed=true]{background:#d9fdd3;color:#006c55;font-weight:700;border-color:#b9e4cf}
+#screen-inbox.dual-mode .inbox-layout{display:none!important}
+#screen-inbox .dual-view{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;height:calc(100vh - 130px);min-height:560px}
+#screen-inbox .dual-channel{display:flex;flex-direction:column;min-width:0;border:1px solid #dbe2e5;overflow:hidden;background:white;border-radius:8px;box-shadow:0 3px 18px #1931390d}
+#screen-inbox .dual-head{padding:12px 14px;display:flex;align-items:center;justify-content:space-between;background:#f1f5f3;border-bottom:1px solid #dbe7e4}
+#screen-inbox .dual-head b{font-size:15px;color:#11352e}
+#screen-inbox .dual-head small{display:block;color:#758c87;font-size:11px;margin-top:3px}
+#screen-inbox .dual-counter{font-size:11px;color:#007c68;background:#d9fdd3;padding:5px 9px;border-radius:20px;white-space:nowrap}
+#screen-inbox .dual-work{display:grid;grid-template-columns:minmax(140px,32%) minmax(0,1fr);min-height:0;flex:1}
+#screen-inbox .dual-list{border-right:1px solid #e7eded;overflow-y:auto;min-width:0}
+#screen-inbox .dual-contact{display:block;text-align:left;width:100%;padding:12px 10px;background:#fff;border:0;border-bottom:1px solid #eff3f4;color:#233532}
+#screen-inbox .dual-contact b{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#screen-inbox .dual-contact small{font-size:10px;color:#81908d;display:block;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#screen-inbox .dual-contact:hover,#screen-inbox .dual-contact.active{background:#eaf6f0}
+#screen-inbox .dual-contact .dual-unread-dot{display:inline-flex;color:#008a6e;background:#ddf9e8;padding:2px 5px;margin-top:4px;border-radius:9px;font-size:9px}
+#screen-inbox .dual-detail{min-width:0;display:flex;flex-direction:column;background:#efeae2}
+#screen-inbox .dual-person{padding:12px;background:#fff;border-bottom:1px solid #e6eeee;font-weight:700;font-size:13px;color:#253f3a;min-height:48px}
+#screen-inbox .dual-person small{display:block;font-size:10px;color:#718a83;font-weight:400;margin-top:4px}
+#screen-inbox .dual-messages{flex:1;overflow-y:auto;padding:15px 12px;display:flex;flex-direction:column;gap:7px;min-height:120px;background:radial-gradient(#ded6cc 1px,transparent 1px),#efeae2;background-size:27px 27px}
+#screen-inbox .dual-bubble{align-self:flex-start;max-width:91%;background:#fff;color:#1f3330;border-radius:8px 8px 8px 2px;padding:9px 10px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;box-shadow:0 1px 2px #152c3312}
+#screen-inbox .dual-bubble.outgoing{align-self:flex-end;background:#d9fdd3;border-radius:8px 8px 2px 8px}
+#screen-inbox .dual-bubble small{display:block;color:#778a85;text-align:right;font-size:9px;margin-top:4px}
+#screen-inbox .dual-actions{display:flex;gap:6px;flex-wrap:wrap;padding:6px 8px;background:#f6f8f7}
+#screen-inbox .dual-actions button{border:1px solid #d2e1dd;border-radius:6px;background:#fff;color:#32655a;font-size:10px;padding:5px 8px}
+#screen-inbox .dual-actions button:disabled{opacity:.4}
+#screen-inbox .dual-compose{display:flex;align-items:stretch;gap:6px;padding:8px;background:#f0f2f5}
+#screen-inbox .dual-compose input{min-width:0;flex:1;border:1px solid #dce5e2;border-radius:8px;padding:10px 9px;font-size:11px}
+#screen-inbox .dual-compose button{border:0;border-radius:8px;background:#008c72;color:#fff;padding:8px 10px;font-size:11px}
+#screen-inbox .dual-compose button:disabled{background:#b9cac6}
+#screen-inbox .ops-action-bar{margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#screen-inbox .ops-action-bar button{border:1px solid #dae6e3;background:#f7fbf9;color:#356c60;border-radius:7px;padding:6px 8px;font-size:11px}
+#screen-inbox .ops-action-bar button:disabled{opacity:.45}
+#screen-inbox .ops-state{display:inline-block;margin-left:7px;padding:3px 6px;background:#e5f6ee;color:#007761;border-radius:7px;font-size:10px;font-weight:700}
+.gemini-channels-card{grid-column:1/-1}
+.gemini-channel-settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.gemini-channel-form{border:1px solid #dce8e4;border-radius:12px;padding:16px;background:#fcfefd;display:flex;flex-direction:column;gap:9px}
+.gemini-channel-form h4{margin:0 0 4px;color:#173f33}
+.gemini-channel-form label{display:block;font-size:11px;color:#425d52;font-weight:600}
+.gemini-channel-form input,.gemini-channel-form select,.gemini-channel-form textarea{width:100%;border:1px solid #d8e5e1;border-radius:8px;padding:9px;background:#fff;color:#243e35;font-size:12px}
+.gemini-channel-form textarea{min-height:80px;resize:vertical}
+.gemini-channel-form .hours-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gemini-channel-form .form-check{display:flex;gap:7px;align-items:center}
+.gemini-channel-form .form-check input{width:auto}
+.gemini-channel-form .form-help{font-size:10px;color:#967036;line-height:1.5}
+.gemini-channel-form button{padding:9px;border-radius:8px;border:0;background:#00866e;color:#fff;font-weight:700;font-size:12px}
+.gemini-channel-form button:disabled{background:#c7d0cb}
+@media(max-width:1500px){#screen-inbox .dual-work{grid-template-columns:minmax(118px,30%) minmax(0,1fr)}}
+@media(max-width:1180px){#screen-inbox .dual-view{height:auto;min-height:600px;grid-template-columns:minmax(0,1fr)}#screen-inbox .dual-channel{min-height:490px}#screen-inbox .dual-work{grid-template-columns:minmax(170px,30%) minmax(0,1fr)}}
+@media(max-width:750px){#screen-inbox .operations-filter{flex-wrap:wrap}#screen-inbox .dual-view{gap:8px}#screen-inbox .dual-work{grid-template-columns:minmax(110px,35%) minmax(0,1fr)}.gemini-channel-settings{grid-template-columns:1fr}}
