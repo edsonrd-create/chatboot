@@ -40,6 +40,8 @@ async change(fn){const job=this.lock.catch(()=>{}).then(async()=>{const draft=st
 if(this.mirror){try{await this.mirror.save(draft);this.dbStatus='ok';}catch(e){this.dbStatus='error';this.log(`[DB] falha ao gravar revisão ${draft.revision}: ${String(e.message||e).slice(0,120)}`);}}
 for(const listener of this.listeners){try{listener(draft.revision);}catch{}}return result;});this.lock=job.then(()=>{},()=>{});return job;}
 snapshot(){return structuredClone(this.data);}
+/** Leitura sem cópia (somente leitura!). Usar só para montar respostas da API; nunca alterar o objeto. */
+peek(){return this.data;}
 async close(){if(this.mirror)await this.mirror.close();}
 }
 export function protectToken(text,secret){if(typeof text!=='string'||!text)return '';const iv=crypto.randomBytes(12),key=crypto.createHash('sha256').update(secret).digest(),cipher=crypto.createCipheriv('aes-256-gcm',key,iv),data=Buffer.concat([cipher.update(text,'utf8'),cipher.final()]);return [iv,cipher.getAuthTag(),data].map(x=>x.toString('base64url')).join('.');}

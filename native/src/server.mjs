@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import {fileURLToPath} from 'node:url';
 import {JsonStore,safeCompare,protectToken,revealToken} from './storage.mjs';
 import {verifyMetaSignature,parseMetaWebhook,checkMetaPhone,sendMetaText,exchangeSignupCode,verifyPhoneInWaba,subscribeWaba,graphVersion} from './meta.mjs';
@@ -20,7 +21,10 @@ const e164=x=>typeof x==='string'&&/^\d{5,25}$/.test(x);
 const csrfSafe=(req,appUrl)=>{if(req.headers['sec-fetch-site']==='cross-site')return false;const origin=req.headers.origin;if(!origin)return true;const expected=appUrl?new URL(appUrl).origin:`http://${req.headers.host}`;return origin===expected;};
 const cookieValue=req=>{const raw=String(req.headers.cookie||'');return raw.split(';').map(x=>x.trim()).find(x=>x.startsWith('guto_sid='))?.slice(9)||'';};
 const respond=(res,status,body,extra={})=>{res.writeHead(status,{'cache-control':'no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer','x-frame-options':'DENY',...extra});res.end(body);};
-const json=(res,status,data,extra={})=>respond(res,status,JSON.stringify(data),{'content-type':'application/json; charset=utf-8',...extra});
+const json=(res,status,data,extra={})=>{const body=JSON.stringify(data);const req=res.req;
+  // Respostas grandes (lista e conversas) vão compactadas: menos dados = abre mais rápido em 4G/Wi-Fi fraco.
+  if(body.length>2048&&/\bgzip\b/.test(String(req?.headers?.['accept-encoding']||'')))return respond(res,status,zlib.gzipSync(body,{level:5}),{'content-type':'application/json; charset=utf-8','content-encoding':'gzip','vary':'accept-encoding',...extra});
+  return respond(res,status,body,{'content-type':'application/json; charset=utf-8',...extra});};
 async function readBody(req,limit=128000){let n=0;const chunks=[];for await(const piece of req){n+=piece.length;if(n>limit)throw Object.assign(new Error('Payload excede limite'),{status:413});chunks.push(piece);}return Buffer.concat(chunks);}
 const short=x=>String(x||'').slice(0,3000);
 const userView=threadInfo;
@@ -324,7 +328,7 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         return;
       }
       if(p==='/api/conversations'&&req.method==='GET'){
-        const d=store.snapshot();const slot=Number(url.searchParams.get('slot')||0);
+        const d=store.peek?store.peek():store.snapshot();const slot=Number(url.searchParams.get('slot')||0);
         const items=Object.values(d.threads).filter(t=>!slot||t.slot===slot).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))).map(userView);
         return json(res,200,{items});
       }
@@ -334,7 +338,7 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         const ext=f.split('.').pop();res.writeHead(200,{'content-type':MEDIA_MIME[ext]||'application/octet-stream','cache-control':'private, max-age=86400','x-content-type-options':'nosniff',...(DOC_EXT.has(ext)?{'content-disposition':`attachment; filename="${f}"`}:{})});return fs.createReadStream(file).pipe(res);
       }
       if(p==='/api/avatar'&&req.method==='GET'){
-        const t=store.snapshot().threads[url.searchParams.get('id')||''];
+        const t=(store.peek?store.peek():store.snapshot()).threads[url.searchParams.get('id')||''];
         if(!t||t.via!=='qr'||!qr)return respond(res,404,'');
         const key=crypto.createHash('sha256').update(`${t.slot}:${t.jid}`).digest('hex').slice(0,32),file=path.join(path.dirname(statePath),'avatars',key+'.jpg');
         try{const st=fs.statSync(file);if(Date.now()-st.mtimeMs<(st.size?24:1)*3600*1000){if(!st.size)return respond(res,404,'');res.writeHead(200,{'content-type':'image/jpeg','cache-control':'private, max-age=21600'});return fs.createReadStream(file).pipe(res);}}catch{}
@@ -345,7 +349,7 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         res.writeHead(200,{'content-type':'image/jpeg','cache-control':'private, max-age=21600'});return res.end(buf);
       }
       if(p==='/api/thread'&&req.method==='GET'){
-        const t=store.snapshot().threads[url.searchParams.get('id')||''];if(!t)return json(res,404,{error:'Conversa não encontrada'});
+        const t=(store.peek?store.peek():store.snapshot()).threads[url.searchParams.get('id')||''];if(!t)return json(res,404,{error:'Conversa não encontrada'});
         return json(res,200,{thread:userView(t),messages:t.messages.map(serializeMessage),cart:getSummary(t.session,business)});
       }
       if(p==='/api/thread/read'&&req.method==='POST'){
