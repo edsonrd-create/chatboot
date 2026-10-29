@@ -4,7 +4,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
+const MEDIA_TYPES = new Set(['image', 'sticker', 'audio', 'video']);
+export function createQrManager({authDir, onIncoming, onStatus, log = () => {}, agent}) {
   const slots = new Map(); // slot -> {state, qr, number, sock, lastError}
   const get = slot => {
     if (!slots.has(slot)) slots.set(slot, {state: 'disconnected', qr: null, number: null, sock: null, lastError: null, startedAt: null});
@@ -76,14 +77,16 @@ export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
     const handle = async (m, {history = false} = {}) => {
       const parsed = parseWaMessage(m);
       if (!parsed) return;
-      let audio = null;
-      if (!history && !parsed.fromMe && parsed.type === 'audio') {
+      let audio = null, media = null;
+      // Mídia recente (foto, figurinha, áudio, vídeo curto) é baixada para aparecer na central como no WhatsApp Web.
+      if (!history && MEDIA_TYPES.has(parsed.type)) {
         try {
           const buffer = await baileys.downloadMediaMessage(m, 'buffer', {}, {reuploadRequest: sock.updateMediaMessage});
-          audio = {buffer, mimeType: parsed.mimeType || 'audio/ogg'};
-        } catch (e) { log(`[QR] não baixou o áudio: ${String(e.message || e).slice(0, 100)}`); }
+          if (buffer.length <= 16 * 1024 * 1024) media = {buffer, mimeType: parsed.mimeType || 'application/octet-stream'};
+          if (parsed.type === 'audio' && !parsed.fromMe) audio = {buffer, mimeType: parsed.mimeType || 'audio/ogg'};
+        } catch (e) { log(`[QR] não baixou a mídia: ${String(e.message || e).slice(0, 100)}`); }
       }
-      await onIncoming({slot, ...parsed, audio, history});
+      await onIncoming({slot, ...parsed, audio, media, history});
     };
     sock.ev.on('messages.upsert', async ({messages, type}) => {
       if (type !== 'notify' && type !== 'append') return;
@@ -100,7 +103,32 @@ export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
       for (const m of recent) { try { await handle(m, {history: true}); n++; } catch {} }
       if (n) log(`[QR] WhatsApp ${slot}: ${n} mensagens do histórico importadas`);
     });
+    // Confirmações de entrega/leitura (✓ ✓✓ azul) das mensagens que enviamos.
+    sock.ev.on('messages.update', async updates => {
+      for (const u of updates || []) {
+        const code = u?.update?.status;
+        if (!u?.key?.fromMe || typeof code !== 'number') continue;
+        const delivery = code >= 4 ? 'read' : code === 3 ? 'delivered' : code === 2 ? 'sent' : null;
+        if (delivery) try { await onStatus?.({slot, id: u.key.id, delivery}); } catch {}
+      }
+    });
     return status(slot);
+  }
+
+  const avatarCache = new Map();
+  async function avatar(slot, jid) {
+    const s = get(slot);
+    if (!s.sock || s.state !== 'connected') return null;
+    const key = `${slot}:${jid}`, hit = avatarCache.get(key);
+    if (hit && Date.now() - hit.at < (hit.url ? 6 : 1) * 3600 * 1000) return hit.url;
+    let url = null;
+    // Foto em alta; se o contato só libera a miniatura, usa a miniatura.
+    for (const kind of ['image', 'preview']) {
+      try { url = await s.sock.profilePictureUrl(jid, kind, 8000); } catch {}
+      if (url) break;
+    }
+    avatarCache.set(key, {url, at: Date.now()});
+    return url;
   }
 
   async function send(slot, jid, text) {
@@ -148,7 +176,7 @@ export function createQrManager({authDir, onIncoming, log = () => {}, agent}) {
     }
   }
 
-  return {start, send, sendVoice, presence, logout, status, resume, isConnected: slot => get(slot).state === 'connected'};
+  return {start, send, sendVoice, presence, avatar, logout, status, resume, isConnected: slot => get(slot).state === 'connected'};
 }
 
 // Converte a mensagem do WhatsApp (Baileys) para o formato da central. null = ignorar (grupo, status, reação, sistema).
@@ -168,10 +196,10 @@ export function parseWaMessage(m) {
   const msg = unwrap(m.message);
   if (msg.protocolMessage || msg.reactionMessage || msg.senderKeyDistributionMessage && Object.keys(msg).length === 1 || msg.pollUpdateMessage) return null;
   let type = 'text', text = msg.conversation || msg.extendedTextMessage?.text || '', mimeType = '';
-  if (msg.imageMessage) { type = 'image'; text = msg.imageMessage.caption ? `📷 ${msg.imageMessage.caption}` : '📷 Foto'; }
-  else if (msg.videoMessage) { type = 'video'; text = msg.videoMessage.caption ? `🎥 ${msg.videoMessage.caption}` : '🎥 Vídeo'; }
+  if (msg.imageMessage) { type = 'image'; mimeType = msg.imageMessage.mimetype || 'image/jpeg'; text = msg.imageMessage.caption ? `📷 ${msg.imageMessage.caption}` : '📷 Foto'; }
+  else if (msg.videoMessage) { type = 'video'; mimeType = msg.videoMessage.mimetype || 'video/mp4'; text = msg.videoMessage.caption ? `🎥 ${msg.videoMessage.caption}` : '🎥 Vídeo'; }
   else if (msg.audioMessage) { type = 'audio'; text = ''; mimeType = msg.audioMessage.mimetype || 'audio/ogg'; }
-  else if (msg.stickerMessage) { type = 'sticker'; text = '🏷️ Figurinha'; }
+  else if (msg.stickerMessage) { type = 'sticker'; mimeType = msg.stickerMessage.mimetype || 'image/webp'; text = '🏷️ Figurinha'; }
   else if (msg.documentMessage) { type = 'document'; text = `📄 ${msg.documentMessage.fileName || 'Documento'}`; }
   else if (msg.locationMessage || msg.liveLocationMessage) { const l = msg.locationMessage || msg.liveLocationMessage; type = 'location'; text = `📍 Localização: https://maps.google.com/?q=${l.degreesLatitude},${l.degreesLongitude}`; }
   else if (msg.contactMessage || msg.contactsArrayMessage) { type = 'contact'; text = `👤 Contato: ${msg.contactMessage?.displayName || 'contatos'}`; }

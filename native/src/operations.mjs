@@ -52,7 +52,7 @@ export function threadInfo(thread){
     mode:thread.mode,via:thread.via||'meta',state:stateOf(thread),version:thread.version||0,qrLastBlocker:thread.qrLastBlocker||null,qrLastErrorAt:thread.qrLastErrorAt||null,
     assignedTo:thread.assignedTo||null,favorite:!!thread.favorite,archived:!!thread.archived,
     updatedAt:thread.updatedAt,unread:thread.unread||0,lastText:thread.messages?.at(-1)?.text||'',
-    messageCount:thread.messages?.length||0,orderCount:thread.orders?.length||0};
+    messageCount:thread.messages?.length||0,orderCount:thread.orders?.length||0,via:thread.via||'meta',typing:thread.typing||null,lastDirection:thread.messages?.at(-1)?.direction||null,lastDelivery:thread.messages?.at(-1)?.delivery||null};
 }
 export function listThreads(d,{slot=0,filter='all',q=''}={}){
  const selected=slot===0?0:channelId(slot);if(selected===null)reject(422,'Filtro de canal inválido');

@@ -25,7 +25,7 @@ async function readBody(req,limit=128000){let n=0;const chunks=[];for await(cons
 const short=x=>String(x||'').slice(0,3000);
 const userView=threadInfo;
 const publicChannel=c=>({slot:c.slot,phoneId:c.phoneId,number:c.display,apiVerifiedAt:c.checkedAt,lastInboundAt:c.lastInboundAt,lastOutboundAt:c.lastOutboundAt,hasToken:Boolean(c.tokenEncrypted),status:c.checkedAt?'API_VERIFIED_NOT_END_TO_END':'NOT_VERIFIED'});
-const serializeMessage=m=>({id:m.id,direction:m.direction,text:m.text,type:m.type,at:m.at,delivery:m.delivery||'',source:m.source||''});
+const serializeMessage=m=>({id:m.id,direction:m.direction,text:m.text,type:m.type,at:m.at,delivery:m.delivery||'',source:m.source||'',media:m.media||null});
 const getToken=(c,env)=>c.tokenEncrypted?revealToken(c.tokenEncrypted,env.APP_SECRET):String(env[`META_TOKEN_${c.slot}`]||'');
 
 export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now(),qrManagerFactory=createQrManager,respondWithAI=intelligentReply}={}){
@@ -55,9 +55,26 @@ const qrAutoReply=envFlag(env.WA_QR_AUTOREPLY);
 const qrTestNumbers=String(env.WA_QR_TEST_NUMBERS||'').split(',').map(x=>x.replace(/\D/g,'')).filter(Boolean);
 const qrVoiceEnabled=envFlag(env.WA_QR_VOICE===undefined?'true':env.WA_QR_VOICE);
 const qrAllowed=from=>!qrTestNumbers.length||qrTestNumbers.includes(String(from).replace(/\D/g,''));
+// O eco do WhatsApp (fromMe) pode chegar antes do registro: atualiza a mesma mensagem em vez de duplicar.
+function upsertOutgoing(t,msg){const old=t.messages.find(x=>x.id===msg.id);if(old){Object.assign(old,{...msg,delivery:old.delivery&&old.delivery!=='sent'?old.delivery:msg.delivery,at:old.at});return;}append(t,msg);}
 let qr=null;
+// Mídias recebidas/enviadas ficam no volume persistente, ao lado do estado.
+const mediaDir=path.join(path.dirname(statePath),'media');
+const MEDIA_EXT={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','video/mp4':'mp4'};
+const MEDIA_MIME={jpg:'image/jpeg',png:'image/png',webp:'image/webp',ogg:'audio/ogg',mp3:'audio/mpeg',m4a:'audio/mp4',mp4:'video/mp4'};
+function saveMedia(id,media){
+  if(!media?.buffer?.length)return null;
+  const ext=MEDIA_EXT[String(media.mimeType||'').split(';')[0].trim()];if(!ext)return null;
+  const name=`${String(id).replace(/[^A-Za-z0-9_-]/g,'').slice(0,64)||crypto.randomUUID()}.${ext}`;
+  try{fs.mkdirSync(mediaDir,{recursive:true});fs.writeFileSync(path.join(mediaDir,name),media.buffer,{mode:0o600});return name;}catch(e){console.error('[mídia]',String(e.message||e).slice(0,80));return null;}
+}
+async function onQrStatus({slot,id,delivery}){
+  const rank={sent:1,delivered:2,read:3};
+  await store.change(d=>{for(const t of Object.values(d.threads)){if(t.slot!==slot||t.via!=='qr')continue;const msg=t.messages.find(x=>x.id===id&&x.direction==='outgoing');if(msg){if((rank[delivery]||0)>(rank[msg.delivery]||0))msg.delivery=delivery;return;}}});
+}
 async function onQrIncoming(m){
 const tid=`qr${m.slot}:${m.from}`;
+const mediaFile=saveMedia(m.id,m.media);
 // Mensagens enviadas pelo próprio celular, eco das enviadas pela central e histórico: só registrar, sem IA.
 if(m.fromMe||m.history){
   await store.change(d=>{
@@ -65,7 +82,7 @@ if(m.fromMe||m.history){
     t.via='qr';t.jid=m.jid;if(m.name&&!m.fromMe)t.customerName=m.name;
     if(t.messages.some(x=>x.id===m.id))return;
     const at=m.at||new Date(clock()).toISOString();
-    append(t,{id:m.id,direction:m.fromMe?'outgoing':'incoming',text:m.type==='audio'?'🎤 Áudio':m.text,type:m.type,at,delivery:m.fromMe?'sent':'received',source:m.fromMe?'Celular':'WhatsApp QR'});
+    append(t,{id:m.id,direction:m.fromMe?'outgoing':'incoming',text:m.type==='audio'?'🎤 Áudio':m.text,type:m.type,at,delivery:m.fromMe?'sent':'received',source:m.fromMe?'Celular':'WhatsApp QR',media:mediaFile});
     t.messages.sort((a,b)=>String(a.at).localeCompare(String(b.at)));t.updatedAt=t.messages.at(-1).at;
     d.threads[tid]=t;
   });
@@ -86,7 +103,7 @@ const now=new Date(clock()).toISOString();
 const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
 t.via='qr';t.jid=m.jid;if(m.name)t.customerName=m.name;
 if(t.messages.some(x=>x.id===m.id))return;
-append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR'});
+append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR',media:mediaFile});
 t.unread=(t.unread||0)+1;t.lastInboundAt=now;if(t.operationalState==='CLOSED'||t.operationalState==='FAILED')delete t.operationalState;t.archived=false;d.threads[tid]=t;
 // Um thread em modo humano não vira BOT sozinho quando a variável é modificada.
 const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)});
@@ -98,6 +115,8 @@ if(canReply)session=structuredClone(t.session);
 if(!canReply)return;
 // 2) IA responde (texto é o padrão).
 const voice=qrVoiceEnabled&&aiCfg.provider==='gemini';
+await store.change(d=>{const t=d.threads[tid];if(t)t.typing=m.type==='audio'&&voice?'recording':'composing';});
+const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typing;});
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
 try{reply=await respondWithAI(text,session,business,aiCfg);}
@@ -105,26 +124,27 @@ catch(e){
   const fault=describeAIError(e,aiCfg.provider);
   console.error('[QR IA]',JSON.stringify({code:fault.code,slot:m.slot}));
   await store.change(d=>{const t=d.threads[tid];if(t){t.qrLastBlocker=fault.code;t.qrLastErrorAt=new Date(clock()).toISOString();}});
-  await qr.presence(m.slot,m.jid,'paused');
+  await qr.presence(m.slot,m.jid,'paused');await clearTyping();
   return;
 }
 session.history.push({role:'user',content:text},{role:'assistant',content:reply});session.history=session.history.slice(-30);
 // 3) Voz só quando necessário: cliente mandou áudio ou pediu áudio, e a resposta não tem valores/resumo.
 let sent=null,asVoice=false;
 if(voice&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply})){
-  try{const ogg=await synthesizeVoice({apiKey:aiCfg.apiKey,ttsModel:env.GEMINI_TTS_MODEL||'gemini-2.5-flash-preview-tts',voice:env.GEMINI_TTS_VOICE||'Kore',fetchImpl},reply);sent=await qr.sendVoice(m.slot,m.jid,ogg);asVoice=true;}
+  let voiceFile=null;
+  try{const ogg=await synthesizeVoice({apiKey:aiCfg.apiKey,ttsModel:env.GEMINI_TTS_MODEL||'gemini-2.5-flash-preview-tts',voice:env.GEMINI_TTS_VOICE||'Kore',fetchImpl},reply);sent=await qr.sendVoice(m.slot,m.jid,ogg);asVoice=true;voiceFile=saveMedia(sent.id||crypto.randomUUID(),{buffer:ogg,mimeType:'audio/ogg'});sent.media=voiceFile;}
   catch(e){console.error('[QR voz] enviando como texto:',String(e.message||e).slice(0,120));}
 }
 try{if(!sent)sent=await qr.send(m.slot,m.jid,reply);}
 catch(e){
   console.error('[QR envio]',JSON.stringify({slot:m.slot,code:'QR_SEND_FAILED'}));
-  await store.change(d=>{const t=d.threads[tid];if(t){t.qrLastBlocker='QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}});
+  await store.change(d=>{const t=d.threads[tid];if(t){delete t.typing;t.qrLastBlocker='QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}});
   return;
 }
 finally{await qr.presence(m.slot,m.jid,'paused');}
-await store.change(d=>{const t=d.threads[tid];if(!t)return;t.session=session;delete t.qrLastBlocker;delete t.qrLastErrorAt;if(session.mode==='HUMAN')t.mode='HUMAN';append(t,{id:sent.id||crypto.randomUUID(),direction:'outgoing',type:asVoice?'audio':'text',text:asVoice?`🔊 ${reply}`:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:asVoice?'IA · voz':'IA'});});
+await store.change(d=>{const t=d.threads[tid];if(!t)return;t.session=session;delete t.typing;delete t.qrLastBlocker;delete t.qrLastErrorAt;if(session.mode==='HUMAN')t.mode='HUMAN';upsertOutgoing(t,{id:sent.id||crypto.randomUUID(),direction:'outgoing',type:asVoice?'audio':'text',text:asVoice?`🔊 ${reply}`:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:asVoice?'IA · voz':'IA',media:sent.media||null});});
 }
-if(qrEnabled){qr=qrManagerFactory({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,log:x=>console.log(x)});setTimeout(()=>qr.resume?.(),1500);}
+if(qrEnabled){qr=qrManagerFactory({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,onStatus:onQrStatus,log:x=>console.log(x)});setTimeout(()=>qr.resume?.(),1500);}
 const aiCfg=aiProvider==='gemini'
 
     ?{provider:'gemini',apiKey:env.GEMINI_API_KEY||'',model:env.GEMINI_MODEL||'gemini-3.5-flash-lite'}
@@ -286,6 +306,22 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         const items=Object.values(d.threads).filter(t=>!slot||t.slot===slot).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))).map(userView);
         return json(res,200,{items});
       }
+      if(p==='/api/media'&&req.method==='GET'){
+        const f=String(url.searchParams.get('f')||'');if(!/^[A-Za-z0-9_-]{1,80}\.(jpg|png|webp|ogg|mp3|m4a|mp4)$/.test(f))return json(res,400,{error:'Arquivo inválido'});
+        const file=path.join(mediaDir,f);if(!fs.existsSync(file))return json(res,404,{error:'Mídia não encontrada'});
+        res.writeHead(200,{'content-type':MEDIA_MIME[f.split('.').pop()],'cache-control':'private, max-age=86400','x-content-type-options':'nosniff'});return fs.createReadStream(file).pipe(res);
+      }
+      if(p==='/api/avatar'&&req.method==='GET'){
+        const t=store.snapshot().threads[url.searchParams.get('id')||''];
+        if(!t||t.via!=='qr'||!qr)return respond(res,404,'');
+        const key=crypto.createHash('sha256').update(`${t.slot}:${t.jid}`).digest('hex').slice(0,32),file=path.join(path.dirname(statePath),'avatars',key+'.jpg');
+        try{const st=fs.statSync(file);if(Date.now()-st.mtimeMs<(st.size?24:1)*3600*1000){if(!st.size)return respond(res,404,'');res.writeHead(200,{'content-type':'image/jpeg','cache-control':'private, max-age=21600'});return fs.createReadStream(file).pipe(res);}}catch{}
+        let buf=Buffer.alloc(0);
+        try{const u=await qr.avatar(t.slot,t.jid);if(u&&/^https:\/\/[a-z0-9.-]+\.(whatsapp\.net|fbcdn\.net)\//i.test(u)){const r=await fetchImpl(u);if(r.ok)buf=Buffer.from(await r.arrayBuffer());}}catch{}
+        try{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,buf);}catch{}
+        if(!buf.length)return respond(res,404,'');
+        res.writeHead(200,{'content-type':'image/jpeg','cache-control':'private, max-age=21600'});return res.end(buf);
+      }
       if(p==='/api/thread'&&req.method==='GET'){
         const t=store.snapshot().threads[url.searchParams.get('id')||''];if(!t)return json(res,404,{error:'Conversa não encontrada'});
         return json(res,200,{thread:userView(t),messages:t.messages.map(serializeMessage),cart:getSummary(t.session,business)});
@@ -318,7 +354,7 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         let v;try{v=JSON.parse((await readBody(req,5000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(typeof v.id!=='string'||typeof v.text!=='string'||v.text.trim().length<1||v.text.length>4000)return json(res,422,{error:'Mensagem inválida'});
 const qt=store.snapshot().threads[v.id];
-if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada'});try{const r=await qr.send(qt.slot,qt.jid,v.text.trim());await store.change(d=>{const t=d.threads[v.id];if(t){t.mode='HUMAN';t.session.mode='HUMAN';}if(t)append(t,{id:r.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:v.text.trim(),at:new Date(clock()).toISOString(),delivery:'sent',source:'Atendente'});});return json(res,202,{ok:true,state:'sent'});}catch(e){return json(res,e.status||503,{error:String(e.message||e).slice(0,140)});}}
+if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada'});try{const r=await qr.send(qt.slot,qt.jid,v.text.trim());await store.change(d=>{const t=d.threads[v.id];if(t){t.mode='HUMAN';t.session.mode='HUMAN';}if(t)upsertOutgoing(t,{id:r.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:v.text.trim(),at:new Date(clock()).toISOString(),delivery:'sent',source:'Atendente'});});return json(res,202,{ok:true,state:'sent'});}catch(e){return json(res,e.status||503,{error:String(e.message||e).slice(0,140)});}}
         const message=await enqueueManual(v.id,v.text.trim());setImmediate(()=>pump());return json(res,202,{ok:true,outboxId:message.id,state:'queued'});
       }
       const verifyPath=p.match(/^\/api\/channels\/([12])\/verify$/);
