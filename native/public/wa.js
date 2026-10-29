@@ -177,7 +177,7 @@ function buildEmoji() {
   const box = $('emoji-box');
   for (const e of EMOJIS) { const b = el('button', '', e); b.type = 'button'; b.onclick = () => { const t = $('text'), i = t.selectionStart ?? t.value.length; t.value = t.value.slice(0, i) + e + t.value.slice(t.selectionEnd ?? i); t.focus(); t.selectionStart = t.selectionEnd = i + e.length; grow(); }; box.append(b); }
 }
-function grow() { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; $('send').classList.toggle('idle', !t.value.trim()); }
+function grow() { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 220) + 'px'; $('send').classList.toggle('idle', !t.value.trim()); }
 
 function highlight(q) {
   q = q.trim().toLowerCase(); let first = null;
@@ -226,7 +226,7 @@ function notifyNew() {
 function live() {
   if (typeof EventSource !== 'function') { setInterval(loadList, 5000); return; }
   const src = new EventSource('/api/operations/events');
-  src.addEventListener('revision', e => { let r; try { r = JSON.parse(e.data).revision; } catch { return; } if (r !== st.revision) { st.revision = r; loadList().catch(() => {}); } });
+  src.addEventListener('revision', e => { let r; try { r = JSON.parse(e.data).revision; } catch { return; } if (r !== st.revision) { st.revision = r; clearTimeout(live.t); live.t = setTimeout(() => loadList().catch(() => {}), 250); } });
   setInterval(() => loadList().catch(() => {}), 20000);
 }
 
