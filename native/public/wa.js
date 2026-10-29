@@ -59,7 +59,7 @@ function renderList() {
     const row = el('button', 'row' + (t.id === st.sel ? ' sel' : '') + (t.unread ? ' unread' : '')); row.type = 'button';
     const av = el('div', 'avatar'); photo(av, t);
     const meta = el('div', 'meta'), top = el('div', 'top'), bot = el('div', 'bot');
-    top.append(el('span', 'name', t.customerName && t.customerName !== t.customer ? t.customerName : fmtPhone(t.customer)), el('span', 'time', listTime(t.updatedAt)));
+    top.append(el('span', 'name', t.customerName && t.customerName !== t.customer ? t.customerName : (t.hiddenNumber ? 'Contato do WhatsApp' : fmtPhone(t.customer))), el('span', 'time', listTime(t.updatedAt)));
     const tags = el('span', 'tags');
     if (!st.slot) tags.append(el('span', 'tag s', '0' + t.slot));
     tags.append(el('span', 'tag' + (t.mode === 'BOT' ? '' : ' h'), t.mode === 'BOT' ? 'IA' : 'ATEND.'));
@@ -99,8 +99,8 @@ async function loadThread(id, scroll) {
   $('intro').hidden = true; $('qr').hidden = true; $('chat').hidden = false;
   const t = st.thread;
   if (st.avatarFor !== t.id) { photo($('chat-avatar'), t); st.avatarFor = t.id; }
-  $('chat-name').textContent = t.customerName && t.customerName !== t.customer ? t.customerName : fmtPhone(t.customer);
-  $('chat-sub').textContent = t.typing ? (t.typing === 'recording' ? 'gravando áudio…' : 'digitando…') : `${fmtPhone(t.customer)} · WhatsApp 0${t.slot}`;
+  $('chat-name').textContent = t.customerName && t.customerName !== t.customer ? t.customerName : (t.hiddenNumber ? 'Contato do WhatsApp' : fmtPhone(t.customer));
+  $('chat-sub').textContent = t.typing ? (t.typing === 'recording' ? 'gravando áudio…' : 'digitando…') : (t.hiddenNumber ? `WhatsApp 0${t.slot}` : `${fmtPhone(t.customer)} · WhatsApp 0${t.slot}`);
   $('chat-sub').classList.toggle('typing', Boolean(t.typing));
   const bot = t.mode === 'BOT';
   $('chat-mode').textContent = bot ? '🤖 IA atendendo' : '👤 Atendente';
@@ -129,6 +129,12 @@ function renderMessages() {
     } else if (src && m.type === 'video') {
       const v = el('video', 'photo'); v.src = src; v.controls = true; v.preload = 'metadata'; b.append(v); b.classList.add('media');
       caption = caption.replace(/^🎥 ?(Vídeo)?/, '').trim();
+    } else if (m.type === 'document') {
+      const doc = el(src ? 'a' : 'div', 'doc');
+      if (src) { doc.href = src; doc.download = m.fileName || ''; doc.title = 'Baixar'; }
+      const name = (caption.split('\n')[0] || '').replace(/^📄 ?/u, '') || m.fileName || 'Documento';
+      doc.append(el('span', 'doc-ico', (name.split('.').pop() || 'DOC').slice(0, 4).toUpperCase()), el('span', 'doc-name', name), el('span', 'doc-dl', src ? '⬇' : ''));
+      b.append(doc); caption = caption.split('\n').slice(1).join('\n');
     } else if (src && m.type === 'audio') {
       const a = el('audio', 'voice'); a.src = src; a.controls = true; a.preload = 'metadata'; b.append(a);
       caption = caption.replace(/^[🎤🔊] ?(Áudio)?/u, '').trim();
@@ -146,6 +152,19 @@ async function send() {
   try { await api('/api/reply', {method: 'POST', body: JSON.stringify({id: st.sel, text})}); $('text').value = ''; grow(); await loadThread(st.sel, true); loadList(); }
   catch (e) { toast('Não enviou: ' + e.message); }
   finally { $('send').disabled = false; $('text').focus(); }
+}
+async function sendFile(file) {
+  if (!file || !st.sel) return;
+  if (file.size > 16 * 1024 * 1024) { toast('Arquivo maior que 16 MB.'); return; }
+  const caption = $('text').value.trim();
+  toast(`Enviando ${file.name}…`);
+  try {
+    const data = await new Promise((ok, fail) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = fail; r.readAsDataURL(file); });
+    let type = file.type;
+    if (!type) type = {pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', txt: 'text/plain', csv: 'text/csv', zip: 'application/zip'}[file.name.split('.').pop().toLowerCase()] || '';
+    await api('/api/send-file', {method: 'POST', body: JSON.stringify({id: st.sel, name: file.name, type, data, caption})});
+    $('text').value = ''; grow(); toast('Anexo enviado ✓'); await loadThread(st.sel, true); loadList();
+  } catch (e) { toast('Não enviou o anexo: ' + e.message); }
 }
 async function toggleMode() {
   if (!st.thread) return;
@@ -222,6 +241,10 @@ function bind() {
   $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   $('toggle-mode').onclick = toggleMode;
   buildEmoji(); grow();
+  $('attach').onclick = () => $('file').click();
+  $('file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; sendFile(f); };
+  $('messages').addEventListener('dragover', e => e.preventDefault());
+  $('messages').addEventListener('drop', e => { e.preventDefault(); sendFile(e.dataTransfer.files[0]); });
   $('emoji').onclick = e => { e.stopPropagation(); $('emoji-box').hidden = !$('emoji-box').hidden; };
   document.addEventListener('click', e => { if (!$('emoji-box').contains(e.target)) $('emoji-box').hidden = true; });
   $('chat-search-btn').onclick = () => { const i = $('chat-search'); i.hidden = !i.hidden; if (!i.hidden) i.focus(); else { i.value = ''; highlight(''); } };
