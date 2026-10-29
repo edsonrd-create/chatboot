@@ -13,6 +13,14 @@ async function api(url, opt = {}) {
 function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
 
 const COLORS = ['#25a366', '#e17055', '#0984e3', '#a55eea', '#fd9644', '#20bf6b', '#eb3b5a', '#4b7bec', '#8854d0', '#0fb9b1'];
+// Foto de perfil real do WhatsApp (quando o contato permite); senão, iniciais coloridas como no WhatsApp Web.
+function photo(node, t) {
+  avatar(node, t.customerName || t.customer, t.id);
+  if (t.via !== 'qr') return;
+  const img = new Image(); img.alt = ''; img.decoding = 'async';
+  img.onload = () => { node.textContent = ''; node.style.background = 'none'; node.append(img); };
+  img.src = '/api/avatar?id=' + encodeURIComponent(t.id);
+}
 function avatar(node, name, id) {
   const clean = String(name || '').replace(/[^\p{L}\p{N} ]/gu, '').trim();
   const letters = clean.split(/\s+/).filter(w => /^\p{L}/u.test(w)).slice(0, 2).map(w => w[0]).join('');
@@ -49,14 +57,17 @@ function renderList() {
     && (!q || `${t.customerName} ${t.customer} ${t.lastText}`.toLowerCase().includes(q)));
   for (const t of items) {
     const row = el('button', 'row' + (t.id === st.sel ? ' sel' : '') + (t.unread ? ' unread' : '')); row.type = 'button';
-    const av = el('div', 'avatar'); avatar(av, t.customerName || t.customer, t.id);
+    const av = el('div', 'avatar'); photo(av, t);
     const meta = el('div', 'meta'), top = el('div', 'top'), bot = el('div', 'bot');
     top.append(el('span', 'name', t.customerName && t.customerName !== t.customer ? t.customerName : fmtPhone(t.customer)), el('span', 'time', listTime(t.updatedAt)));
     const tags = el('span', 'tags');
     if (!st.slot) tags.append(el('span', 'tag s', '0' + t.slot));
     tags.append(el('span', 'tag' + (t.mode === 'BOT' ? '' : ' h'), t.mode === 'BOT' ? 'IA' : 'ATEND.'));
     if (t.unread) tags.append(el('span', 'count', String(t.unread)));
-    bot.append(el('span', 'last', t.lastText || ''), tags);
+    const last = el('span', 'last' + (t.typing ? ' typing' : ''));
+    if (t.typing) last.textContent = t.typing === 'recording' ? 'gravando áudio…' : 'digitando…';
+    else { if (t.lastDirection === 'outgoing') last.append(ticks(t.lastDelivery)); last.append(document.createTextNode(t.lastText || '')); }
+    bot.append(last, tags);
     meta.append(top, bot); row.append(av, meta);
     row.onclick = () => openThread(t.id);
     list.append(row);
@@ -65,6 +76,13 @@ function renderList() {
   const total = st.list.reduce((n, t) => n + (t.unread || 0), 0);
   $('rail-unread').hidden = !total; $('rail-unread').textContent = total > 99 ? '99+' : String(total);
   document.title = (total ? `(${total}) ` : '') + 'WhatsApp · Auto Atendimento Express';
+}
+
+function ticks(delivery) {
+  const span = el('span', 'ck' + (delivery === 'read' ? ' read' : ''));
+  span.textContent = delivery === 'failed' ? '⚠' : delivery === 'queued' ? '🕓' : (delivery === 'delivered' || delivery === 'read') ? '✓✓' : '✓';
+  span.title = {read: 'Lida', delivered: 'Entregue', sent: 'Enviada', failed: 'Falhou', queued: 'Na fila'}[delivery] || 'Enviada';
+  return span;
 }
 
 // ---------- Conversa ----------
@@ -80,15 +98,16 @@ async function loadThread(id, scroll) {
   st.thread = r.thread; st.messages = r.messages || [];
   $('intro').hidden = true; $('qr').hidden = true; $('chat').hidden = false;
   const t = st.thread;
-  avatar($('chat-avatar'), t.customerName || t.customer, t.id);
+  if (st.avatarFor !== t.id) { photo($('chat-avatar'), t); st.avatarFor = t.id; }
   $('chat-name').textContent = t.customerName && t.customerName !== t.customer ? t.customerName : fmtPhone(t.customer);
-  $('chat-sub').textContent = `${fmtPhone(t.customer)} · WhatsApp 0${t.slot}`;
+  $('chat-sub').textContent = t.typing ? (t.typing === 'recording' ? 'gravando áudio…' : 'digitando…') : `${fmtPhone(t.customer)} · WhatsApp 0${t.slot}`;
+  $('chat-sub').classList.toggle('typing', Boolean(t.typing));
   const bot = t.mode === 'BOT';
   $('chat-mode').textContent = bot ? '🤖 IA atendendo' : '👤 Atendente';
   $('chat-mode').className = 'mode' + (bot ? '' : ' h');
   $('toggle-mode').textContent = bot ? 'Assumir conversa' : 'Devolver à IA';
   renderMessages();
-  if (scroll || atBottom) box.scrollTop = box.scrollHeight;
+  if (scroll || atBottom) { box.scrollTop = box.scrollHeight; box.querySelectorAll('img,video').forEach(m => m.addEventListener('load', () => { box.scrollTop = box.scrollHeight; }, {once: true})); }
 }
 function renderMessages() {
   const box = $('messages'); box.replaceChildren();
@@ -100,9 +119,24 @@ function renderMessages() {
     const out = m.direction === 'outgoing';
     const b = el('div', 'bubble ' + (out ? 'out' : 'in') + (lastDir !== m.direction ? ' first' : ''));
     if (out && m.source) { const human = /Atendente|Celular/.test(m.source); b.append(el('span', 'src' + (human ? ' h' : ''), /IA/.test(m.source) ? '🤖 ' + m.source : m.source)); }
-    b.append(document.createTextNode(m.text || ''));
+    const src = m.media ? '/api/media?f=' + encodeURIComponent(m.media) : '';
+    let caption = m.text || '';
+    if (src && (m.type === 'image' || m.type === 'sticker')) {
+      const img = el('img', m.type === 'sticker' ? 'sticker' : 'photo'); img.src = src; img.alt = m.type === 'sticker' ? 'Figurinha' : 'Foto'; img.loading = 'lazy';
+      img.onclick = () => window.open(src, '_blank', 'noopener');
+      b.append(img); b.classList.toggle('media', true);
+      caption = m.type === 'sticker' ? '' : caption.replace(/^📷 ?(Foto)?/, '').trim();
+    } else if (src && m.type === 'video') {
+      const v = el('video', 'photo'); v.src = src; v.controls = true; v.preload = 'metadata'; b.append(v); b.classList.add('media');
+      caption = caption.replace(/^🎥 ?(Vídeo)?/, '').trim();
+    } else if (src && m.type === 'audio') {
+      const a = el('audio', 'voice'); a.src = src; a.controls = true; a.preload = 'metadata'; b.append(a);
+      caption = caption.replace(/^[🎤🔊] ?(Áudio)?/u, '').trim();
+      if (caption) caption = (out ? '🔊 ' : '📝 ') + caption;
+    }
+    if (caption) b.append(el('span', 'txt', caption));
     const time = el('span', 't', d.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}));
-    if (out) time.append(el('span', 'ck', m.delivery === 'failed' ? '!' : '✓✓'));
+    if (out) time.append(ticks(m.delivery));
     b.append(time); box.append(b); lastDir = m.direction;
   }
 }
@@ -119,7 +153,18 @@ async function toggleMode() {
   try { await api('/api/thread/mode', {method: 'POST', body: JSON.stringify({id: st.thread.id, mode})}); toast(mode === 'BOT' ? 'A IA voltou a atender esta conversa.' : 'Você assumiu a conversa. A IA não responde mais aqui.'); await loadList(); }
   catch (e) { toast(e.message); }
 }
-function grow() { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; }
+const EMOJIS = '😀 😃 😄 😁 😆 😅 😂 🙂 😉 😊 😍 😘 😋 😎 🤩 🥳 😏 😌 🤔 🙄 😴 😢 😭 😡 🙏 👍 👎 👏 🙌 💪 👌 ✌️ 🤝 ❤️ 💚 🔥 ⭐ ✅ ❌ ⏰ 🛵 🚗 🏠 📍 💳 💵 🧾 🍕 🥤 🍺 🧀 🍅 🌶️ 🍫 🎉 🎁'.split(' ');
+function buildEmoji() {
+  const box = $('emoji-box');
+  for (const e of EMOJIS) { const b = el('button', '', e); b.type = 'button'; b.onclick = () => { const t = $('text'), i = t.selectionStart ?? t.value.length; t.value = t.value.slice(0, i) + e + t.value.slice(t.selectionEnd ?? i); t.focus(); t.selectionStart = t.selectionEnd = i + e.length; grow(); }; box.append(b); }
+}
+function grow() { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; $('send').classList.toggle('idle', !t.value.trim()); }
+
+function highlight(q) {
+  q = q.trim().toLowerCase(); let first = null;
+  document.querySelectorAll('#messages .bubble').forEach(b => { const hit = q && b.textContent.toLowerCase().includes(q); b.classList.toggle('hit', Boolean(hit)); if (hit && !first) first = b; });
+  first?.scrollIntoView({block: 'center'});
+}
 
 // ---------- QR ----------
 async function loadQr() {
@@ -176,6 +221,11 @@ function bind() {
   $('text').addEventListener('input', grow);
   $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   $('toggle-mode').onclick = toggleMode;
+  buildEmoji(); grow();
+  $('emoji').onclick = e => { e.stopPropagation(); $('emoji-box').hidden = !$('emoji-box').hidden; };
+  document.addEventListener('click', e => { if (!$('emoji-box').contains(e.target)) $('emoji-box').hidden = true; });
+  $('chat-search-btn').onclick = () => { const i = $('chat-search'); i.hidden = !i.hidden; if (!i.hidden) i.focus(); else { i.value = ''; highlight(''); } };
+  $('chat-search').oninput = e => highlight(e.target.value);
   $('back').onclick = () => { $('app').classList.remove('open'); st.sel = null; renderList(); };
   document.querySelectorAll('[data-qr]').forEach(card => {
     const slot = card.dataset.qr;
