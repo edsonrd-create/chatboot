@@ -253,7 +253,7 @@ function bind() {
   document.querySelectorAll('[data-qr]').forEach(card => {
     const slot = card.dataset.qr;
     card.querySelector('.qr-start').onclick = async () => { try { await api(`/api/qr/${slot}/start`, {method: 'POST', body: '{}'}); loadQr(); } catch (e) { toast(e.message); } };
-    card.querySelector('.qr-logout').onclick = async () => { if (!confirm('Desconectar este WhatsApp da central?')) return; try { await api(`/api/qr/${slot}/logout`, {method: 'POST', body: '{}'}); loadQr(); } catch (e) { toast(e.message); } };
+    card.querySelector('.qr-logout').onclick = async () => { if (!confirm('Desconectar este WhatsApp? As conversas e arquivos dele serão apagados da central.')) return; try { await api(`/api/qr/${slot}/logout`, {method: 'POST', body: '{}'}); loadQr(); } catch (e) { toast(e.message); } };
   });
   document.addEventListener('click', () => { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); }, {once: true});
   $('login-form').onsubmit = async e => {
