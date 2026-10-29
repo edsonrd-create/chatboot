@@ -69,7 +69,10 @@ function renderList() {
     else { if (t.lastDirection === 'outgoing') last.append(ticks(t.lastDelivery)); last.append(document.createTextNode(t.lastText || '')); }
     bot.append(last, tags);
     meta.append(top, bot); row.append(av, meta);
+    row.dataset.id = t.id;
     row.onclick = () => openThread(t.id);
+    row.onmouseenter = () => prefetch(t.id);
+    row.ontouchstart = () => prefetch(t.id);
     list.append(row);
   }
   if (!items.length) list.append(el('div', 'empty', st.list.length ? 'Nenhuma conversa neste filtro.' : 'Nenhuma conversa ainda. Conecte o WhatsApp e as mensagens aparecem aqui.'));
@@ -86,14 +89,33 @@ function ticks(delivery) {
 }
 
 // ---------- Conversa ----------
+// Cache por conversa: ao clicar, a conversa aparece NA HORA com o que já temos e atualiza em segundo plano.
+const cache = new Map();
+function prefetch(id) {
+  if (cache.has(id) && Date.now() - cache.get(id).at < 15000) return;
+  if (prefetch.busy?.has(id)) return; (prefetch.busy ||= new Set()).add(id);
+  api('/api/thread?id=' + encodeURIComponent(id)).then(r => cache.set(id, {...r, at: Date.now()})).catch(() => {}).finally(() => prefetch.busy.delete(id));
+}
 async function openThread(id) {
   st.sel = id; setView('chats'); $('app').classList.add('open');
-  await loadThread(id, true); renderList();
+  const listItem = st.list.find(x => x.id === id);
+  const hit = cache.get(id);
+  if (hit) showThread(id, hit, true);
+  else if (listItem) showThread(id, {thread: listItem, messages: []}, true);
+  document.querySelectorAll('.row.sel').forEach(r => r.classList.remove('sel'));
+  document.querySelector(`.row[data-id="${CSS.escape(id)}"]`)?.classList.add('sel');
+  if (listItem && listItem.unread) { listItem.unread = 0; renderList(); }
+  $('text').focus({preventScroll: true});
+  await loadThread(id, !hit);
   api('/api/thread/read', {method: 'POST', body: JSON.stringify({id})}).then(() => { const t = st.list.find(x => x.id === id); if (t) { t.unread = 0; renderList(); } }).catch(() => {});
 }
 async function loadThread(id, scroll) {
   let r; try { r = await api('/api/thread?id=' + encodeURIComponent(id)); } catch { return; }
+  cache.set(id, {...r, at: Date.now()});
   if (st.sel !== id) return;
+  showThread(id, r, scroll);
+}
+function showThread(id, r, scroll) {
   const box = $('messages'), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   st.thread = r.thread; st.messages = r.messages || [];
   $('intro').hidden = true; $('qr').hidden = true; $('chat').hidden = false;
@@ -106,7 +128,9 @@ async function loadThread(id, scroll) {
   $('chat-mode').textContent = bot ? '🤖 IA atendendo' : '👤 Atendente';
   $('chat-mode').className = 'mode' + (bot ? '' : ' h');
   $('toggle-mode').textContent = bot ? 'Assumir conversa' : 'Devolver à IA';
-  renderMessages();
+  // Só redesenha as mensagens se algo mudou (evita “piscar” e travadas).
+  const sig = st.messages.length + '|' + (st.messages.at(-1)?.id || '') + '|' + st.messages.map(m => m.delivery[0] || '').join('') + '|' + id;
+  if (sig !== st.sig) { st.sig = sig; renderMessages(); }
   if (scroll || atBottom) { box.scrollTop = box.scrollHeight; box.querySelectorAll('img,video').forEach(m => m.addEventListener('load', () => { box.scrollTop = box.scrollHeight; }, {once: true})); }
 }
 function renderMessages() {
