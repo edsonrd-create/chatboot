@@ -158,7 +158,15 @@ catch(e){
 finally{await qr.presence(m.slot,m.jid,'paused');}
 await store.change(d=>{const t=d.threads[tid];if(!t)return;t.session=session;delete t.typing;delete t.qrLastBlocker;delete t.qrLastErrorAt;if(session.mode==='HUMAN')t.mode='HUMAN';upsertOutgoing(t,{id:sent.id||crypto.randomUUID(),direction:'outgoing',type:asVoice?'audio':'text',text:asVoice?`🔊 ${reply}`:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:asVoice?'IA · voz':'IA',media:sent.media||null});});
 }
-if(qrEnabled){qr=qrManagerFactory({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,onStatus:onQrStatus,log:x=>console.log(x)});setTimeout(()=>qr.resume?.(),1500);}
+// Ao desconectar um WhatsApp (pelo painel ou removendo o aparelho no celular), apaga as conversas e mídias dele.
+async function purgeQrSlot(slot){
+  let files=[],n=0;
+  await store.change(d=>{for(const [id,t] of Object.entries(d.threads)){if(t.via==='qr'&&t.slot===slot){for(const m of t.messages||[])if(m.media)files.push(m.media);delete d.threads[id];n++;}}});
+  for(const f of files){try{fs.rmSync(path.join(mediaDir,path.basename(f)),{force:true});}catch{}}
+  try{fs.rmSync(path.join(path.dirname(statePath),'avatars'),{recursive:true,force:true});}catch{}
+  if(n)console.log(`[QR] WhatsApp ${slot} desconectado: ${n} conversas apagadas`);
+}
+if(qrEnabled){qr=qrManagerFactory({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,onStatus:onQrStatus,onLoggedOut:purgeQrSlot,log:x=>console.log(x)});setTimeout(()=>qr.resume?.(),1500);if(typeof qr.hasSession==='function')setTimeout(()=>Promise.all([1,2].filter(n=>!qr.hasSession(n)).map(purgeQrSlot)).catch(()=>{}),3000);}
 const aiCfg=aiProvider==='gemini'
 
     ?{provider:'gemini',apiKey:env.GEMINI_API_KEY||'',model:env.GEMINI_MODEL||'gemini-3.5-flash-lite'}

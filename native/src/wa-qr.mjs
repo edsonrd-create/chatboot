@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const MEDIA_TYPES = new Set(['image', 'sticker', 'audio', 'video', 'document']);
-export function createQrManager({authDir, onIncoming, onStatus, log = () => {}, agent}) {
+export function createQrManager({authDir, onIncoming, onStatus, onLoggedOut, log = () => {}, agent}) {
   const slots = new Map(); // slot -> {state, qr, number, sock, lastError}
   const get = slot => {
     if (!slots.has(slot)) slots.set(slot, {state: 'disconnected', qr: null, number: null, sock: null, lastError: null, startedAt: null});
@@ -62,6 +62,7 @@ export function createQrManager({authDir, onIncoming, onStatus, log = () => {}, 
         if (loggedOut) {
           s.state = 'disconnected'; s.number = null; s.lastError = 'Sessão encerrada no celular';
           fs.rmSync(dirFor(slot), {recursive: true, force: true});
+          try { await onLoggedOut?.(slot); } catch {}
         } else if (s.manualStop) {
           s.state = 'disconnected';
         } else if (code === DisconnectReason.timedOut && !s.number) {
@@ -175,6 +176,7 @@ export function createQrManager({authDir, onIncoming, onStatus, log = () => {}, 
     try { s.sock?.end?.(); } catch {}
     s.sock = null; s.qr = null; s.number = null; s.state = 'disconnected';
     fs.rmSync(dirFor(slot), {recursive: true, force: true});
+    try { await onLoggedOut?.(slot); } catch {}
     return status(slot);
   }
 
@@ -190,7 +192,7 @@ export function createQrManager({authDir, onIncoming, onStatus, log = () => {}, 
     }
   }
 
-  return {start, send, sendMedia, sendVoice, presence, avatar, logout, status, resume, isConnected: slot => get(slot).state === 'connected'};
+  return {start, hasSession: slot => fs.existsSync(path.join(dirFor(slot), 'creds.json')), send, sendMedia, sendVoice, presence, avatar, logout, status, resume, isConnected: slot => get(slot).state === 'connected'};
 }
 
 // Converte a mensagem do WhatsApp (Baileys) para o formato da central. null = ignorar (grupo, status, reação, sistema).
