@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const MEDIA_TYPES = new Set(['image', 'sticker', 'audio', 'video']);
+const MEDIA_TYPES = new Set(['image', 'sticker', 'audio', 'video', 'document']);
 export function createQrManager({authDir, onIncoming, onStatus, log = () => {}, agent}) {
   const slots = new Map(); // slot -> {state, qr, number, sock, lastError}
   const get = slot => {
@@ -139,6 +139,20 @@ export function createQrManager({authDir, onIncoming, onStatus, log = () => {}, 
     return {id: r?.key?.id || null};
   }
 
+  // Anexos enviados pelo atendente: foto, vídeo, áudio ou documento (PDF, planilha, etc.).
+  async function sendMedia(slot, jid, {buffer, mimeType, fileName, caption}) {
+    const s = get(slot);
+    if (!s.sock || s.state !== 'connected') throw Object.assign(new Error('WhatsApp por QR não está conectado'), {status: 409});
+    const to = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
+    const mime = String(mimeType || 'application/octet-stream');
+    const content = /^image\/(jpeg|png|webp)$/.test(mime) ? {image: buffer, mimetype: mime, caption}
+      : mime === 'video/mp4' ? {video: buffer, mimetype: mime, caption}
+      : /^audio\//.test(mime) ? {audio: buffer, mimetype: mime}
+      : {document: buffer, mimetype: mime, fileName: fileName || 'arquivo', caption};
+    const r = await s.sock.sendMessage(to, content);
+    return {id: r?.key?.id || null};
+  }
+
   async function sendVoice(slot, jid, ogg) {
     const s = get(slot);
     if (!s.sock || s.state !== 'connected') throw Object.assign(new Error('WhatsApp por QR não está conectado'), {status: 409});
@@ -176,7 +190,7 @@ export function createQrManager({authDir, onIncoming, onStatus, log = () => {}, 
     }
   }
 
-  return {start, send, sendVoice, presence, avatar, logout, status, resume, isConnected: slot => get(slot).state === 'connected'};
+  return {start, send, sendMedia, sendVoice, presence, avatar, logout, status, resume, isConnected: slot => get(slot).state === 'connected'};
 }
 
 // Converte a mensagem do WhatsApp (Baileys) para o formato da central. null = ignorar (grupo, status, reação, sistema).
@@ -200,7 +214,7 @@ export function parseWaMessage(m) {
   else if (msg.videoMessage) { type = 'video'; mimeType = msg.videoMessage.mimetype || 'video/mp4'; text = msg.videoMessage.caption ? `🎥 ${msg.videoMessage.caption}` : '🎥 Vídeo'; }
   else if (msg.audioMessage) { type = 'audio'; text = ''; mimeType = msg.audioMessage.mimetype || 'audio/ogg'; }
   else if (msg.stickerMessage) { type = 'sticker'; mimeType = msg.stickerMessage.mimetype || 'image/webp'; text = '🏷️ Figurinha'; }
-  else if (msg.documentMessage) { type = 'document'; text = `📄 ${msg.documentMessage.fileName || 'Documento'}`; }
+  else if (msg.documentMessage) { type = 'document'; mimeType = msg.documentMessage.mimetype || 'application/octet-stream'; text = `📄 ${msg.documentMessage.fileName || 'Documento'}`; }
   else if (msg.locationMessage || msg.liveLocationMessage) { const l = msg.locationMessage || msg.liveLocationMessage; type = 'location'; text = `📍 Localização: https://maps.google.com/?q=${l.degreesLatitude},${l.degreesLongitude}`; }
   else if (msg.contactMessage || msg.contactsArrayMessage) { type = 'contact'; text = `👤 Contato: ${msg.contactMessage?.displayName || 'contatos'}`; }
   else if (msg.buttonsResponseMessage || msg.listResponseMessage || msg.templateButtonReplyMessage) { text = msg.buttonsResponseMessage?.selectedDisplayText || msg.listResponseMessage?.title || msg.templateButtonReplyMessage?.selectedDisplayText || ''; }

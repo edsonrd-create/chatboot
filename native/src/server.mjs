@@ -25,7 +25,7 @@ async function readBody(req,limit=128000){let n=0;const chunks=[];for await(cons
 const short=x=>String(x||'').slice(0,3000);
 const userView=threadInfo;
 const publicChannel=c=>({slot:c.slot,phoneId:c.phoneId,number:c.display,apiVerifiedAt:c.checkedAt,lastInboundAt:c.lastInboundAt,lastOutboundAt:c.lastOutboundAt,hasToken:Boolean(c.tokenEncrypted),status:c.checkedAt?'API_VERIFIED_NOT_END_TO_END':'NOT_VERIFIED'});
-const serializeMessage=m=>({id:m.id,direction:m.direction,text:m.text,type:m.type,at:m.at,delivery:m.delivery||'',source:m.source||'',media:m.media||null});
+const serializeMessage=m=>({id:m.id,direction:m.direction,text:m.text,type:m.type,at:m.at,delivery:m.delivery||'',source:m.source||'',media:m.media||null,fileName:m.fileName||null});
 const getToken=(c,env)=>c.tokenEncrypted?revealToken(c.tokenEncrypted,env.APP_SECRET):String(env[`META_TOKEN_${c.slot}`]||'');
 
 export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now(),qrManagerFactory=createQrManager,respondWithAI=intelligentReply}={}){
@@ -60,24 +60,35 @@ function upsertOutgoing(t,msg){const old=t.messages.find(x=>x.id===msg.id);if(ol
 let qr=null;
 // Mídias recebidas/enviadas ficam no volume persistente, ao lado do estado.
 const mediaDir=path.join(path.dirname(statePath),'media');
-const MEDIA_EXT={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','video/mp4':'mp4'};
-const MEDIA_MIME={jpg:'image/jpeg',png:'image/png',webp:'image/webp',ogg:'audio/ogg',mp3:'audio/mpeg',m4a:'audio/mp4',mp4:'video/mp4'};
+const MEDIA_EXT={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','video/mp4':'mp4','application/pdf':'pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx','application/msword':'doc','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx','application/vnd.ms-excel':'xls','text/plain':'txt','text/csv':'csv','application/zip':'zip'};
+const MEDIA_MIME=Object.fromEntries(Object.entries(MEDIA_EXT).map(([k,v])=>[v,k]));const DOC_EXT=new Set(['pdf','docx','doc','xlsx','xls','txt','csv','zip']);
 function saveMedia(id,media){
   if(!media?.buffer?.length)return null;
   const ext=MEDIA_EXT[String(media.mimeType||'').split(';')[0].trim()];if(!ext)return null;
   const name=`${String(id).replace(/[^A-Za-z0-9_-]/g,'').slice(0,64)||crypto.randomUUID()}.${ext}`;
   try{fs.mkdirSync(mediaDir,{recursive:true});fs.writeFileSync(path.join(mediaDir,name),media.buffer,{mode:0o600});return name;}catch(e){console.error('[mídia]',String(e.message||e).slice(0,80));return null;}
 }
+// ===== Desempenho: nada de uma gravação por mensagem =====
+// Histórico, eco do celular e confirmações (✓✓) são agrupados e gravados juntos a cada 300 ms.
+const lightOps=[];let lightTimer=null;
+function queueLight(fn){lightOps.push(fn);if(!lightTimer)lightTimer=setTimeout(flushLight,300);}
+async function flushLight(){lightTimer=null;const ops=lightOps.splice(0);if(!ops.length)return;try{await store.change(d=>{for(const op of ops){try{op(d);}catch(e){console.error('[lote]',String(e.message||e).slice(0,80));}}});}catch(e){console.error('[lote]',String(e.message||e).slice(0,80));}if(lightOps.length&&!lightTimer)lightTimer=setTimeout(flushLight,300);}
+// Uma fila por conversa (mensagens do mesmo cliente em ordem, sem resposta duplicada)
+// e várias conversas atendidas em paralelo, com limite de chamadas simultâneas à IA.
+const threadChains=new Map();
+function inThreadOrder(tid,job){const prev=threadChains.get(tid)||Promise.resolve();const next=prev.catch(()=>{}).then(job);threadChains.set(tid,next);next.finally(()=>{if(threadChains.get(tid)===next)threadChains.delete(tid);}).catch(()=>{});return next;}
+const AI_MAX=Math.max(1,Math.min(20,Number(env.AI_MAX_CONCURRENCY)||6));let aiActive=0;const aiWaiting=[];
+async function withAiSlot(job){if(aiActive>=AI_MAX)await new Promise(r=>aiWaiting.push(r));aiActive++;try{return await job();}finally{aiActive--;aiWaiting.shift()?.();}}
 async function onQrStatus({slot,id,delivery}){
   const rank={sent:1,delivered:2,read:3};
-  await store.change(d=>{for(const t of Object.values(d.threads)){if(t.slot!==slot||t.via!=='qr')continue;const msg=t.messages.find(x=>x.id===id&&x.direction==='outgoing');if(msg){if((rank[delivery]||0)>(rank[msg.delivery]||0))msg.delivery=delivery;return;}}});
+  queueLight(d=>{for(const t of Object.values(d.threads)){if(t.slot!==slot||t.via!=='qr')continue;const msg=t.messages.find(x=>x.id===id&&x.direction==='outgoing');if(msg){if((rank[delivery]||0)>(rank[msg.delivery]||0))msg.delivery=delivery;return;}}});
 }
 async function onQrIncoming(m){
 const tid=`qr${m.slot}:${m.from}`;
 const mediaFile=saveMedia(m.id,m.media);
 // Mensagens enviadas pelo próprio celular, eco das enviadas pela central e histórico: só registrar, sem IA.
 if(m.fromMe||m.history){
-  await store.change(d=>{
+  queueLight(d=>{
     const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
     t.via='qr';t.jid=m.jid;if(m.name&&!m.fromMe)t.customerName=m.name;
     if(t.messages.some(x=>x.id===m.id))return;
@@ -88,11 +99,14 @@ if(m.fromMe||m.history){
   });
   return;
 }
+return inThreadOrder(tid,()=>handleLiveQr(m,tid,mediaFile));
+}
+async function handleLiveQr(m,tid,mediaFile){
 // 1) Áudio do cliente → texto (fora do lock do armazenamento; pode levar alguns segundos).
 let text=m.text||'',transcribed=false,audioError='';
 if(m.type==='audio'){
   if(m.audio?.buffer&&aiCfg.provider==='gemini'&&aiCfg.apiKey){
-    try{text=await transcribeAudio({apiKey:aiCfg.apiKey,model:aiCfg.model,fetchImpl},m.audio.buffer,m.audio.mimeType);transcribed=Boolean(text);}
+    try{text=await withAiSlot(()=>transcribeAudio({apiKey:aiCfg.apiKey,model:aiCfg.model,fetchImpl},m.audio.buffer,m.audio.mimeType));transcribed=Boolean(text);}
     catch(e){audioError=String(e.message||e).slice(0,100);console.error('[QR áudio]',audioError);}
   }else audioError=m.audio?.buffer?'Transcrição exige Gemini configurado':'Áudio não baixado';
 }
@@ -119,7 +133,7 @@ await store.change(d=>{const t=d.threads[tid];if(t)t.typing=m.type==='audio'&&vo
 const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typing;});
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
-try{reply=await respondWithAI(text,session,business,aiCfg);}
+try{reply=await withAiSlot(()=>respondWithAI(text,session,business,aiCfg));}
 catch(e){
   const fault=describeAIError(e,aiCfg.provider);
   console.error('[QR IA]',JSON.stringify({code:fault.code,slot:m.slot}));
@@ -307,9 +321,9 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         return json(res,200,{items});
       }
       if(p==='/api/media'&&req.method==='GET'){
-        const f=String(url.searchParams.get('f')||'');if(!/^[A-Za-z0-9_-]{1,80}\.(jpg|png|webp|ogg|mp3|m4a|mp4)$/.test(f))return json(res,400,{error:'Arquivo inválido'});
+        const f=String(url.searchParams.get('f')||'');if(!/^[A-Za-z0-9_-]{1,80}\.(jpg|png|webp|ogg|mp3|m4a|mp4|pdf|docx|doc|xlsx|xls|txt|csv|zip)$/.test(f))return json(res,400,{error:'Arquivo inválido'});
         const file=path.join(mediaDir,f);if(!fs.existsSync(file))return json(res,404,{error:'Mídia não encontrada'});
-        res.writeHead(200,{'content-type':MEDIA_MIME[f.split('.').pop()],'cache-control':'private, max-age=86400','x-content-type-options':'nosniff'});return fs.createReadStream(file).pipe(res);
+        const ext=f.split('.').pop();res.writeHead(200,{'content-type':MEDIA_MIME[ext]||'application/octet-stream','cache-control':'private, max-age=86400','x-content-type-options':'nosniff',...(DOC_EXT.has(ext)?{'content-disposition':`attachment; filename="${f}"`}:{})});return fs.createReadStream(file).pipe(res);
       }
       if(p==='/api/avatar'&&req.method==='GET'){
         const t=store.snapshot().threads[url.searchParams.get('id')||''];
@@ -349,6 +363,20 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         try{await store.change(d=>{changed=transition(d,{id:v.id,action:'takeover',clock,actor:'admin'});});}
         catch(e){return json(res,e.status||422,{error:e.message});}
         return json(res,200,{ok:true,thread:changed});
+      }
+      if(p==='/api/send-file'&&req.method==='POST'){
+        let v;try{v=JSON.parse((await readBody(req,23*1024*1024)).toString());}catch(e){return json(res,e.status||400,{error:e.status===413?'Arquivo maior que 16 MB':'JSON inválido'});}
+        const t0=store.snapshot().threads[v?.id];if(!t0)return json(res,404,{error:'Conversa não encontrada'});
+        if(t0.via!=='qr'||!qr)return json(res,409,{error:'Envio de anexos disponível nas conversas do WhatsApp por QR'});
+        const mime=String(v.type||'').split(';')[0].trim().toLowerCase();if(!MEDIA_EXT[mime])return json(res,415,{error:'Tipo de arquivo não permitido (use foto, vídeo MP4, áudio, PDF, Word, Excel, TXT, CSV ou ZIP)'});
+        const buffer=Buffer.from(String(v.data||''),'base64');if(!buffer.length||buffer.length>16*1024*1024)return json(res,413,{error:'Arquivo vazio ou maior que 16 MB'});
+        const fileName=String(v.name||'arquivo').replace(/[\\/\r\n"]/g,'_').slice(0,120),caption=String(v.caption||'').slice(0,1000);
+        let r;try{r=await qr.sendMedia(t0.slot,t0.jid,{buffer,mimeType:mime,fileName,caption});}catch(e){return json(res,e.status||503,{error:String(e.message||e).slice(0,140)});}
+        const id=r.id||crypto.randomUUID(),media=saveMedia(id,{buffer,mimeType:mime});
+        const type=mime.startsWith('image/')?'image':mime==='video/mp4'?'video':mime.startsWith('audio/')?'audio':'document';
+        const text=type==='document'?`📄 ${fileName}${caption?'\n'+caption:''}`:type==='image'?`📷 ${caption||'Foto'}`:type==='video'?`🎥 ${caption||'Vídeo'}`:'🎤 Áudio';
+        await store.change(d=>{const t=d.threads[v.id];if(!t)return;t.mode='HUMAN';t.session.mode='HUMAN';upsertOutgoing(t,{id,direction:'outgoing',type,text,at:new Date(clock()).toISOString(),delivery:'sent',source:'Atendente',media,fileName});});
+        return json(res,202,{ok:true});
       }
       if(p==='/api/reply'&&req.method==='POST'){
         let v;try{v=JSON.parse((await readBody(req,5000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
