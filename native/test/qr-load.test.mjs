@@ -90,3 +90,28 @@ test('anexo: atendente envia PDF pela central e a conversa passa para humano', a
   const bad = await fetch(url + '/api/send-file', {method: 'POST', headers: {cookie, 'content-type': 'application/json'}, body: JSON.stringify({...body, type: 'application/x-msdownload', name: 'virus.exe'})});
   assert.equal(bad.status, 415, 'executáveis são recusados');
 });
+
+test('desconectar apaga as conversas e mídias daquele WhatsApp e mantém o outro', async t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'guto-qr-purge-'));
+  const holder = {};
+  const qrManagerFactory = ({onIncoming, onLoggedOut}) => {
+    Object.assign(holder, {onIncoming, onLoggedOut});
+    return {status: slot => ({slot, state: 'connected'}), isConnected: () => true, hasSession: () => true,
+      send: async () => ({id: 'o' + Math.random()}), sendVoice: async () => ({}), presence: async () => {}, resume: async () => {}, start: async () => {},
+      logout: async slot => { await onLoggedOut(slot); return {slot, state: 'disconnected'}; }};
+  };
+  const app = createNativeServer({env, dataFile: path.join(temp, 'state.json'), qrManagerFactory, respondWithAI: async () => 'ok'});
+  const address = await app.start(0), url = 'http://127.0.0.1:' + address.port;
+  t.after(async () => { await app.stop(); fs.rmSync(temp, {recursive: true, force: true}); });
+  await holder.onIncoming({...msg(1, '5541911110000'), media: {buffer: Buffer.from('img'), mimeType: 'image/jpeg'}, type: 'image', text: '📷 Foto'});
+  await holder.onIncoming({...msg(2, '5541922220000'), slot: 2});
+  const mediaFile = Object.values(app.store.snapshot().threads).find(t => t.slot === 1).messages[0].media;
+  assert.ok(fs.existsSync(path.join(temp, 'media', mediaFile)));
+  const cookie = (await fetch(url + '/api/login', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({password: P})})).headers.get('set-cookie').split(';')[0];
+  const r = await fetch(url + '/api/qr/1/logout', {method: 'POST', headers: {cookie, 'content-type': 'application/json'}, body: '{}'});
+  assert.equal(r.status, 200);
+  const left = Object.values(app.store.snapshot().threads);
+  assert.equal(left.filter(t => t.slot === 1).length, 0, 'conversas do WhatsApp 01 apagadas');
+  assert.equal(left.filter(t => t.slot === 2).length, 1, 'WhatsApp 02 intacto');
+  assert.equal(fs.existsSync(path.join(temp, 'media', mediaFile)), false, 'mídia apagada');
+});
