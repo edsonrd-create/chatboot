@@ -81,6 +81,22 @@ else box.append(x('div','qr-empty',st.state==='connected'?'✓ WhatsApp conectad
 qrTimer=setTimeout(loadQr,2500);}
 for(const b of document.querySelectorAll('[data-qr-start]'))b.onclick=async()=>{try{await api('/api/qr/'+b.dataset.qrStart+'/start',{method:'POST',body:'{}'});notify('Gerando QR Code… aponte a câmera do celular.');loadQr();}catch(e){notify(e.message,true);}};
 for(const b of document.querySelectorAll('[data-qr-logout]'))b.onclick=async()=>{if(!confirm('Desconectar este WhatsApp do Guto Bot?'))return;try{await api('/api/qr/'+b.dataset.qrLogout+'/logout',{method:'POST',body:'{}'});notify('WhatsApp desconectado.');loadQr();}catch(e){notify(e.message,true);}};
+$('qr-audio-check').onclick=async()=>{
+ const button=$('qr-audio-check'),health=$('qr-audio-health');
+ button.disabled=true;health.textContent='Verificando FFmpeg, Opus e Gemini no servidor...';
+ try{
+  const r=await api('/api/audio/health');
+  health.textContent=[
+   'FFmpeg: '+(r.ffmpegAvailable?'OK':'indisponível'),
+   'OGG/Opus: '+(r.opusEncoder?'OK':'não disponível'),
+   'Transcrição Gemini: '+(r.sttConfigured?'configurada':'não configurada'),
+   'Voz sintética: '+(r.ttsConfigured?'habilitada para testes':'desativada'),
+   'WhatsApp QR: '+(r.qrConnected?'conectado':'não conectado')
+  ].join(' · ');
+  if(r.error)health.textContent+=' · Código: '+r.error;
+ }catch(e){health.textContent='Não foi possível verificar áudio: '+e.message;}
+ finally{button.disabled=false;}
+};
 // ===== Notificações estilo WhatsApp (som, título da aba, contador por número) =====
 let lastUnread=null;
 function beep(){try{const a=new (window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator(),g=a.createGain();o.type='sine';o.frequency.value=880;g.gain.setValueAtTime(.0001,a.currentTime);g.gain.exponentialRampToValueAtTime(.25,a.currentTime+.02);g.gain.exponentialRampToValueAtTime(.0001,a.currentTime+.35);o.connect(g).connect(a.destination);o.start();o.stop(a.currentTime+.4);}catch{}}
