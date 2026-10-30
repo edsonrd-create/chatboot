@@ -61,6 +61,10 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
     const j=await r.json().catch(()=>({}));return {ok:r.ok&&j.ok!==false,status:r.status,...j};
   };
   if(botToken.length>=24)business.pdvMode=async()=>{const r=await fetch(`${pdvBase}/api/v1/bot/status`,{headers:{authorization:`Bearer ${botToken}`},signal:AbortSignal.timeout(10000)});const j=await r.json().catch(()=>({}));return r.ok?String(j.mode||''):'';};
+  if(botToken.length>=24)business.orderStatus=async externalIds=>{
+    const r=await fetch(`${pdvBase}/api/v1/bot/order-status`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify({externalIds}),signal:AbortSignal.timeout(10000)});
+    const j=await r.json().catch(()=>({}));return {...j,ok:r.ok&&j.ok!==false};
+  };
   if(botToken.length>=24)business.submitOrder=async body=>{
     const r=await fetch(`${pdvBase}/api/v1/bot/order`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
     const j=await r.json().catch(()=>({}));return {...j,ok:r.ok&&j.ok!==false,status:r.status};
@@ -227,7 +231,7 @@ await store.change(d=>{const t=d.threads[tid];if(t)t.typing=m.type==='audio'&&vo
 const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typing;});
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
-session.customerPhone=String(m.from||'').replace(/\D/g,'');{const prof=store.peek().customers?.[session.customerPhone];if(prof&&!session.knownCustomer){session.knownCustomer={name:prof.name||'',address:prof.address||'',neighborhood:prof.neighborhood||''};if(!session.customerName&&prof.name)session.customerName=prof.name;}}if(!session.customerName){const nm=store.peek().threads?.[tid]?.customerName;if(nm&&!/^\d+$/.test(nm))session.customerName=String(nm).slice(0,80);}
+session.customerPhone=String(m.from||'').replace(/\D/g,'');{const prof=store.peek().customers?.[session.customerPhone];if(prof&&!session.knownCustomer){session.knownCustomer={name:prof.name||'',address:prof.address||'',neighborhood:prof.neighborhood||''};if(Array.isArray(prof.orderRefs))session.orderRefs=[...new Set([...prof.orderRefs,...(session.orderRefs||[])])].slice(-5);if(!session.customerName&&prof.name)session.customerName=prof.name;}}if(!session.customerName){const nm=store.peek().threads?.[tid]?.customerName;if(nm&&!/^\d+$/.test(nm))session.customerName=String(nm).slice(0,80);}
 try{reply=await withAiSlot(()=>respondWithAI(text,session,business,aiCfg));}
 catch(e){
   const fault=describeAIError(e,aiCfg.provider);
@@ -240,7 +244,8 @@ catch(e){
 session.history.push({role:'user',content:text},{role:'assistant',content:reply});
 session.history=session.history.slice(-30);
 // Cliente recorrente: guarda só nome e endereço JÁ VALIDADO pelo PDV (a taxa é sempre recalculada).
-if(session.customerPhone.length>=10&&session.address&&session.addressCheck)await store.change(d=>{d.customers??={};d.customers[session.customerPhone]={name:session.customerName||d.customers[session.customerPhone]?.name||'',address:session.address,neighborhood:session.neighborhood||'',updatedAt:new Date(clock()).toISOString()};});
+if(session.customerPhone.length>=10&&session.address&&session.addressCheck)await store.change(d=>{d.customers??={};d.customers[session.customerPhone]={...d.customers[session.customerPhone],name:session.customerName||d.customers[session.customerPhone]?.name||'',address:session.address,neighborhood:session.neighborhood||'',updatedAt:new Date(clock()).toISOString()};});
+if(session.customerPhone.length>=10&&session.orderRefs?.length)await store.change(d=>{d.customers??={};const c=d.customers[session.customerPhone]??={name:session.customerName||''};c.orderRefs=[...new Set([...(c.orderRefs||[]),...session.orderRefs])].slice(-5);c.updatedAt=new Date(clock()).toISOString();});
 // Enviar somente se o atendente não assumiu a conversa enquanto a IA processava.
 const stillAutomated=()=>{
   const t=store.peek().threads[tid];

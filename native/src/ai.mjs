@@ -18,6 +18,7 @@ const tools=[
  {name:'resumir_carrinho',description:'Consulta itens, pendências e total calculado pelo servidor.',parameters:params({})},
  {name:'solicitar_confirmacao',description:'Gera orçamento verificável e habilita confirmação somente se tudo estiver completo.',parameters:params({})},
  {name:'confirmar_solicitacao',description:'Registra solicitação para conferência da equipe apenas com confirmação explícita do cliente após resumo completo.',parameters:params({})},
+ {name:'consultar_pedido',description:'Consulta no PDV o status e o valor dos pedidos que este cliente fez pelo WhatsApp ("cadê meu pedido", "quanto ficou").',parameters:params({})},
  {name:'chamar_atendente',description:'Transfere a conversa para um humano quando cliente pedir ou houver bloqueio.',parameters:params({reason:field('string','Motivo breve')},['reason'])}
 ];
 const normalize=(s)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
@@ -54,6 +55,12 @@ export function applyTool(name,args,session,business,userText){
     case 'resumir_carrinho':return getSummary(session,business);
     case 'solicitar_confirmacao':return requestConfirmation(session,business);
     case 'confirmar_solicitacao':return confirmRequest(session,business,{explicitConfirmation:explicitYes(userText)});
+    case 'consultar_pedido':{
+      const refs=session.orderRefs||[];
+      if(!refs.length)return {ok:false,error:'Nenhum pedido feito por este WhatsApp pelo atendimento automático.',orientacao:'Se o cliente pediu por outro canal, chame um atendente.'};
+      if(typeof business.orderStatus!=='function')return {ok:false,error:'Consulta indisponível agora.'};
+      return business.orderStatus(refs).then(r=>r?.ok?{ok:true,pedidos:(r.orders||[]).map(o=>({numero:o.number,status:o.statusLabel,total:formatMoney(o.totalCents),pagamento:o.paymentStatus==='paid'?'pago':o.paymentStatus==='review'?'em conferência':'aguardando pagamento'}))}:{ok:false,error:'Consulta indisponível agora.'}).catch(()=>({ok:false,error:'Consulta indisponível agora.'}));
+    }
     case 'chamar_atendente':session.mode='HUMAN';session.reason=String(args.reason||'Solicitação do cliente').slice(0,200);return {ok:true,mode:'HUMAN'};
     default:return {ok:false,error:'Ferramenta não autorizada'};
   }

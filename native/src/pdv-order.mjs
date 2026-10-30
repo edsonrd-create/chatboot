@@ -49,6 +49,8 @@ export async function submitPdvOrder(session, business, confirmed) {
     }
     const res = await business.submitOrder(body);
     session.pdvOrder = {at: new Date().toISOString(), ok: !!res?.ok, dryRun: !!res?.dryRun, number: res?.number ?? null, totalCents: res?.totalCents ?? null, paymentStatus: res?.paymentStatus ?? null, error: res?.ok ? null : String(res?.error || 'erro').slice(0, 200)};
+    session.pdvOrder.externalId = body.externalId;
+    if (res?.ok && !res?.dryRun) session.orderRefs = [...new Set([...(session.orderRefs || []), body.externalId])].slice(-5);
     if (!res?.ok) { session.mode = 'HUMAN'; session.reason = `PDV recusou o pedido: ${session.pdvOrder.error}`; }
     return res;
   } catch (e) {
