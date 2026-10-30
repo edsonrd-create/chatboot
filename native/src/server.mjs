@@ -40,6 +40,8 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   // Não gerar ou simular segredos Meta, números conectados nem mensagens reais.
   // Em FREE_PREVIEW_MODE, liberar apenas prévia anônima e IMUTÁVEL; nunca credenciais reais.
   const freePreview=envFlag(env.FREE_PREVIEW_MODE);
+  // Segurança fail-closed: só permite envio real após autorização explícita.
+  const outboundEnabled=!freePreview && env.NODE_ENV==='production' && envFlag(env.WHATSAPP_OUTBOUND_ENABLED);
   if(!freePreview && (!env.ADMIN_PASSWORD||env.ADMIN_PASSWORD.length<12||!env.APP_SECRET||env.APP_SECRET.length<32)){throw new Error('ADMIN_PASSWORD (12+) e APP_SECRET (32+) são exigidos.');}
   const appUrl=String(env.APP_PUBLIC_URL||env.RENDER_EXTERNAL_URL||'');
   if(!freePreview && env.NODE_ENV==='production' && (!/^https:\/\/[^/]+$/.test(appUrl)||!env.DATA_FILE&&!dataFile))throw new Error('Produção exige APP_PUBLIC_URL ou RENDER_EXTERNAL_URL HTTPS e armazenamento persistente.');
@@ -71,7 +73,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   if(!['gemini','openai'].includes(aiProvider))throw new Error('AI_PROVIDER deve ser gemini ou openai.');
   // ===== WhatsApp por QR Code (Baileys, canal NÃO oficial; ative com WA_QR_ENABLED=true) =====
 const qrEnabled=!freePreview&&envFlag(env.WA_QR_ENABLED);
-const qrAutoReply=envFlag(env.WA_QR_AUTOREPLY);
+const qrAutoReply=outboundEnabled && envFlag(env.WA_QR_AUTOREPLY);
 // Homologação: se WA_QR_TEST_NUMBERS tiver números (ex.: 5541999990000,5541988887777), a IA só responde a eles.
 const qrTestNumbers=String(env.WA_QR_TEST_NUMBERS||'').split(',').map(x=>x.replace(/\D/g,'')).filter(Boolean);
 const qrVoiceEnabled=envFlag(env.WA_QR_VOICE===undefined?'false':env.WA_QR_VOICE); // opt-in: não ligar voz em números reais sem homologação
@@ -171,7 +173,7 @@ if(canReply)session=structuredClone(t.session||newSession());
 });
 if(!canReply){
   // A mensagem não compreendida não deve produzir pedido inventado. Aviso claro e transferência humana.
-  if(notifyAudioHandoff&&qr?.isConnected(m.slot)){
+  if(outboundEnabled&&notifyAudioHandoff&&qr?.isConnected(m.slot)){
     const note='Sou a assistente virtual da Guto Express. Não consegui compreender seu áudio com segurança. Encaminhei a conversa para nossa equipe. Se preferir, envie sua mensagem por escrito.';
     try{
       const result=await qr.send(m.slot,m.jid,note);
@@ -244,7 +246,7 @@ if(session.customerPhone.length>=10&&session.address&&session.addressCheck)await
 // Enviar somente se o atendente não assumiu a conversa enquanto a IA processava.
 const stillAutomated=()=>{
   const t=store.peek().threads[tid];
-  return t?.mode==='BOT'&&t.operationalState!=='CLOSED'&&qrAutoReply&&qrAllowed(m.from)&&qr?.isConnected(m.slot);
+  return outboundEnabled&&t?.mode==='BOT'&&t.operationalState!=='CLOSED'&&qrAutoReply&&qrAllowed(m.from)&&qr?.isConnected(m.slot);
 };
 if(!stillAutomated()){
   console.info('[QR AUDIO]',JSON.stringify({slot:m.slot,code:'QR_CANCELLED_BY_HUMAN'}));
@@ -336,7 +338,7 @@ const aiCfg=aiProvider==='gemini'
     {id:'demo:2',slot:2,customer:'CLIENTE-FICTICIO-02',customerName:'Exemplo fictício · Bruno',mode:'HUMAN',unread:0,updatedAt:'2026-10-26T18:02:00.000Z',messages:[{id:'demo-b-1',direction:'incoming',text:'Quais são as opções de pizza gigante? É para retirar no balcão.',type:'text',at:'2026-10-26T18:02:00.000Z',delivery:'received',source:'EXEMPLO FICTÍCIO'}]},
   ];
   const previewStatus=()=>({mode:'PREVIA_PUBLICA',ready:false,autoReplyEnabled:false,reason:'Prévia visual somente leitura; nenhum WhatsApp ou PDV conectado',hosting:{freePreview:true,ephemeralData:true,customerMessagingDisabled:true,readOnly:true},channels:[1,2].map(slot=>({slot,phoneId:'',number:'Não conectado',apiVerifiedAt:null,lastInboundAt:null,lastOutboundAt:null,hasToken:false,status:'NOT_VERIFIED'})),ai:{configured:false,model:'',realTest:false,testAt:null},pdv:{enabled:false,baseUrl:'https://pdvgutoexpress.com.br',ordersMode:'DISABLED',lastTest:null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:2,messages:3,pendingOrders:0},oauth:{available:false,appId:null,configId:null}});
-  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d),qrState=qrSummary();const qrPublic={...qrState,slots:qrState.slots.map(({qr,...safe})=>safe)};return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:qrState.active,qr:qrPublic,reason:qrState.active?'Resposta QR configurada e conectada; criação de pedidos no PDV ainda bloqueada':qrState.help,hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(aiCfg.apiKey),model:aiCfg.model,provider:aiCfg.provider,realTest:Boolean(d.aiTest?.ok&&d.aiTest?.provider===aiCfg.provider&&d.aiTest?.model===aiCfg.model),testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
+  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d),qrState=qrSummary();const qrPublic={...qrState,slots:qrState.slots.map(({qr,...safe})=>safe)};return {mode:'HOMOLOGACAO',ready:false,outboundEnabled,autoReplyEnabled:qrState.active,qr:qrPublic,reason:qrState.active?'Resposta QR configurada e conectada; criação de pedidos no PDV ainda bloqueada':qrState.help,hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(aiCfg.apiKey),model:aiCfg.model,provider:aiCfg.provider,realTest:Boolean(d.aiTest?.ok&&d.aiTest?.provider===aiCfg.provider&&d.aiTest?.model===aiCfg.model),testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
   function authed(req){const raw=cookieValue(req);const n=raw.lastIndexOf('.');if(n<0)return false;const payload=raw.slice(0,n),mac=raw.slice(n+1);if(!safeCompare(sign(payload,env.APP_SECRET),mac))return false;const parts=payload.split(':');return parts[0]==='admin'&&Number(parts[1])>clock()&&Number(parts[1])<clock()+86400000;}
   function checkLoginRate(req){const ip=req.socket?.remoteAddress||'unknown',now=clock();let old=attempts.get(ip)||{at:now,n:0};if(now-old.at>15*60e3)old={at:now,n:0};old.n++;attempts.set(ip,old);return old.n<=12;}
   function append(t,m){t.messages.push(m);if(t.messages.length>250)t.messages=t.messages.slice(-250);t.updatedAt=m.at;}
@@ -370,7 +372,7 @@ const aiCfg=aiProvider==='gemini'
     const id=crypto.randomUUID();record={id,threadId:tid,slot:t.slot,to:t.customer,text:content,state:'pending',delivery:'queued',attempts:0,nextAt:clock(),createdAt:new Date(clock()).toISOString()};d.outbox[id]=record;
     append(t,{id,direction:'outgoing',type:'text',text:content,at:record.createdAt,delivery:'queued',outboxId:id,source:'Atendente'});
   });return record;}
-  async function pump(){if(pumping)return;pumping=true;try{
+  async function pump(){if(!outboundEnabled||pumping)return;pumping=true;try{
     const data=store.snapshot();
     for(const o of Object.values(data.outbox).filter(x=>x.state==='pending'&&x.nextAt<=clock()).slice(0,20)){
       try{const channel=configuredChannels(store.snapshot()).find(c=>c.slot===o.slot);if(!channel?.checkedAt)continue;
@@ -381,7 +383,7 @@ const aiCfg=aiProvider==='gemini'
   }finally{pumping=false;}}
   const fileRoutes={'/':'index.html','/painel':'index.html','/whatsapp':'wa.html','/wa.css':'wa.css','/wa.js':'wa.js','/app.css':'app.css','/app.js':'app.js','/privacidade':'privacidade.html','/privacidade.html':'privacidade.html','/logo.png':'logo.png','/favicon.png':'favicon.png'};
   async function router(req,res){const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`),p=url.pathname;
-    if(p==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'guto-bot-nativo',ready:false,freePreview});
+    if(p==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'guto-bot-nativo',ready:false,freePreview,outboundEnabled});
     // A prévia Free atende somente GETs seguros; todos os POSTs/PUTs são bloqueados sem exceção.
     if(freePreview && p.startsWith('/api/')){
       if(req.method!=='GET')return json(res,403,{error:'Prévia gratuita: somente visualização. Operações, login e conexões reais desativados.'});
@@ -538,6 +540,7 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         let v;try{v=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(!['HUMAN','BOT'].includes(v.mode))return json(res,422,{error:'Modo inválido'});
         if(v.mode==='BOT'){
+          if(!outboundEnabled)return json(res,403,{error:'Atendimento automático bloqueado em homologação',code:'OUTBOUND_DISABLED'});
           const t0=store.snapshot().threads[v.id];
           if(!t0)return json(res,404,{error:'Conversa não encontrada'});
           if(t0.via!=='qr')return json(res,409,{error:'Atendimento automático por QR disponível somente para conversas recebidas por WhatsApp QR.',code:'QR_ONLY'});
@@ -556,6 +559,7 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         return json(res,200,{ok:true,thread:changed});
       }
       if(p==='/api/send-file'&&req.method==='POST'){
+        if(!outboundEnabled)return json(res,403,{error:'Envio real bloqueado em homologação',code:'OUTBOUND_DISABLED'});
         let v;try{v=JSON.parse((await readBody(req,23*1024*1024)).toString());}catch(e){return json(res,e.status||400,{error:e.status===413?'Arquivo maior que 16 MB':'JSON inválido'});}
         const t0=store.snapshot().threads[v?.id];if(!t0)return json(res,404,{error:'Conversa não encontrada'});
         if(t0.via!=='qr'||!qr)return json(res,409,{error:'Envio de anexos disponível nas conversas do WhatsApp por QR'});
@@ -570,6 +574,7 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
         return json(res,202,{ok:true});
       }
       if(p==='/api/reply'&&req.method==='POST'){
+        if(!outboundEnabled)return json(res,403,{error:'Envio real bloqueado em homologação',code:'OUTBOUND_DISABLED'});
         let v;try{v=JSON.parse((await readBody(req,5000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
         if(typeof v.id!=='string'||typeof v.text!=='string'||v.text.trim().length<1||v.text.length>4000)return json(res,422,{error:'Mensagem inválida'});
 const qt=store.snapshot().threads[v.id];
