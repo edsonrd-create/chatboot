@@ -11,7 +11,8 @@ import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 import {createQrManager} from './wa-qr.mjs';
 import {envFlag,qrPreflight,qrSupportStatus,qrBlockerMessage} from './qr-automation.mjs';
-import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice} from './voice.mjs';
+import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice,spokenCustomerReply,requiresWrittenCopy} from './voice.mjs';
+import {normalizeIncomingAudio,opusOggValid,AudioInputError} from './audio-pipeline.mjs';
 import {channelConfig,setChannelConfig,listThreads,transition,threadInfo,operationalOverview,audit,stateOf} from './operations.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -32,7 +33,7 @@ const publicChannel=c=>({slot:c.slot,phoneId:c.phoneId,number:c.display,apiVerif
 const serializeMessage=m=>({id:m.id,direction:m.direction,text:m.text,type:m.type,at:m.at,delivery:m.delivery||'',source:m.source||'',media:m.media||null,fileName:m.fileName||null});
 const getToken=(c,env)=>c.tokenEncrypted?revealToken(c.tokenEncrypted,env.APP_SECRET):String(env[`META_TOKEN_${c.slot}`]||'');
 
-export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now(),qrManagerFactory=createQrManager,respondWithAI=intelligentReply}={}){
+export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now(),qrManagerFactory=createQrManager,respondWithAI=intelligentReply,normalizeVoice=normalizeIncomingAudio,transcribeVoice=transcribeAudio,synthesizeReplyVoice=synthesizeVoice}={}){
   // Homologação pode iniciar sem credenciais Meta; webhooks ficam desligados até configurá-las.
   // Não gerar ou simular segredos Meta, números conectados nem mensagens reais.
   // Em FREE_PREVIEW_MODE, liberar apenas prévia anônima e IMUTÁVEL; nunca credenciais reais.
@@ -57,7 +58,7 @@ const qrEnabled=!freePreview&&envFlag(env.WA_QR_ENABLED);
 const qrAutoReply=envFlag(env.WA_QR_AUTOREPLY);
 // Homologação: se WA_QR_TEST_NUMBERS tiver números (ex.: 5541999990000,5541988887777), a IA só responde a eles.
 const qrTestNumbers=String(env.WA_QR_TEST_NUMBERS||'').split(',').map(x=>x.replace(/\D/g,'')).filter(Boolean);
-const qrVoiceEnabled=envFlag(env.WA_QR_VOICE===undefined?'true':env.WA_QR_VOICE);
+const qrVoiceEnabled=envFlag(env.WA_QR_VOICE===undefined?'false':env.WA_QR_VOICE); // opt-in: não ligar voz em números reais sem homologação
 const qrAllowed=from=>!qrTestNumbers.length||qrTestNumbers.includes(String(from).replace(/\D/g,''));
 // O eco do WhatsApp (fromMe) pode chegar antes do registro: atualiza a mesma mensagem em vez de duplicar.
 function upsertOutgoing(t,msg){const old=t.messages.find(x=>x.id===msg.id);if(old){Object.assign(old,{...msg,delivery:old.delivery&&old.delivery!=='sent'?old.delivery:msg.delivery,at:old.at});return;}append(t,msg);}
@@ -106,15 +107,27 @@ if(m.fromMe||m.history){
 return inThreadOrder(tid,()=>handleLiveQr(m,tid,mediaFile));
 }
 async function handleLiveQr(m,tid,mediaFile){
-// 1) Áudio do cliente → texto (fora do lock do armazenamento; pode levar alguns segundos).
+// 1) Validar e transcrever apenas o áudio das conversas autorizadas em modo BOT.
 let text=m.text||'',transcribed=false,audioError='';
-if(m.type==='audio'){
-  if(m.audio?.buffer&&aiCfg.provider==='gemini'&&aiCfg.apiKey){
-    try{text=await withAiSlot(()=>transcribeAudio({apiKey:aiCfg.apiKey,model:aiCfg.model,fetchImpl},m.audio.buffer,m.audio.mimeType));transcribed=Boolean(text);}
-    catch(e){audioError=String(e.message||e).slice(0,100);console.error('[QR áudio]',audioError);}
-  }else audioError=m.audio?.buffer?'Transcrição exige Gemini configurado':'Áudio não baixado';
+const existing=store.peek().threads[tid];
+const mode=existing?.mode||(qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN');
+const audioEligible=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:mode,hasText:true}).ready;
+if(m.type==='audio'&&audioEligible){
+  try{
+    if(!m.audio?.buffer)throw new AudioInputError(m.audio?.error||'AUDIO_DOWNLOAD_FAILED','Áudio não baixado');
+    if(aiCfg.provider!=='gemini')throw new AudioInputError('AUDIO_STT_UNAVAILABLE','Transcrição necessita do Gemini configurado');
+    const validated=await normalizeVoice({buffer:m.audio.buffer,mimeType:m.audio.mimeType,seconds:m.audio.seconds,ffmpegPath:env.FFMPEG_PATH||'ffmpeg'});
+    const vocabulary=(business.flavors||[]).filter(f=>f.available!==false).map(f=>f.label).filter(Boolean);
+    text=await withAiSlot(()=>transcribeVoice({apiKey:aiCfg.apiKey,model:env.GEMINI_TRANSCRIBE_MODEL||aiCfg.model,fetchImpl,vocabulary},validated.buffer,validated.mimeType));
+    transcribed=Boolean(text);
+    if(!transcribed)throw new AudioInputError('AUDIO_INAUDIBLE','Fala não compreensível');
+  }catch(e){
+    audioError=e?.code||'AUDIO_TRANSCRIPTION_FAILED';
+    console.error('[QR AUDIO]',JSON.stringify({slot:m.slot,code:audioError}));
+    text='';
+  }
 }
-const shown=m.type==='audio'?(transcribed?`🎤 ${text}`:'🎤 [áudio não transcrito — ouvir no celular]'):(text||`[${m.type}: encaminhar ao atendente]`);
+const shown=m.type==='audio'?(transcribed?`🎤 ${text}`:'🎤 [áudio recebido — aguarda atendimento humano]'):(text||`[${m.type}: encaminhar ao atendente]`);
 let session=null,canReply=false;
 await store.change(d=>{
 const now=new Date(clock()).toISOString();
@@ -123,16 +136,31 @@ t.via='qr';t.jid=m.jid;if(m.name)t.customerName=m.name;
 if(t.messages.some(x=>x.id===m.id))return;
 append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR',media:mediaFile});
 t.unread=(t.unread||0)+1;t.lastInboundAt=now;if(t.operationalState==='CLOSED'||t.operationalState==='FAILED')delete t.operationalState;t.archived=false;d.threads[tid]=t;
-// Um thread em modo humano não vira BOT sozinho quando a variável é modificada.
-const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)});
+// Não assumir conteúdo de fotos, stickers, documentos ou áudios não compreendidos.
+if(m.type==='audio'&&audioError&&audioEligible){
+  t.qrLastBlocker=audioError;t.qrLastErrorAt=now;
+  t.mode='HUMAN';t.session=t.session||newSession();t.session.mode='HUMAN';t.operationalState='WAITING';
+  audit(d,{actor:'system',action:'QR_AUDIO_TO_HUMAN',slot:t.slot,clock});
+}
+const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)&&(m.type==='audio'||m.type==='text')});
 canReply=assessment.ready;
-if(assessment.blockers.length && t.mode==='BOT')t.qrLastBlocker=assessment.blockers[0];
-else delete t.qrLastBlocker;
-if(canReply)session=structuredClone(t.session);
+if(assessment.blockers.length&&t.mode==='BOT')t.qrLastBlocker=assessment.blockers[0];
+else if(!audioError&&t.mode==='BOT')delete t.qrLastBlocker;
+if(canReply)session=structuredClone(t.session||newSession());
 });
-if(!canReply)return;
-// 2) IA responde (texto é o padrão).
-const voice=qrVoiceEnabled&&aiCfg.provider==='gemini';
+if(!canReply){
+  // A mensagem não compreendida não deve produzir pedido inventado. Aviso claro e transferência humana.
+  if(audioError&&audioEligible&&qr?.isConnected(m.slot)){
+    const note='Sou a assistente virtual da Guto Express. Não consegui compreender seu áudio com segurança. Encaminhei a conversa para nossa equipe. Se preferir, envie sua mensagem por escrito.';
+    try{
+      const result=await qr.send(m.slot,m.jid,note);
+      await store.change(d=>{const t=d.threads[tid];if(t)upsertOutgoing(t,{id:result.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:note,at:new Date(clock()).toISOString(),delivery:'sent',source:'Orientação automática · encaminhamento humano'});});
+    }catch{console.error('[QR AUDIO]',JSON.stringify({slot:m.slot,code:'AUDIO_HANDOFF_NOTICE_FAILED'}));}
+  }
+  return;
+}
+// 2) IA responde usando o mesmo motor de atendimento das mensagens de texto.
+const voice=qrVoiceEnabled&&aiCfg.provider==='gemini'&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply:'prévia'});
 await store.change(d=>{const t=d.threads[tid];if(t)t.typing=m.type==='audio'&&voice?'recording':'composing';});
 const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typing;});
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
