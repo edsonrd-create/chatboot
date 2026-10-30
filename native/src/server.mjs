@@ -10,6 +10,7 @@ import {newSession,getSummary} from './core.mjs';
 import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 import {createQrManager} from './wa-qr.mjs';
+import {defaultSchedule,normalizeSchedule,isBotActive,describeSchedule} from './bot-schedule.mjs';
 import {envFlag,qrPreflight,qrSupportStatus,qrBlockerMessage} from './qr-automation.mjs';
 import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice,spokenCustomerReply,requiresWrittenCopy} from './voice.mjs';
 import {normalizeIncomingAudio,opusOggValid,AudioInputError,inspectAudioRuntime} from './audio-pipeline.mjs';
@@ -62,6 +63,9 @@ const qrVoiceEnabled=envFlag(env.WA_QR_VOICE===undefined?'false':env.WA_QR_VOICE
 const qrAllowed=from=>!qrTestNumbers.length||qrTestNumbers.includes(String(from).replace(/\D/g,''));
 // O eco do WhatsApp (fromMe) pode chegar antes do registro: atualiza a mesma mensagem em vez de duplicar.
 function upsertOutgoing(t,msg){const old=t.messages.find(x=>x.id===msg.id);if(old){Object.assign(old,{...msg,delivery:old.delivery&&old.delivery!=='sent'?old.delivery:msg.delivery,at:old.at});return;}append(t,msg);}
+// Horário de atendimento da IA + chave manual (painel). Padrão 'on' = comportamento anterior.
+const botSchedule=()=>store.peek().settings?.botSchedule||defaultSchedule();
+const botActiveNow=()=>isBotActive(botSchedule(),new Date(clock()));
 let qr=null;
 // Mídias recebidas/enviadas ficam no volume persistente, ao lado do estado.
 const mediaDir=path.join(path.dirname(statePath),'media');
@@ -112,7 +116,7 @@ if(store.peek().threads[tid]?.messages?.some(x=>x.id===m.id))return; // sem cust
 let text=m.text||'',transcribed=false,audioError='';
 const existing=store.peek().threads[tid];
 const mode=existing?.mode||(qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN');
-const audioEligible=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:mode,hasText:true}).ready;
+const audioEligible=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply&&botActiveNow(),aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:mode,hasText:true}).ready;
 if(m.type==='audio'&&audioEligible){
   try{
     if(!m.audio?.buffer)throw new AudioInputError(m.audio?.error||'AUDIO_DOWNLOAD_FAILED','Áudio não baixado');
@@ -144,7 +148,7 @@ if(m.type==='audio'&&audioError&&audioEligible&&t.mode==='BOT'){
   t.mode='HUMAN';t.session=t.session||newSession();t.session.mode='HUMAN';t.operationalState='WAITING';
   audit(d,{actor:'system',action:'QR_AUDIO_TO_HUMAN',slot:t.slot,clock});
 }
-const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)&&(m.type==='audio'||m.type==='text')});
+const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply&&botActiveNow(),aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)&&(m.type==='audio'||m.type==='text')});
 canReply=assessment.ready;
 if(assessment.blockers.length&&t.mode==='BOT')t.qrLastBlocker=assessment.blockers[0];
 else if(!audioError&&t.mode==='BOT')delete t.qrLastBlocker;
@@ -412,6 +416,13 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
+      if(p==='/api/bot/schedule'&&req.method==='GET')return json(res,200,{schedule:botSchedule(),...describeSchedule(botSchedule(),new Date(clock())),autoReplyServer:qrAutoReply});
+      if(p==='/api/bot/schedule'&&req.method==='PUT'){
+        let v;try{v=JSON.parse((await readBody(req,8000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+        let next;try{next=normalizeSchedule(v,botSchedule());}catch(e){return json(res,422,{error:e.message});}
+        await store.change(d=>{d.settings.botSchedule=next;audit(d,{actor:'admin',action:'BOT_SCHEDULE_UPDATED',slot:0,clock});});
+        return json(res,200,{schedule:next,...describeSchedule(next,new Date(clock())),autoReplyServer:qrAutoReply});
+      }
       if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{...qrSummary(),jobs:{pending:Object.keys(store.peek().qrJobs||{}).length,failed:(store.peek().qrDeadJobs||[]).length,lastFailures:(store.peek().qrDeadJobs||[]).slice(-5).map(j=>({slot:j.slot,code:j.code,failedAt:j.failedAt,attempts:j.attempts}))},voice:qrVoiceEnabled});
       if(p==='/api/audio/health'&&req.method==='GET'){
         const runtime=await inspectAudioRuntime({ffmpegPath:env.FFMPEG_PATH||'ffmpeg'});
