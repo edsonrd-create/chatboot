@@ -23,6 +23,7 @@ const BUSINESS_FILE=path.resolve(projectRoot,env.BUSINESS_FILE||'./config/busine
 const CW_HOST=env.CHATWOOT_BASE_URL||'';
 const CW_TOKEN=env.CHATWOOT_API_TOKEN||'';
 const BASE_URL=env.APP_PUBLIC_URL||env.RENDER_EXTERNAL_URL||'';
+const OUTBOUND_ENABLED=env.WHATSAPP_OUTBOUND_ENABLED==='true' && env.NODE_ENV==='production';
 const ONLINE=Boolean(CHATWOOT_WEBHOOK_SECRET&&CW_ACCOUNT&&INBOXES.length===2&&new Set(INBOXES).size===2&&CW_HOST&&CW_TOKEN);
 if(ADMIN_PASSWORD.length<12||APP_SECRET.length<32)throw new Error('Defina ADMIN_PASSWORD (12+ caracteres) e APP_SECRET (32+ caracteres) no .env.');
 if(env.NODE_ENV==='production'&&!BASE_URL.startsWith('https://'))throw new Error('APP_PUBLIC_URL HTTPS é obrigatório em produção.');
@@ -44,7 +45,7 @@ const attempts=new Map();
 function checkRate(req){const key=clientIp(req),now=Date.now();let b=attempts.get(key)||{n:0,start:now};if(now-b.start>15*60e3)b={n:0,start:now};b.n++;attempts.set(key,b);return b.n<=12;}
 function sameOrigin(req){if(!['POST','PUT','PATCH','DELETE'].includes(req.method))return true;const origin=req.headers.origin;const host=BASE_URL||`http://${req.headers.host}`;return req.headers['sec-fetch-site']!=='cross-site'&&(!origin||origin===host);}
 async function readBody(req,limit=128*1024){let length=0,chunks=[];for await (const chunk of req){length+=chunk.length;if(length>limit)throw Object.assign(new Error('Payload muito grande'),{status:413});chunks.push(chunk);}return Buffer.concat(chunks);}
-const webData=()=>{const d=store.snapshot();return {onlineConfigured:ONLINE,aiConfigured:!!env.OPENAI_API_KEY,aiMode:env.OPENAI_API_KEY?'MODEL_CONFIGURED':'UNCONFIGURED',inboxes:INBOXES.map((id,i)=>({id,label:`WhatsApp ${i+1}`})),conversations:Object.entries(d.sessions).map(([key,s])=>({key,mode:s.mode,updatedAt:s.updatedAt||'',customer:s.sender||'Cliente',inboxId:s.inboxId,items:s.cart.length,lastMessage:s.history.at(-1)?.content||''})).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))),orders:d.orders.map(o=>({...o})).reverse(),stats:{orders:d.orders.length,pending:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length,conversations:Object.keys(d.sessions).length}};};
+const webData=()=>{const d=store.snapshot();return {onlineConfigured:ONLINE,outboundEnabled:OUTBOUND_ENABLED,aiConfigured:!!env.OPENAI_API_KEY,aiMode:env.OPENAI_API_KEY?'MODEL_CONFIGURED':'UNCONFIGURED',inboxes:INBOXES.map((id,i)=>({id,label:`WhatsApp ${i+1}`})),conversations:Object.entries(d.sessions).map(([key,s])=>({key,mode:s.mode,updatedAt:s.updatedAt||'',customer:s.sender||'Cliente',inboxId:s.inboxId,items:s.cart.length,lastMessage:s.history.at(-1)?.content||''})).sort((a,b)=>String(b.updatedAt).localeCompare(String(a.updatedAt))),orders:d.orders.map(o=>({...o})).reverse(),stats:{orders:d.orders.length,pending:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length,conversations:Object.keys(d.sessions).length}};};
 function validateBusiness(b){
  if(!b||typeof b!=='object'||typeof b.businessName!=='string'||b.businessName.length>120||!Array.isArray(b.sizes)||!Array.isArray(b.flavors)||!Array.isArray(b.drinks)||!b.faq||typeof b.faq!=='object')return false;
  if(!b.sizes.every(s=>typeof s.id==='string'&&Number.isInteger(s.slices)&&s.slices>0&&s.slices<=32))return false;
@@ -62,6 +63,7 @@ function channelStatus(){
    inboxId:Number.isSafeInteger(RAW_INBOXES[index]) && RAW_INBOXES[index]>0 ? RAW_INBOXES[index]:null,
    accountConfigured:Boolean(CW_ACCOUNT),connection:'UNVERIFIED',
    setup:'META_EMBEDDED_SIGNUP',
+   outboundEnabled:OUTBOUND_ENABLED,
    configured:Boolean(ONLINE && Number.isSafeInteger(RAW_INBOXES[index]) && RAW_INBOXES[index]>0),
    chatwootUrl:CW_HOST && CW_HOST.startsWith('https://') ? CW_HOST : null,
    caption:ONLINE && RAW_INBOXES[index] ? 'Credenciais informadas · conexão ainda não verificada':'Aguardando configuração oficial'
@@ -141,7 +143,7 @@ async function pump(){
 async function flushOutbox(){
  if(flushing)return;flushing=true;
  try{
-  if(!ONLINE)return;
+  if(!ONLINE || !OUTBOUND_ENABLED)return;
   const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());
   for(const o of outgoing){
     try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});}
@@ -152,7 +154,7 @@ async function flushOutbox(){
 
 async function router(req,res){
  const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);const p=url.pathname;
- if(p==='/health')return json(res,200,{ok:true,service:'guto-bot',configured:ONLINE});
+ if(p==='/health')return json(res,200,{ok:true,service:'guto-bot',configured:ONLINE,outboundEnabled:OUTBOUND_ENABLED});
  if(p==='/webhooks/chatwoot'&&req.method==='POST'){
   if(!CHATWOOT_WEBHOOK_SECRET||!ONLINE)return json(res,503,{error:'Integração ainda não configurada'});
   const body=await readBody(req);
@@ -189,6 +191,7 @@ async function router(req,res){
    const inboxMessage=p.match(/^\/api\/inbox\/conversations\/([^/]+)\/messages$/);
    if(inboxMessage&&req.method==='POST'){
      if(!ONLINE)return json(res,503,{error:'Dois canais Chatwoot ainda não estão configurados.'});
+     if(!OUTBOUND_ENABLED)return json(res,403,{error:'Envio real bloqueado em homologação. A ativação exige produção e autorização explícita no servidor.'});
      const key=decodeURIComponent(inboxMessage[1]);if(!validSessionKey(key))return json(res,404,{error:'Conversa não encontrada'});
      let body;try{body=JSON.parse((await readBody(req,8192)).toString('utf8'));}catch{return json(res,400,{error:'JSON inválido'});}
      if(typeof body.content!=='string'||!body.content.trim()||body.content.length>2000||typeof body.requestId!=='string'||!/^[-a-zA-Z0-9_]{8,90}$/.test(body.requestId))return json(res,422,{error:'Mensagem ou chave de idempotência inválida'});
