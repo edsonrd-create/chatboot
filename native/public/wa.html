@@ -25,6 +25,7 @@
   <nav class="rail">
     <button class="rail-btn active" data-view="chats" title="Conversas"><svg viewBox="0 0 24 24"><path d="M12 3C6.5 3 2 6.9 2 11.7c0 2.4 1.1 4.6 3 6.2L4 22l4.4-2.2c1.1.4 2.3.6 3.6.6 5.5 0 10-3.9 10-8.7S17.5 3 12 3z"/></svg><span id="rail-unread" class="rail-badge" hidden></span></button>
     <button class="rail-btn" data-view="qr" title="Conectar WhatsApp (QR Code)"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm11-2h2v2h-2v-2zm-3 0h2v3h-2v-3zm5 3h3v2h-3v-2zm-5 2h2v3h-2v-3zm3 1h2v2h-2v-2zm3 1h2v1h-2v-1z"/></svg></button>
+    <button class="rail-btn" data-view="bot" title="Horário da IA (atendimento automático)"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg><span id="rail-bot" class="rail-dot"></span></button>
     <div class="rail-space"></div>
     <a class="rail-btn" href="/painel" title="Painel completo (pedidos, testes, configurações)"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.4 2.9c-.6.2-1.2.6-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1c.5.4 1.1.8 1.7 1L11 21h4l.4-2.9c.6-.2 1.2-.6 1.7-1l2.5 1 2-3.5-2.2-1.6zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></a>
     <img class="rail-avatar" src="logo.png" alt="Guto Express" width="32" height="32">
@@ -32,7 +33,7 @@
 
   <aside class="side">
     <header class="side-head">
-      <div class="side-title"><h1>Conversas</h1><button class="mini-qr" data-view="qr" title="Conectar WhatsApp">▣ QR</button></div>
+      <div class="side-title"><h1>Conversas</h1><button id="bot-chip" class="bot-chip" data-view="bot" title="Horário e liga/desliga da IA">🤖 IA…</button><button class="mini-qr" data-view="qr" title="Conectar WhatsApp">▣ QR</button></div>
       <div class="accounts" role="tablist">
         <button data-slot="0" class="acc on">Todos</button>
         <button data-slot="1" class="acc"><i id="dot-1" class="dot"></i>WhatsApp 01</button>
@@ -74,6 +75,20 @@
         <textarea id="text" rows="1" placeholder="Digite uma mensagem" maxlength="4000"></textarea>
         <button id="send" class="send" title="Enviar"><svg viewBox="0 0 24 24"><path d="M2 21 23 12 2 3v7l15 2-15 2z"/></svg></button>
       </footer>
+    </section>
+
+    <section id="bot" class="qr bot-view" hidden>
+      <button class="back-qr" data-view="chats">← Conversas</button>
+      <h2>Atendimento automático (IA)</h2>
+      <p id="bot-status" class="bot-status">Carregando…</p>
+      <div class="bot-modes" role="radiogroup">
+        <label><input type="radio" name="bot-mode" value="auto"> <b>Automático pelo horário</b><small>A IA responde só dentro dos horários abaixo. Fora deles, as mensagens ficam para o atendente.</small></label>
+        <label><input type="radio" name="bot-mode" value="on"> <b>Sempre ligada</b><small>A IA responde a qualquer hora (manual).</small></label>
+        <label><input type="radio" name="bot-mode" value="off"> <b>Desligada</b><small>Ninguém recebe resposta automática; só atendente.</small></label>
+      </div>
+      <div id="bot-days" class="bot-days"></div>
+      <div class="qr-actions"><button id="bot-save">Salvar</button></div>
+      <p class="qr-info">Horário de Brasília. Faixa que passa da meia-noite (ex.: 18:00 às 02:00) funciona. Conversas em que um atendente assumiu continuam com o atendente.</p>
     </section>
 
     <section id="qr" class="qr" hidden>

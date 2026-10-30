@@ -245,10 +245,52 @@ async function loadQr() {
   }
   $('qr-info').textContent = !r.enabled ? 'Conexão por QR desativada no servidor.' : r.autoReply ? `IA automática ligada${r.testNumbersOnly ? ' (somente números de teste)' : ''}${r.voice ? ' · entende e responde áudio' : ''}.` : 'IA automática desligada: as mensagens chegam aqui para o atendente responder.';
 }
+// ---------- Horário da IA ----------
+const DAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+function paintBotChip(r) {
+  const chip = $('bot-chip'); if (!chip || !r) return;
+  chip.textContent = r.active ? '🤖 IA ligada' : '⏸ IA pausada';
+  chip.classList.toggle('off', !r.active);
+  chip.title = r.label;
+  $('rail-bot')?.classList.toggle('on', Boolean(r.active));
+}
+async function loadBot(fillForm) {
+  let r; try { r = await api('/api/bot/schedule'); } catch { return; }
+  st.bot = r; paintBotChip(r);
+  if (!fillForm) return;
+  $('bot-status').textContent = r.label + (r.autoReplyServer ? '' : ' · ATENÇÃO: resposta automática desligada no servidor (WA_QR_AUTOREPLY)');
+  $('bot-status').className = 'bot-status' + (r.active ? ' ok' : '');
+  document.querySelectorAll('input[name=bot-mode]').forEach(i => { i.checked = i.value === r.schedule.mode; });
+  const box = $('bot-days'); box.replaceChildren();
+  for (let d = 0; d < 7; d++) {
+    const range = r.schedule.days?.[d]?.[0];
+    const row = el('div', 'bot-day');
+    const on = el('input'); on.type = 'checkbox'; on.checked = Boolean(range); on.dataset.day = d;
+    const name = el('label', '', DAYS[d]); name.prepend(on);
+    const a = el('input'); a.type = 'time'; a.value = range?.start || '18:00'; a.dataset.start = d;
+    const b = el('input'); b.type = 'time'; b.value = range?.end || '23:30'; b.dataset.end = d;
+    row.append(name, a, el('span', '', 'até'), b);
+    box.append(row);
+  }
+  box.classList.toggle('dim', r.schedule.mode !== 'auto');
+}
+async function saveBot() {
+  const mode = document.querySelector('input[name=bot-mode]:checked')?.value || 'on';
+  const days = {};
+  for (let d = 0; d < 7; d++) {
+    const on = document.querySelector(`input[data-day="${d}"]`).checked;
+    days[d] = on ? [{start: document.querySelector(`input[data-start="${d}"]`).value, end: document.querySelector(`input[data-end="${d}"]`).value}] : [];
+  }
+  try { await api('/api/bot/schedule', {method: 'PUT', body: JSON.stringify({mode, days})}); toast('Horário da IA salvo ✓'); await loadBot(true); }
+  catch (e) { toast('Não salvou: ' + e.message); }
+}
+
 let qrTimer = null;
 function setView(v) {
   st.view = v;
   document.querySelectorAll('.rail-btn[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  $('bot').hidden = v !== 'bot';
+  if (v === 'bot') { $('intro').hidden = true; $('chat').hidden = true; $('qr').hidden = true; $('app').classList.add('open'); loadBot(true); return; }
   if (v === 'qr') { $('intro').hidden = true; $('chat').hidden = true; $('qr').hidden = false; $('app').classList.add('open'); loadQr(); clearInterval(qrTimer); qrTimer = setInterval(loadQr, 3000); }
   else { clearInterval(qrTimer); qrTimer = setInterval(loadQr, 30000); $('qr').hidden = true; if (!st.sel) $('app').classList.remove('open'); if (!st.sel) $('intro').hidden = false; else $('chat').hidden = false; }
 }
@@ -284,6 +326,8 @@ function bind() {
   $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   $('toggle-mode').onclick = toggleMode;
   buildEmoji(); grow();
+  $('bot-save').onclick = saveBot;
+  document.querySelectorAll('input[name=bot-mode]').forEach(i => i.onchange = () => $('bot-days').classList.toggle('dim', i.value !== 'auto' && i.checked));
   $('attach').onclick = () => $('file').click();
   $('file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; sendFile(f); };
   $('messages').addEventListener('dragover', e => e.preventDefault());
@@ -308,7 +352,8 @@ function bind() {
 async function start() {
   try { await api('/api/status'); } catch { $('login').hidden = false; $('app').hidden = true; return; }
   $('login').hidden = true; $('app').hidden = false;
-  await Promise.all([loadList(), loadQr()]);
+  await Promise.all([loadList(), loadQr(), loadBot(false)]);
+  setInterval(() => loadBot(false), 60000);
   setView('chats'); live();
 }
 bind(); start();

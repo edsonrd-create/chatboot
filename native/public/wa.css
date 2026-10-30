@@ -175,3 +175,22 @@ html,body{overflow:hidden}
 .composer .icon,.emoji-wrap{align-self:flex-end;margin-bottom:6px}
 .send{width:52px;height:52px}
 .emoji-box{bottom:62px}
+
+/* Horário da IA */
+.rail-dot{position:absolute;bottom:4px;right:4px;width:9px;height:9px;border-radius:50%;background:#c4c4c4;border:2px solid var(--rail)}
+.rail-dot.on{background:#25d366}
+.bot-chip{border:0;border-radius:16px;padding:4px 10px;background:#e7fce3;color:#008069;font-weight:600;margin-left:auto;margin-right:8px}
+.bot-chip.off{background:#fff3c4;color:#8a6d00}
+.bot-view{text-align:left;max-width:720px;margin:0 auto}
+.bot-view h2{text-align:left}
+.bot-status{padding:10px 14px;border-radius:8px;background:#fff3c4;color:#5c4a00;margin:10px 0 16px}
+.bot-status.ok{background:#e7fce3;color:#05603a}
+.bot-modes{display:grid;gap:8px;margin-bottom:16px}
+.bot-modes label{display:grid;grid-template-columns:22px 1fr;column-gap:8px;background:#fff;border-radius:10px;padding:12px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.bot-modes input{grid-row:span 2;margin-top:3px}
+.bot-modes small{color:var(--muted)}
+.bot-days{display:grid;gap:6px;background:#fff;border-radius:10px;padding:12px}
+.bot-days.dim{opacity:.45}
+.bot-day{display:flex;align-items:center;gap:10px}
+.bot-day label{width:120px;display:flex;gap:6px;align-items:center}
+.bot-day input[type=time]{border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
