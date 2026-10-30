@@ -161,6 +161,47 @@ if(!canReply){
   }
   return;
 }
+// Tarefa persistente: se o servidor reiniciar no meio, a resposta é retomada (ver resumeQrJobs).
+const jobKey=`${m.slot}:${m.id}`;
+await store.change(d=>{(d.qrJobs||={})[jobKey]={key:jobKey,slot:m.slot,tid,jid:m.jid,from:m.from,type:m.type,msgId:m.id,text,attempts:0,createdAt:new Date(clock()).toISOString()};});
+return runQrJob(jobKey,{m,tid,text,session});
+}
+// Executa a resposta com novas tentativas (espera crescente). Falha definitiva vai para a fila de falhas e para o atendente.
+async function runQrJob(jobKey,ctx){
+  const max=Math.max(1,Math.min(6,Number(env.QR_JOB_MAX_ATTEMPTS)||3));
+  for(let attempt=1;attempt<=max;attempt++){
+    await store.change(d=>{const j=d.qrJobs?.[jobKey];if(j){j.attempts=attempt;j.lastTryAt=new Date(clock()).toISOString();}});
+    let result;
+    try{result=await qrReplyPhase({...ctx,session:attempt===1?ctx.session:structuredClone(store.peek().threads[ctx.tid]?.session||ctx.session)});}
+    catch(e){result={retry:true,code:'QR_JOB_CRASH'};console.error('[QR JOB]',JSON.stringify({key:jobKey,code:'QR_JOB_CRASH'}));}
+    if(!result?.retry){await store.change(d=>{if(d.qrJobs)delete d.qrJobs[jobKey];});return result;}
+    if(attempt<max)await new Promise(r=>setTimeout(r,Math.min(30000,(Number(env.QR_JOB_BACKOFF_MS)||2000)*2**(attempt-1))));
+    else{
+      await store.change(d=>{
+        const j=d.qrJobs?.[jobKey];if(d.qrJobs)delete d.qrJobs[jobKey];
+        (d.qrDeadJobs||=[]).push({...(j||{key:jobKey}),failedAt:new Date(clock()).toISOString(),code:result.code||'QR_JOB_FAILED'});
+        d.qrDeadJobs=d.qrDeadJobs.slice(-200);
+        const t=d.threads[ctx.tid];
+        if(t&&t.mode==='BOT'){t.mode='HUMAN';t.session=t.session||newSession();t.session.mode='HUMAN';t.operationalState='WAITING';t.qrLastBlocker=result.code||'QR_JOB_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}
+        audit(d,{actor:'system',action:'QR_JOB_DEAD_LETTER',slot:ctx.m.slot,clock});
+      });
+      console.error('[QR JOB]',JSON.stringify({key:jobKey,code:result.code||'QR_JOB_FAILED',status:'dead-letter'}));
+      return result;
+    }
+  }
+}
+// Após reinício: retoma tarefas que ficaram no meio (mensagem recebida e ainda sem resposta).
+async function resumeQrJobs(){
+  const jobs=Object.values(store.peek().qrJobs||{});
+  for(const j of jobs){
+    const t=store.peek().threads[j.tid];
+    const answered=t&&t.messages.findIndex(x=>x.id===j.msgId)<t.messages.findLastIndex(x=>x.direction==='outgoing');
+    if(!t||answered||!j.text||!qr?.isConnected(j.slot)){await store.change(d=>{if(d.qrJobs)delete d.qrJobs[j.key];});continue;}
+    console.log('[QR JOB]',JSON.stringify({key:j.key,status:'resumed'}));
+    inThreadOrder(j.tid,()=>runQrJob(j.key,{m:{slot:j.slot,jid:j.jid,from:j.from,type:j.type,id:j.msgId},tid:j.tid,text:j.text,session:structuredClone(t.session||newSession())})).catch(()=>{});
+  }
+}
+async function qrReplyPhase({m,tid,text,session}){
 // 2) IA responde usando o mesmo motor de atendimento das mensagens de texto.
 const voice=qrVoiceEnabled&&aiCfg.provider==='gemini'&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply:'prévia'});
 await store.change(d=>{const t=d.threads[tid];if(t)t.typing=m.type==='audio'&&voice?'recording':'composing';});
@@ -173,7 +214,8 @@ catch(e){
   console.error('[QR IA]',JSON.stringify({code:fault.code,slot:m.slot}));
   await store.change(d=>{const t=d.threads[tid];if(t){t.qrLastBlocker=fault.code;t.qrLastErrorAt=new Date(clock()).toISOString();}});
   await qr.presence(m.slot,m.jid,'paused');await clearTyping();
-  return;
+  const transient=['AI_TIMEOUT','AI_NETWORK','AI_UPSTREAM','AI_QUOTA','AI_EMPTY_RESPONSE','AI_INVALID_RESPONSE'].includes(fault.code);
+  return {retry:transient,code:fault.code};
 }
 session.history.push({role:'user',content:text},{role:'assistant',content:reply});
 session.history=session.history.slice(-30);
@@ -244,6 +286,7 @@ try{
   });
 }
 
+  return sentMessages.length?{retry:false}:cancelled?{retry:false,code:'QR_CANCELLED_BY_HUMAN'}:{retry:Boolean(qr?.isConnected(m.slot)),code:voiceError||'QR_SEND_FAILED'};
 }
 // Ao desconectar um WhatsApp (pelo painel ou removendo o aparelho no celular), apaga as conversas e mídias dele.
 async function purgeQrSlot(slot){
@@ -253,7 +296,7 @@ async function purgeQrSlot(slot){
   try{fs.rmSync(path.join(path.dirname(statePath),'avatars'),{recursive:true,force:true});}catch{}
   if(n)console.log(`[QR] WhatsApp ${slot} desconectado: ${n} conversas apagadas`);
 }
-if(qrEnabled){qr=qrManagerFactory({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,onStatus:onQrStatus,onLoggedOut:purgeQrSlot,log:x=>console.log(x)});setTimeout(()=>qr.resume?.(),1500);if(typeof qr.hasSession==='function')setTimeout(()=>Promise.all([1,2].filter(n=>!qr.hasSession(n)).map(purgeQrSlot)).catch(()=>{}),3000);}
+if(qrEnabled){qr=qrManagerFactory({authDir:path.join(path.dirname(statePath),'wa-auth'),onIncoming:onQrIncoming,onStatus:onQrStatus,onLoggedOut:purgeQrSlot,log:x=>console.log(x)});setTimeout(()=>qr.resume?.(),1500);setTimeout(()=>resumeQrJobs().catch(()=>{}),8000);if(typeof qr.hasSession==='function')setTimeout(()=>Promise.all([1,2].filter(n=>!qr.hasSession(n)).map(purgeQrSlot)).catch(()=>{}),3000);}
 const aiCfg=aiProvider==='gemini'
 
     ?{provider:'gemini',apiKey:env.GEMINI_API_KEY||'',model:env.GEMINI_MODEL||'gemini-3.5-flash-lite'}
@@ -369,7 +412,7 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
-      if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{...qrSummary(),voice:qrVoiceEnabled});
+      if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{...qrSummary(),jobs:{pending:Object.keys(store.peek().qrJobs||{}).length,failed:(store.peek().qrDeadJobs||[]).length,lastFailures:(store.peek().qrDeadJobs||[]).slice(-5).map(j=>({slot:j.slot,code:j.code,failedAt:j.failedAt,attempts:j.attempts}))},voice:qrVoiceEnabled});
       if(p==='/api/audio/health'&&req.method==='GET'){
         const runtime=await inspectAudioRuntime({ffmpegPath:env.FFMPEG_PATH||'ffmpeg'});
         const voiceConfigured=qrVoiceEnabled&&aiCfg.provider==='gemini'&&Boolean(aiCfg.apiKey);
