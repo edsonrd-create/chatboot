@@ -35,3 +35,14 @@ test('modo teste mantém mensagem padrão; falha passa para atendente', async ()
   const s2=cart().s;b.submitOrder=async()=>{throw new Error('timeout');};
   await confirmationReply(s2,b,{requestId:'abcdefgh-3',quote:q},'padrao');assert.equal(s2.mode,'HUMAN');
 });
+
+test('pedido real guarda referência; consultar_pedido traz status do PDV', async ()=>{
+  const {applyTool}=await import('../src/ai.mjs');
+  const {b,s}=cart();b.submitOrder=async()=>({ok:true,number:9,totalCents:8997});
+  await confirmationReply(s,b,{requestId:'abcdefgh-9',quote:getSummary(s,b)},'x');
+  assert.deepEqual(s.orderRefs,['gutobot:abcdefgh-9']);
+  b.orderStatus=async ids=>({ok:true,orders:[{externalId:ids[0],number:9,statusLabel:'No forno',totalCents:8997,paymentStatus:'paid'}]});
+  const r=await applyTool('consultar_pedido',{},s,b,'');
+  assert.equal(r.pedidos[0].status,'No forno');assert.equal(r.pedidos[0].pagamento,'pago');
+  const vazio=await applyTool('consultar_pedido',{},newSession(),b,'');assert.equal(vazio.ok,false);
+});
