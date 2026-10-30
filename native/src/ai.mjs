@@ -189,7 +189,22 @@ if(provider==='gemini'){const r=await callGemini({contents:[{role:'user',parts:[
  return {ok:true,model};
 }
 
-export async function intelligentReply(userText,session,business,{apiKey,model='gpt-4.1-mini',provider='openai'}={}){
+const QUOTE_PROMPT=q=>`Confira os dados antes de confirmar: 🍕\n${q}\n\nEstá tudo correto? Responda *Confirmo* para fechar o pedido.`;
+/** WhatsApp usa *negrito* simples; remove markdown que o cliente veria cru. */
+export function whatsappText(t){return String(t||'').replace(/\*\*(.+?)\*\*/g,'*$1*').replace(/^#{1,6}\s+/gm,'').replace(/ {2,}\n/g,'\n');}
+export async function intelligentReply(userText,session,business,cfg={}){
+  const before={confirmed:session.confirmedRequestId,awaiting:session.awaitingConfirmation};
+  const reply=await replyCore(userText,session,business,cfg);
+  // Fluxo determinístico: com o carrinho completo, o resumo OFICIAL é sempre apresentado pelo servidor,
+  // e o modelo nunca afirma "pedido enviado" sem o registro ter ocorrido.
+  if(session.mode==='BOT'&&!session.confirmedRequestId&&!before.confirmed&&!session.awaitingConfirmation&&(session.cart||[]).length){
+    const q=getSummary(session,business);
+    if(!q.missing.length){const r=requestConfirmation(session,business);if(r.ok){session.quotePresented=true;session.lastQuote=formatQuote(r.quote);return QUOTE_PROMPT(session.lastQuote);}}
+  }
+  if(!session.confirmedRequestId&&/pedido (foi )?(enviado|registrado|confirmado)/i.test(reply)&&!before.confirmed)return whatsappText(reply.replace(/pedido (foi )?(enviado|registrado|confirmado)[^.!\n]*[.!]?/gi,'').trim()||'Posso te mostrar o resumo para confirmar?');
+  return whatsappText(reply);
+}
+async function replyCore(userText,session,business,{apiKey,model='gpt-4.1-mini',provider='openai'}={}){
  // Transferência humana deve funcionar mesmo se o modelo não colaborar.
  if(flagsAllergy(userText)){session.mode='HUMAN';session.reason='Dúvida sobre alergênicos';return 'Para sua segurança, vou pedir que nossa equipe confirme os ingredientes e os cuidados com contaminação cruzada. Não consigo garantir ausência de alergênicos. 🙏';}
  if(wantsHuman(userText)){session.mode='HUMAN';session.reason='Cliente solicitou atendimento humano';return 'Claro! Vou encaminhar sua conversa para a nossa equipe. 😊';}
