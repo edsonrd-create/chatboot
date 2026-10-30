@@ -227,13 +227,23 @@ for(const form of document.querySelectorAll('[data-dual-compose]'))form.onsubmit
 };
 
 // Configurações por número são metadados administrativos; não ativam a IA real.
+// Confirma o que a API de fato guardou: nunca mostrar "Salvo" sem conferir o estado.
+function channelSettingsMatch(actual,expected){
+  return actual&&Number(actual.slot)===Number(expected.slot)&&
+    actual.provider===expected.provider&&actual.model===expected.model&&
+    actual.personality===expected.personality&&actual.instructions===expected.instructions&&
+    actual.requestedEnabled===expected.requestedEnabled&&
+    actual.humanTransfer===expected.humanTransfer&&
+    actual.hours?.start===expected.hours.start&&actual.hours?.end===expected.hours.end;
+}
 async function loadChannelConfigs(){
   const target=$('gemini-channel-settings');
   const data=await api('/api/operations/channels');
   target.replaceChildren();
   for(const cfg of data.items){
     const slot=cfg.slot,form=x('form','gemini-channel-form');
-    form.append(x('h4','',`WhatsApp 0${slot} — Gemini`));
+    form.setAttribute('aria-label','Configurações do WhatsApp 0'+slot);
+    form.append(x('h4','','WhatsApp 0'+slot+' — Gemini'));
     const field=(title,name,value,type='text')=>{
       const label=x('label','',title),input=x(type==='textarea'?'textarea':'input');
       input.name=name;if(type!=='textarea')input.type=type;input.value=value||'';
@@ -256,17 +266,75 @@ async function loadChannelConfigs(){
     };
     checkbox('humanTransfer','Transferir para humano quando necessário',cfg.humanTransfer);
     checkbox('requestedEnabled','Solicitar ativação futura (não liga a IA)',cfg.requestedEnabled);
-    form.append(x('p','form-help','As regras são independentes por número. A automação continua bloqueada até homologação; não informe chaves aqui.'));
-    const submit=x('button','',`Salvar WhatsApp 0${slot}`);submit.type='submit';submit.disabled=!!data.readOnly;form.append(submit);
-    if(data.readOnly){v1.disabled=true;v2.disabled=true;form.querySelectorAll('input').forEach(el=>el.disabled=true);}
+    form.append(x('p','form-help','As regras são independentes por número. Salvar preferências não ativa automaticamente a IA.'));
+    const submit=x('button','','Salvar WhatsApp 0'+slot);
+    submit.type='submit';submit.disabled=!!data.readOnly;form.append(submit);
+    const feedback=x('div','channel-save-feedback');
+    feedback.setAttribute('role','status');
+    feedback.setAttribute('aria-live','polite');
+    feedback.setAttribute('aria-atomic','true');
+    const feedbackText=x('span','',data.readOnly?'Prévia somente leitura.':'Configurações carregadas do servidor.');
+    feedback.append(feedbackText);form.append(feedback);
+    const updateFeedback=(kind,message)=>{
+      feedback.className='channel-save-feedback '+kind;
+      feedbackText.textContent=message;
+      form.dataset.saveState=kind;
+    };
+    if(data.readOnly){
+      v1.disabled=true;v2.disabled=true;
+      form.querySelectorAll('input,textarea').forEach(el=>el.disabled=true);
+    }else{
+      const markUnsaved=()=>{
+        if(form.dataset.saveState==='saving')return;
+        submit.textContent='Salvar WhatsApp 0'+slot;
+        submit.classList.remove('is-saved');
+        updateFeedback('unsaved','● Existem alterações não salvas neste WhatsApp.');
+      };
+      form.addEventListener('input',markUnsaved);
+      form.addEventListener('change',markUnsaved);
+    }
     form.onsubmit=async event=>{
       event.preventDefault();
+      if(data.readOnly||form.dataset.saveState==='saving')return;
       const e=form.elements;
-      const body={provider:'gemini',model:e.namedItem('model').value.trim(),personality:e.namedItem('personality').value.trim(),instructions:e.namedItem('instructions').value.trim(),hours:{start:e.namedItem('start').value,end:e.namedItem('end').value},humanTransfer:e.namedItem('humanTransfer').checked,requestedEnabled:e.namedItem('requestedEnabled').checked};
+      const body={
+        slot,provider:'gemini',
+        model:e.namedItem('model').value.trim(),
+        personality:e.namedItem('personality').value.trim(),
+        instructions:e.namedItem('instructions').value.trim(),
+        hours:{start:e.namedItem('start').value,end:e.namedItem('end').value},
+        humanTransfer:e.namedItem('humanTransfer').checked,
+        requestedEnabled:e.namedItem('requestedEnabled').checked
+      };
+      const {slot:_,...payload}=body;
+      const controls=Array.from(form.querySelectorAll('input,textarea,button'));
+      controls.forEach(control=>control.disabled=true);
+      submit.textContent='Salvando...';
+      submit.classList.remove('is-saved');
+      updateFeedback('saving','⏳ Salvando configurações do WhatsApp 0'+slot+' no servidor...');
+      let writeSucceeded=false;
       try{
-        await api('/api/operations/channels/'+slot,{method:'PUT',body:JSON.stringify(body)});
-        notify('Configuração WhatsApp 0'+slot+' salva. Autoatendimento permanece bloqueado.');
-      }catch(ex){notify(ex.message,true);}
+        const result=await api('/api/operations/channels/'+slot,{method:'PUT',body:JSON.stringify(payload)});
+        if(result.ok!==true||!channelSettingsMatch(result.channel,body)){
+          throw new Error('O servidor não confirmou os valores enviados.');
+        }
+        writeSucceeded=true;
+        const readBack=await api('/api/operations/channels');
+        const persisted=readBack.items?.find(item=>item.slot===slot);
+        if(!channelSettingsMatch(persisted,body)){
+          throw new Error('Os valores retornados pelo servidor são diferentes. Atualize a página e confira antes de continuar.');
+        }
+        submit.textContent='✓ Salvo — WhatsApp 0'+slot;
+        submit.classList.add('is-saved');
+        updateFeedback('saved','✓ Configurações do WhatsApp 0'+slot+' salvas e conferidas no servidor. A IA automática não foi alterada.');
+      }catch(ex){
+        submit.textContent='Tentar salvar WhatsApp 0'+slot;
+        updateFeedback('error',(writeSucceeded
+          ?'⚠ O servidor recebeu a alteração, mas não foi possível confirmar a leitura. '
+          :'✕ Configurações NÃO confirmadas. ')+(ex.message||'Verifique a conexão com o servidor.'));
+      }finally{
+        controls.forEach(control=>control.disabled=false);
+      }
     };
     target.append(form);
   }
