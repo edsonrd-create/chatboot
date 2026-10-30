@@ -10,6 +10,7 @@ import {newSession,getSummary} from './core.mjs';
 import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 import {createQrManager} from './wa-qr.mjs';
+import {fetchPdvCatalog,catalogFromPdvMenu} from './pdv-catalog.mjs';
 import {defaultSchedule,normalizeSchedule,isBotActive,describeSchedule} from './bot-schedule.mjs';
 import {envFlag,qrPreflight,qrSupportStatus,qrBlockerMessage} from './qr-automation.mjs';
 import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice,spokenCustomerReply,requiresWrittenCopy} from './voice.mjs';
@@ -50,6 +51,15 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   let pumping=false;
   let timer;
   const business=JSON.parse(fs.readFileSync(path.join(root,'config','business.json'),'utf8'));
+  // Cardápio e preços oficiais vêm do PDV (boot + a cada 5 min). Falha mantém o último catálogo válido.
+  const pdvBase=String(env.PDV_BASE_URL||'https://pdvgutoexpress.com.br').replace(/\/$/,'');
+  let catalogTimer;
+  const syncCatalog=async()=>{if(env.PDV_CATALOG_SYNC==='false'||!globalThis.fetch)return;try{Object.assign(business,catalogFromPdvMenu(await fetchPdvCatalog({baseUrl:pdvBase}),business));}catch(e){console.warn('[pdv] cardápio não sincronizado:',e.message);}};
+  const botToken=String(env.GUTO_BOT_TOKEN||'').trim();
+  if(botToken.length>=24)business.validateAddress=async({address,neighborhood,subtotalCents})=>{
+    const r=await fetch(`${pdvBase}/api/v1/bot/address`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify({address,neighborhood,subtotalCents}),signal:AbortSignal.timeout(10000)});
+    const j=await r.json().catch(()=>({}));return {ok:r.ok&&j.ok!==false,status:r.status,...j};
+  };
   const version=graphVersion(env.META_GRAPH_VERSION);
   // Seleção explícita do provedor; chave NUNCA é devolvida ao navegador.
   const aiProvider=String(env.AI_PROVIDER||(env.GEMINI_API_KEY?'gemini':'openai')).trim().toLowerCase();
@@ -623,7 +633,7 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
     return respond(res,200,fs.readFileSync(path.join(STATIC,file)),headers);
   }
   const server=http.createServer((req,res)=>router(req,res).catch(e=>{if(!res.headersSent)json(res,e.status||500,{error:e.status?e.message:'Erro interno; consulte logs'});console.error('[Guto Nativo]',String(e.message||'Falha').slice(0,160));}));
-  return {server,store,receive,pump,status,start:(port=Number(env.PORT||8080),host=env.HOST||'127.0.0.1')=>store.ready().then(()=>new Promise(resolve=>{server.listen(port,host,()=>{timer=setInterval(pump,2500);timer.unref();resolve(server.address());});})),stop:()=>new Promise(resolve=>{clearInterval(timer);server.close(()=>resolve());})};
+  return {server,store,receive,pump,status,start:(port=Number(env.PORT||8080),host=env.HOST||'127.0.0.1')=>store.ready().then(()=>new Promise(resolve=>{server.listen(port,host,()=>{timer=setInterval(pump,2500);timer.unref();syncCatalog();catalogTimer=setInterval(syncCatalog,300000);catalogTimer.unref();resolve(server.address());});})),stop:()=>new Promise(resolve=>{clearInterval(timer);clearInterval(catalogTimer);server.close(()=>resolve());})};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(fs.existsSync(path.join(root,'.env'))&&typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(root,'.env'));

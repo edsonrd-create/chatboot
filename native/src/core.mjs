@@ -40,9 +40,10 @@ export function availableCatalog(business) {
 }
 
 export function addPizza(session, business, {size,flavors,quantity=1}) {
-  if (!Array.isArray(flavors) || ![1,2].includes(flavors.length)) return {ok:false,error:'Escolha um ou dois sabores.'};
   const s=business.sizes.find(x=>x.id===size);
   if (!s) return {ok:false,error:'Tamanho indisponível.'};
+  const maxFlavors=Math.max(1,Math.min(5,Number(s.maxFlavors)||2));
+  if (!Array.isArray(flavors) || flavors.length<1 || flavors.length>maxFlavors) return {ok:false,error:`Neste tamanho são de 1 a ${maxFlavors} sabor(es).`};
   if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) return {ok:false,error:'Quantidade inválida.'};
   const distinct=[...new Set(flavors)];if(distinct.length !== flavors.length)return {ok:false,error:'Sabores repetidos.'};
   for(const flavor of flavors) if (!business.flavors.some(x=>x.id===flavor && x.available))return {ok:false,error:'Sabor indisponível.'};
@@ -51,7 +52,7 @@ export function addPizza(session, business, {size,flavors,quantity=1}) {
   if (prices.every(p=>Number.isSafeInteger(p)&&p>=0)) {
     if (prices.length === 1) priceCents=prices[0];
     else if (business.halfHalfPricing === 'MAX') priceCents=Math.max(...prices);
-    else if (business.halfHalfPricing === 'AVERAGE') priceCents=Math.round((prices[0]+prices[1])/2);
+    else if (business.halfHalfPricing === 'AVERAGE') priceCents=Math.round(prices.reduce((a,b)=>a+b,0)/prices.length);
   }
   const labels=flavors.map(f=>business.flavors.find(x=>x.id===f).label);
   const item={id:crypto.randomUUID(),kind:'pizza',size,flavors,description:`Pizza ${s.label} (${s.slices} fatias), ${labels.join(' + ')}`,quantity,unitPriceCents:priceCents};
@@ -111,7 +112,7 @@ export function getSummary(session,business) {
       const flavors=(item.flavors||[]).map(id=>business.flavors.find(f=>f.id===id && f.available));
       const prices=flavors.map(f=>f && business.pizzas?.[f.id]?.[item.size]);
       const valid=size && flavors.every(Boolean) && prices.every(p=>Number.isSafeInteger(p)&&p>=0);
-      const unitPriceCents=valid?(prices.length===1?prices[0]:business.halfHalfPricing==='MAX'?Math.max(...prices):business.halfHalfPricing==='AVERAGE'?Math.round((prices[0]+prices[1])/2):null):null;
+      const unitPriceCents=valid?(prices.length===1?prices[0]:business.halfHalfPricing==='MAX'?Math.max(...prices):business.halfHalfPricing==='AVERAGE'?Math.round(prices.reduce((a,b)=>a+b,0)/prices.length):null):null;
       const description=size?`Pizza ${size.label} (${size.slices} fatias), ${flavors.map((f,i)=>f?.label||`Sabor indisponível (${item.flavors[i]})`).join(' + ')}`:item.description;
       return {...item,description,unitPriceCents};
     }
@@ -124,7 +125,8 @@ export function getSummary(session,business) {
   const subtotalKnown=items.length>0 && items.every(x=>Number.isSafeInteger(x.unitPriceCents));
   const subtotalCents=subtotalKnown?items.reduce((sum,x)=>sum+x.quantity*x.unitPriceCents,0):null;
   const fulfillment=session.fulfillment||'DELIVERY';
-  const deliveryFeeCents=fulfillment==='PICKUP'?0:Number.isSafeInteger(business.deliveryFeeCents) && session.address?business.deliveryFeeCents:null;
+  // Taxa oficial: a que o PDV calculou para o endereço validado (session.deliveryFeeCents). Sem ela, não há total.
+  const deliveryFeeCents=fulfillment==='PICKUP'?0:session.address&&Number.isSafeInteger(session.deliveryFeeCents)?session.deliveryFeeCents:Number.isSafeInteger(business.deliveryFeeCents)&&session.address?business.deliveryFeeCents:null;
   const totalCents=subtotalCents!==null && deliveryFeeCents!==null?subtotalCents+deliveryFeeCents:null;
   return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,missing:[...(items.length?[]:['itens']),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
 }
@@ -139,7 +141,7 @@ export function setFulfillment(session,{method}){
 }
 export function setAddress(session,{address}) {
   if(typeof address!=='string'||address.trim().length<12 || address.length>500)return {ok:false,error:'Solicite endereço completo com rua, número, bairro e cidade.'};
-  session.address=address.trim();session.fulfillment='DELIVERY';invalidateQuote(session);return {ok:true,address:session.address};
+  session.address=address.trim();session.fulfillment='DELIVERY';delete session.deliveryFeeCents;delete session.addressCheck;invalidateQuote(session);return {ok:true,address:session.address};
 }
 export function setPayment(session,{method}){
   if(!['PIX','CARTAO','DINHEIRO'].includes(method))return {ok:false,error:'Forma de pagamento inválida.'};
@@ -162,5 +164,5 @@ export function formatMoney(cents){return Number.isInteger(cents)?new Intl.Numbe
 
 /** Catálogo informativo: preços publicados NÃO substituem cotação do backend. */
 export function publicMenuKnowledge(business){
- return {source:business.catalogSource?.source||null,sizes:business.sizes,flavors:(business.flavors||[]).filter(f=>f.available).map(f=>({id:f.id,name:f.label,category:f.category,ingredients:f.ingredients,startingPriceCents:f.startingPriceCents,priceType:f.priceType})),combos:(business.combos||[]).map(c=>({id:c.id,name:c.label,description:c.description,publishedPriceCents:c.publishedPriceCents,restrictions:c.restrictions,autoCheckoutEnabled:false})),drinks:business.drinks.map(d=>({id:d.id,name:d.label,publishedPriceCents:d.priceCents})),policy:'Valores publicados podem mudar e não autorizam checkout. Pizzas e combos só podem ser cotados quando preços exatos do tamanho, condições e taxa de entrega estiverem validados.'};
+ return {source:business.catalogSource?.source||null,sizes:business.sizes,flavors:(business.flavors||[]).filter(f=>f.available).map(f=>({id:f.id,name:f.label,category:f.category,ingredients:f.ingredients,startingPriceCents:f.startingPriceCents,priceType:f.priceType})),combos:(business.combos||[]).map(c=>({id:c.id,name:c.label,description:c.description,publishedPriceCents:c.publishedPriceCents,restrictions:c.restrictions,autoCheckoutEnabled:false})),drinks:business.drinks.map(d=>({id:d.id,name:d.label,publishedPriceCents:d.priceCents})),policy:business.catalogSource?.snapshotOnly===false?'Preços oficiais do PDV (pizza meio a meio = média dos sabores). Total final conferido pelo PDV ao registrar.':'Valores publicados podem mudar e não autorizam checkout. Pizzas e combos só podem ser cotados quando preços exatos do tamanho, condições e taxa de entrega estiverem validados.'};
 }
