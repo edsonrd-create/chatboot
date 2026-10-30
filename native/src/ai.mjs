@@ -44,6 +44,7 @@ export function applyTool(name,args,session,business,userText){
       if(!r.ok||typeof business.validateAddress!=='function')return r;
       const sub=getSummary(session,business).subtotalCents||0;
       return business.validateAddress({address:street,neighborhood:bairro,subtotalCents:sub}).then(v=>{
+        if(!v?.ok&&v?.outOfRange){session.address=null;session.mode='HUMAN';session.reason=`Endereço fora da área de entrega (${v.km??'?'} km; limite ${v.radiusKm??'?'} km)`;session.handoffMessage=`Seu endereço fica a ${v.km??'mais de '+(v.radiusKm??4)} km da pizzaria, fora da nossa área de entrega automática (até ${v.radiusKm??4} km). Vou chamar um atendente para te ajudar agora mesmo. 🙏`;return {ok:false,outOfRange:true,error:'Fora da área: conversa transferida para atendente.'};}
         if(!v?.ok){session.address=null;return {ok:false,error:v?.reason||'Não consegui validar esse endereço no mapa.',issue:v?.issue||'not_found',outOfRange:Boolean(v?.outOfRange),radiusKm:v?.radiusKm??null,orientacao:v?.outOfRange?'Fora da área de entrega do PDV: ofereça retirada no balcão.':'Peça para o cliente confirmar rua, número e bairro, ou enviar a localização.'};}
         session.deliveryFeeCents=v.feeCents;session.neighborhood=v.neighborhood||args.neighborhood||'';session.addressCheck={formatted:v.formatted,km:v.km,radiusKm:v.radiusKm,checkedAt:v.checkedAt};
         return {ok:true,address:session.address,enderecoNoMapa:v.formatted,km:v.km,taxaEntregaCents:v.feeCents,taxaEntrega:formatMoney(v.feeCents)};
@@ -195,6 +196,7 @@ export function whatsappText(t){return String(t||'').replace(/\*\*(.+?)\*\*/g,'*
 export async function intelligentReply(userText,session,business,cfg={}){
   const before={confirmed:session.confirmedRequestId,awaiting:session.awaitingConfirmation};
   const reply=await replyCore(userText,session,business,cfg);
+  if(session.handoffMessage){const m=session.handoffMessage;delete session.handoffMessage;return m;}
   // Fluxo determinístico: com o carrinho completo, o resumo OFICIAL é sempre apresentado pelo servidor,
   // e o modelo nunca afirma "pedido enviado" sem o registro ter ocorrido.
   if(session.mode==='BOT'&&!session.confirmedRequestId&&!before.confirmed&&!session.awaitingConfirmation&&(session.cart||[]).length){
