@@ -78,15 +78,22 @@ export function createQrManager({authDir, onIncoming, onStatus, onLoggedOut, log
     const handle = async (m, {history = false} = {}) => {
       const parsed = parseWaMessage(m);
       if (!parsed) return;
-      let audio = null, media = null;
-      // Mídia recente (foto, figurinha, áudio, vídeo curto) é baixada para aparecer na central como no WhatsApp Web.
-      if (!history && MEDIA_TYPES.has(parsed.type)) {
-        try {
-          const buffer = await baileys.downloadMediaMessage(m, 'buffer', {}, {reuploadRequest: sock.updateMediaMessage});
-          if (buffer.length <= 16 * 1024 * 1024) media = {buffer, mimeType: parsed.mimeType || 'application/octet-stream'};
-          if (parsed.type === 'audio' && !parsed.fromMe) audio = {buffer, mimeType: parsed.mimeType || 'audio/ogg'};
-        } catch (e) { log(`[QR] não baixou a mídia: ${String(e.message || e).slice(0, 100)}`); }
+      let audio=null,media=null;
+      // Evitar download para transcrição quando metadados já excedem os limites.
+      const tooLarge=parsed.type==='audio'&&(parsed.fileLength>12*1024*1024||parsed.durationSeconds>180);
+      if(!history&&MEDIA_TYPES.has(parsed.type)&&!tooLarge){
+        try{
+          const data=await baileys.downloadMediaMessage(m,'buffer',{}, {reuploadRequest:sock.updateMediaMessage});
+          if(Buffer.isBuffer(data)&&data.length<=16*1024*1024)media={buffer:data,mimeType:parsed.mimeType||'application/octet-stream'};
+          if(parsed.type==='audio'&&!parsed.fromMe&&Buffer.isBuffer(data)&&data.length<=12*1024*1024)
+            audio={buffer:data,mimeType:parsed.mimeType||'audio/ogg',seconds:parsed.durationSeconds||0};
+          else if(parsed.type==='audio'&&!parsed.fromMe)audio={error:'AUDIO_TOO_LARGE'};
+        }catch{
+          if(parsed.type==='audio'&&!parsed.fromMe)audio={error:'AUDIO_DOWNLOAD_FAILED'};
+          log(`[QR AUDIO] falha no download slot=${slot} (sem credenciais ou conteúdo no log)`);
+        }
       }
+      if(tooLarge&&!parsed.fromMe)audio={error:parsed.durationSeconds>180?'AUDIO_TOO_LONG':'AUDIO_TOO_LARGE'};
       await onIncoming({slot, ...parsed, audio, media, history});
     };
     sock.ev.on('messages.upsert', async ({messages, type}) => {
@@ -206,21 +213,32 @@ const unwrap = msg => {
   return x || {};
 };
 export function parseWaMessage(m) {
-  if (!m?.message || !m.key) return null;
+  if (!m?.message || !m.key || !m.key.id) return null;
   const jid = m.key.remoteJid || '';
   if (!jid.endsWith('@s.whatsapp.net') && !jid.endsWith('@lid')) return null; // grupos, status, canais
   const msg = unwrap(m.message);
   if (msg.protocolMessage || msg.reactionMessage || msg.senderKeyDistributionMessage && Object.keys(msg).length === 1 || msg.pollUpdateMessage) return null;
-  let type = 'text', text = msg.conversation || msg.extendedTextMessage?.text || '', mimeType = '';
+  let type='text',text=msg.conversation||msg.extendedTextMessage?.text||'',mimeType='';
+  let durationSeconds=0,fileLength=0;
+  const numeric=x=>{const n=Number(x?.low??x??0);return Number.isFinite(n)&&n>=0?n:0;};
   if (msg.imageMessage) { type = 'image'; mimeType = msg.imageMessage.mimetype || 'image/jpeg'; text = msg.imageMessage.caption ? `📷 ${msg.imageMessage.caption}` : '📷 Foto'; }
   else if (msg.videoMessage) { type = 'video'; mimeType = msg.videoMessage.mimetype || 'video/mp4'; text = msg.videoMessage.caption ? `🎥 ${msg.videoMessage.caption}` : '🎥 Vídeo'; }
-  else if (msg.audioMessage) { type = 'audio'; text = ''; mimeType = msg.audioMessage.mimetype || 'audio/ogg'; }
+  else if(msg.audioMessage){
+    type='audio';text='';mimeType=msg.audioMessage.mimetype||'audio/ogg';
+    durationSeconds=numeric(msg.audioMessage.seconds);fileLength=numeric(msg.audioMessage.fileLength);
+  }
   else if (msg.stickerMessage) { type = 'sticker'; mimeType = msg.stickerMessage.mimetype || 'image/webp'; text = '🏷️ Figurinha'; }
-  else if (msg.documentMessage) { type = 'document'; mimeType = msg.documentMessage.mimetype || 'application/octet-stream'; text = `📄 ${msg.documentMessage.fileName || 'Documento'}`; }
+  else if(msg.documentMessage){
+    mimeType=msg.documentMessage.mimetype||'application/octet-stream';
+    const isAudio=/^audio\/(ogg|opus|mpeg|mp3|mp4|m4a|x-m4a|wav|x-wav|aac|flac|webm|aiff|x-aiff)(;|$)/i.test(mimeType);
+    type=isAudio?'audio':'document';
+    text=isAudio?'':`📄 ${msg.documentMessage.fileName||'Documento'}`;
+    fileLength=numeric(msg.documentMessage.fileLength);
+  }
   else if (msg.locationMessage || msg.liveLocationMessage) { const l = msg.locationMessage || msg.liveLocationMessage; type = 'location'; text = `📍 Localização: https://maps.google.com/?q=${l.degreesLatitude},${l.degreesLongitude}`; }
   else if (msg.contactMessage || msg.contactsArrayMessage) { type = 'contact'; text = `👤 Contato: ${msg.contactMessage?.displayName || 'contatos'}`; }
   else if (msg.buttonsResponseMessage || msg.listResponseMessage || msg.templateButtonReplyMessage) { text = msg.buttonsResponseMessage?.selectedDisplayText || msg.listResponseMessage?.title || msg.templateButtonReplyMessage?.selectedDisplayText || ''; }
   if (!text && type === 'text') return null;
   const ts = Number(m.messageTimestamp?.low ?? m.messageTimestamp ?? 0);
-  return {jid, from: jid.split('@')[0], name: m.key.fromMe ? '' : (m.pushName || ''), id: m.key.id, fromMe: Boolean(m.key.fromMe), text, type, mimeType, at: ts ? new Date(ts * 1000).toISOString() : null};
+  return {jid,from:jid.split('@')[0],name:m.key.fromMe?'':(m.pushName||''),id:m.key.id,fromMe:Boolean(m.key.fromMe),text,type,mimeType,durationSeconds,fileLength,at:ts?new Date(ts*1000).toISOString():null};
 }
