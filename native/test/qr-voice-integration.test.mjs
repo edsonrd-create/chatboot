@@ -142,3 +142,18 @@ test('Anexo de voz MIME audio/mpeg é reconhecido como áudio; documento comum p
  const document=parseWaMessage({...base,message:{documentMessage:{mimetype:'application/pdf',fileName:'conta.pdf'}}});
  assert.equal(document.type,'document');
 });
+
+test('Diagnóstico de áudio exige login e não revela chave Gemini nem transcrição',async t=>{
+  const x=await fixture(t);
+  assert.equal((await x.request('/api/audio/health')).status,401);
+  const cookie=await x.login();
+  const result=await x.request('/api/audio/health',{headers:{cookie}});
+  assert.equal(result.status,200);
+  const d=await result.json();
+  assert.equal(d.ttsConfigured,true);
+  assert.equal(d.sttConfigured,true);
+  assert.equal(d.voiceFlagEnabled,true);
+  assert.equal(d.productionReady,false);
+  assert.equal(d.sendToPdv,false);
+  assert.equal(JSON.stringify(d).includes('FAKE_FOR_UNIT_TESTS_ONLY'),false);
+});
