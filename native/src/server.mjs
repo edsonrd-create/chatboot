@@ -107,6 +107,7 @@ if(m.fromMe||m.history){
 return inThreadOrder(tid,()=>handleLiveQr(m,tid,mediaFile));
 }
 async function handleLiveQr(m,tid,mediaFile){
+if(store.peek().threads[tid]?.messages?.some(x=>x.id===m.id))return; // sem custo de transcrição em reentregas
 // 1) Validar e transcrever apenas o áudio das conversas autorizadas em modo BOT.
 let text=m.text||'',transcribed=false,audioError='';
 const existing=store.peek().threads[tid];
@@ -187,7 +188,7 @@ if(!stillAutomated()){
 }
 const wantVoice=voice&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply});
 const copyRequired=wantVoice&&requiresWrittenCopy(reply);
-const sentMessages=[];let voiceError=null,voiceDelivered=false,copyDelivered=false;
+const sentMessages=[];let voiceError=null,voiceDelivered=false,copyDelivered=false,cancelled=false;
 try{
   let ogg=null;
   if(wantVoice){
@@ -205,7 +206,7 @@ try{
       console.error('[QR VOICE]',JSON.stringify({slot:m.slot,code:voiceError}));
     }
   }
-  if(!stillAutomated())return;
+  if(!stillAutomated()){cancelled=true;return;}
   // Uma cópia escrita dos valores/confirmacões precede a voz, para o cliente conferir.
   if(ogg&&copyRequired){
     const out=await qr.send(m.slot,m.jid,reply);
@@ -213,7 +214,7 @@ try{
     copyDelivered=true;
   }
   if(ogg){
-    if(!stillAutomated())return;
+    if(!stillAutomated()){cancelled=true;return;}
     const out=await qr.sendVoice(m.slot,m.jid,ogg);
     const media=saveMedia(out.id||crypto.randomUUID(),{buffer:ogg,mimeType:'audio/ogg'});
     sentMessages.push({id:out.id||crypto.randomUUID(),direction:'outgoing',type:'audio',text:`🔊 ${reply}`,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA · voz sintética',media});
@@ -232,7 +233,7 @@ try{
   await store.change(d=>{
     const t=d.threads[tid];if(!t)return;
     delete t.typing;
-    if(!sentMessages.length){t.qrLastBlocker=voiceError||'QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();return;}
+    if(!sentMessages.length){if(!cancelled){t.qrLastBlocker=voiceError||'QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}return;}
     t.session=session;
     if(session.mode==='HUMAN')t.mode='HUMAN';
     if(voiceDelivered)t.voiceDisclosureSent=true;
