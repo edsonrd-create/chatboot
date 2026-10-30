@@ -32,6 +32,12 @@ jobs:
       - name: Build real do container Docker para Render
         working-directory: .
         run: docker build -f native/Dockerfile -t guto-native-ci native
+      - name: Testar conversão e integração com FFmpeg REAL dentro do Docker
+        working-directory: .
+        run: |
+          docker run --rm --entrypoint sh \
+            -v "$PWD/native/test:/app/test:ro" \
+            guto-native-ci -c 'command -v ffmpeg && ffmpeg -hide_banner -encoders | grep libopus && npm test'
       - name: Subir o container e testar as rotas HTTPS de homologacao
         working-directory: .
         run: |
