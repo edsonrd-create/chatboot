@@ -42,6 +42,11 @@ export async function submitPdvOrder(session, business, confirmed) {
   if (typeof business.submitOrder !== 'function') return {skipped: true};
   const body = buildPdvOrder(session, business, confirmed.quote, confirmed.requestId);
   try {
+    // Simulador do painel nunca grava pedido real: só envia quando o PDV está em modo teste.
+    if (session.simulation && (typeof business.pdvMode !== 'function' || await business.pdvMode() !== 'test')) {
+      session.pdvOrder = {at: new Date().toISOString(), ok: false, error: 'Simulador só envia ao PDV em modo teste'};
+      return {skipped: true};
+    }
     const res = await business.submitOrder(body);
     session.pdvOrder = {at: new Date().toISOString(), ok: !!res?.ok, dryRun: !!res?.dryRun, number: res?.number ?? null, totalCents: res?.totalCents ?? null, paymentStatus: res?.paymentStatus ?? null, error: res?.ok ? null : String(res?.error || 'erro').slice(0, 200)};
     if (!res?.ok) { session.mode = 'HUMAN'; session.reason = `PDV recusou o pedido: ${session.pdvOrder.error}`; }

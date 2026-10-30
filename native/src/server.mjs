@@ -60,6 +60,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
     const r=await fetch(`${pdvBase}/api/v1/bot/address`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify({address,neighborhood,subtotalCents}),signal:AbortSignal.timeout(10000)});
     const j=await r.json().catch(()=>({}));return {ok:r.ok&&j.ok!==false,status:r.status,...j};
   };
+  if(botToken.length>=24)business.pdvMode=async()=>{const r=await fetch(`${pdvBase}/api/v1/bot/status`,{headers:{authorization:`Bearer ${botToken}`},signal:AbortSignal.timeout(10000)});const j=await r.json().catch(()=>({}));return r.ok?String(j.mode||''):'';};
   if(botToken.length>=24)business.submitOrder=async body=>{
     const r=await fetch(`${pdvBase}/api/v1/bot/order`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
     const j=await r.json().catch(()=>({}));return {...j,ok:r.ok&&j.ok!==false,status:r.status};
@@ -618,8 +619,8 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
         if(!aiCfg.apiKey)return json(res,503,{error:`Modelo de IA indisponível: configure ${aiCfg.provider==='gemini'?'GEMINI_API_KEY':'OPENAI_API_KEY'} no servidor. Não há resposta simulada.`});
         try{
           let reply,summary,mode;
-          await store.change(async d=>{const session=d.simulation||newSession();reply=await intelligentReply(v.text,session,business,aiCfg);session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
-          return json(res,200,{reply,summary,mode,demo:true,provider:aiCfg.provider});
+          await store.change(async d=>{const session=d.simulation||newSession();session.simulation=true;session.customerPhone||='41900000000';session.customerName||='Teste Simulador';reply=await intelligentReply(v.text,session,business,aiCfg);session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
+          return json(res,200,{reply,summary,mode,demo:true,provider:aiCfg.provider,pdvOrder:store.peek().simulation?.pdvOrder||null});
         }catch(e){
           const fault=describeAIError(e,aiCfg.provider),errorId=crypto.randomUUID().replaceAll('-','').slice(0,12);
           console.error('[GutoBot AI]',JSON.stringify({errorId,code:fault.code,status:fault.status,operation:'simulate'}));
