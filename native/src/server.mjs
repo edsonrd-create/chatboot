@@ -12,7 +12,7 @@ import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 import {createQrManager} from './wa-qr.mjs';
 import {envFlag,qrPreflight,qrSupportStatus,qrBlockerMessage} from './qr-automation.mjs';
 import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice,spokenCustomerReply,requiresWrittenCopy} from './voice.mjs';
-import {normalizeIncomingAudio,opusOggValid,AudioInputError} from './audio-pipeline.mjs';
+import {normalizeIncomingAudio,opusOggValid,AudioInputError,inspectAudioRuntime} from './audio-pipeline.mjs';
 import {channelConfig,setChannelConfig,listThreads,transition,threadInfo,operationalOverview,audit,stateOf} from './operations.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -90,7 +90,7 @@ async function onQrStatus({slot,id,delivery}){
 }
 async function onQrIncoming(m){
 const tid=`qr${m.slot}:${m.from}`;
-const mediaFile=saveMedia(m.id,m.media);
+const mediaFile=saveMedia(`qr${m.slot}-${m.id}`,m.media);
 // Mensagens enviadas pelo próprio celular, eco das enviadas pela central e histórico: só registrar, sem IA.
 if(m.fromMe||m.history){
   queueLight(d=>{
@@ -129,7 +129,7 @@ if(m.type==='audio'&&audioEligible){
   }
 }
 const shown=m.type==='audio'?(transcribed?`🎤 ${text}`:'🎤 [áudio recebido — aguarda atendimento humano]'):(text||`[${m.type}: encaminhar ao atendente]`);
-let session=null,canReply=false;
+let session=null,canReply=false,notifyAudioHandoff=false;
 await store.change(d=>{
 const now=new Date(clock()).toISOString();
 const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
@@ -138,7 +138,8 @@ if(t.messages.some(x=>x.id===m.id))return;
 append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR',media:mediaFile});
 t.unread=(t.unread||0)+1;t.lastInboundAt=now;if(t.operationalState==='CLOSED'||t.operationalState==='FAILED')delete t.operationalState;t.archived=false;d.threads[tid]=t;
 // Não assumir conteúdo de fotos, stickers, documentos ou áudios não compreendidos.
-if(m.type==='audio'&&audioError&&audioEligible){
+if(m.type==='audio'&&audioError&&audioEligible&&t.mode==='BOT'){
+  notifyAudioHandoff=true;
   t.qrLastBlocker=audioError;t.qrLastErrorAt=now;
   t.mode='HUMAN';t.session=t.session||newSession();t.session.mode='HUMAN';t.operationalState='WAITING';
   audit(d,{actor:'system',action:'QR_AUDIO_TO_HUMAN',slot:t.slot,clock});
@@ -151,7 +152,7 @@ if(canReply)session=structuredClone(t.session||newSession());
 });
 if(!canReply){
   // A mensagem não compreendida não deve produzir pedido inventado. Aviso claro e transferência humana.
-  if(audioError&&audioEligible&&qr?.isConnected(m.slot)){
+  if(notifyAudioHandoff&&qr?.isConnected(m.slot)){
     const note='Sou a assistente virtual da Guto Express. Não consegui compreender seu áudio com segurança. Encaminhei a conversa para nossa equipe. Se preferir, envie sua mensagem por escrito.';
     try{
       const result=await qr.send(m.slot,m.jid,note);
@@ -216,7 +217,7 @@ try{
   if(ogg){
     if(!stillAutomated()){cancelled=true;return;}
     const out=await qr.sendVoice(m.slot,m.jid,ogg);
-    const media=saveMedia(out.id||crypto.randomUUID(),{buffer:ogg,mimeType:'audio/ogg'});
+    const media=saveMedia(`qr${m.slot}-${out.id||crypto.randomUUID()}`,{buffer:ogg,mimeType:'audio/ogg'});
     sentMessages.push({id:out.id||crypto.randomUUID(),direction:'outgoing',type:'audio',text:`🔊 ${reply}`,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA · voz sintética',media});
     voiceDelivered=true;
   }else if(!copyDelivered){
@@ -369,6 +370,16 @@ const aiCfg=aiProvider==='gemini'
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
       if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{...qrSummary(),voice:qrVoiceEnabled});
+      if(p==='/api/audio/health'&&req.method==='GET'){
+        const runtime=await inspectAudioRuntime({ffmpegPath:env.FFMPEG_PATH||'ffmpeg'});
+        const voiceConfigured=qrVoiceEnabled&&aiCfg.provider==='gemini'&&Boolean(aiCfg.apiKey);
+        return json(res,200,{ok:true,mode:'HOMOLOGACAO',incoming:'QR_BAILEYS',provider:aiCfg.provider,
+          sttConfigured:aiCfg.provider==='gemini'&&Boolean(aiCfg.apiKey),
+          ttsConfigured:voiceConfigured,qrConnected:Boolean(qr&&(qr.isConnected(1)||qr.isConnected(2))),
+          ffmpegAvailable:runtime.ffmpegAvailable,opusEncoder:runtime.opusEncoder,
+          error:runtime.error||(!runtime.opusEncoder?'OPUS_ENCODER_UNAVAILABLE':null),
+          voiceFlagEnabled:qrVoiceEnabled,sendToPdv:false,productionReady:false});
+      }
 const qrPath=p.match(/^\/api\/qr\/([12])\/(start|logout)$/);
 if(qrPath&&req.method==='POST'){if(!qr)return json(res,409,{error:'Conexão por QR desativada no servidor (WA_QR_ENABLED=true).'});const slot=Number(qrPath[1]);try{return json(res,200,qrPath[2]==='start'?await qr.start(slot):await qr.logout(slot));}catch(e){return json(res,503,{error:'Falha no WhatsApp QR: '+String(e.message||e).slice(0,140)});}}
 if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
