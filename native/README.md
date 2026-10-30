@@ -10,6 +10,16 @@ Blueprint de hospedagem: [render.yaml](../render.yaml). Instruções, riscos de 
 
 **Atenção:** a implantação de homologação inicia sem credenciais Meta, sem IA e sem criação de pedidos reais. A hospedagem precisa de `ADMIN_PASSWORD` cadastrada no painel de segredos e utiliza plano Starter com disco persistente (pode ser cobrado).
 
+## Áudio bidirecional nos WhatsApps por QR (homologação)
+
+O Auto Atendimento Express agora suporta, na integração opcional por **Baileys**: mensagem de voz recebida → validação com FFmpeg → transcrição em português brasileiro pelo Gemini → motor de atendimento existente → voz sintética OGG/Opus no **mesmo número**, com cópia escrita de valores e confirmações. Para texto recebido, o padrão segue resposta por texto.
+
+A voz **não é ativada automaticamente** ao publicar o código: exige `WA_QR_ENABLED=true`, `WA_QR_AUTOREPLY=true`, `WA_QR_VOICE=true`, `AI_PROVIDER=gemini`, uma nova `GEMINI_API_KEY` protegida e `WA_QR_TEST_NUMBERS` restrito a números de teste. Confira a saúde do FFmpeg em **WhatsApp QR → Verificar voz e FFmpeg**. Clientes já em modo humano permanecem humanos. Pedidos no PDV continuam bloqueados.
+
+[Manual da integração de áudio e Railway](docs/ATENDIMENTO-AUDIO-BIDIRECIONAL.md).
+
+A sessão por QR é um **canal não oficial do WhatsApp**, sujeito a incompatibilidades ou restrições da Meta. O suporte a áudio automático da **Meta Cloud API oficial** não está implementado neste fluxo; exige integração distinta.
+
 ## Integração Google Gemini
 
 A integração direta com o Google Gemini está implementada no backend, em modo de **homologação**. Selecione o provedor com `AI_PROVIDER=gemini`, configure `GEMINI_MODEL=gemini-3.5-flash-lite` e armazene a **nova** `GEMINI_API_KEY` exclusivamente nas variáveis privadas do servidor. O teste real ocorre no painel administrativo; conversas e chamadas a funções podem ser verificadas sem cadastrar pedidos no PDV.
