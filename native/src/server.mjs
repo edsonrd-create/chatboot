@@ -427,6 +427,13 @@ const aiCfg=aiProvider==='gemini'
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
       // Teste de conexão com o PDV usando GUTO_BOT_TOKEN (o token nunca é devolvido).
+      // Diagnóstico (admin): mostra exatamente o que o PDV respondeu para um endereço.
+      if(p==='/api/pdv/address-test'&&req.method==='POST'){
+        if(typeof business.validateAddress!=='function')return json(res,200,{ok:false,error:'GUTO_BOT_TOKEN ausente ou curto no Railway'});
+        let v;try{v=JSON.parse((await readBody(req,4000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+        try{return json(res,200,await business.validateAddress({address:String(v.address||'').slice(0,300),neighborhood:String(v.neighborhood||'').slice(0,80),subtotalCents:Math.max(0,Math.round(Number(v.subtotalCents)||0))}));}
+        catch(e){return json(res,200,{ok:false,error:'Falha ao chamar o PDV: '+e.message});}
+      }
       if(p==='/api/pdv/bot-status'&&req.method==='GET'){
         const base=String(env.PDV_BASE_URL||'https://pdvgutoexpress.com.br').replace(/\/$/,'');const token=String(env.GUTO_BOT_TOKEN||'').trim();
         if(token.length<24)return json(res,200,{ok:false,error:'GUTO_BOT_TOKEN ausente ou curto no Railway'});
