@@ -65,7 +65,7 @@ function upsertOutgoing(t,msg){const old=t.messages.find(x=>x.id===msg.id);if(ol
 let qr=null;
 // Mídias recebidas/enviadas ficam no volume persistente, ao lado do estado.
 const mediaDir=path.join(path.dirname(statePath),'media');
-const MEDIA_EXT={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','video/mp4':'mp4','application/pdf':'pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx','application/msword':'doc','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx','application/vnd.ms-excel':'xls','text/plain':'txt','text/csv':'csv','application/zip':'zip'};
+const MEDIA_EXT={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','audio/wav':'wav','audio/aac':'aac','audio/flac':'flac','audio/webm':'webm','video/mp4':'mp4','application/pdf':'pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx','application/msword':'doc','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx','application/vnd.ms-excel':'xls','text/plain':'txt','text/csv':'csv','application/zip':'zip'};
 const MEDIA_MIME=Object.fromEntries(Object.entries(MEDIA_EXT).map(([k,v])=>[v,k]));const DOC_EXT=new Set(['pdf','docx','doc','xlsx','xls','txt','csv','zip']);
 function saveMedia(id,media){
   if(!media?.buffer?.length)return null;
