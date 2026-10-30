@@ -416,6 +416,13 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
+      // Teste de conexão com o PDV usando GUTO_BOT_TOKEN (o token nunca é devolvido).
+      if(p==='/api/pdv/bot-status'&&req.method==='GET'){
+        const base=String(env.PDV_BASE_URL||'https://pdvgutoexpress.com.br').replace(/\/$/,'');const token=String(env.GUTO_BOT_TOKEN||'').trim();
+        if(token.length<24)return json(res,200,{ok:false,error:'GUTO_BOT_TOKEN ausente ou curto no Railway'});
+        try{const r=await fetchImpl(base+'/api/v1/bot/status',{headers:{authorization:'Bearer '+token},signal:AbortSignal.timeout(10000)});const body=await r.json().catch(()=>({}));return json(res,200,{ok:r.ok,status:r.status,pdv:body});}
+        catch(e){return json(res,200,{ok:false,error:'PDV indisponível: '+String(e.message||e).slice(0,80)});}
+      }
       if(p==='/api/bot/schedule'&&req.method==='GET')return json(res,200,{schedule:botSchedule(),...describeSchedule(botSchedule(),new Date(clock())),autoReplyServer:qrAutoReply});
       if(p==='/api/bot/schedule'&&req.method==='PUT'){
         let v;try{v=JSON.parse((await readBody(req,8000)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
