@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -11,8 +12,8 @@ import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 import {createQrManager} from './wa-qr.mjs';
 import {envFlag,qrPreflight,qrSupportStatus,qrBlockerMessage} from './qr-automation.mjs';
-import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice,spokenCustomerReply,requiresWrittenCopy} from './voice.mjs';
-import {normalizeIncomingAudio,opusOggValid,AudioInputError,inspectAudioRuntime} from './audio-pipeline.mjs';
+import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice,voicePlan} from './voice.mjs';
+import {normalizeIncomingAudio,inspectIncomingAudio,AudioInputError} from './audio-pipeline.mjs';
 import {channelConfig,setChannelConfig,listThreads,transition,threadInfo,operationalOverview,audit,stateOf} from './operations.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -33,7 +34,7 @@ const publicChannel=c=>({slot:c.slot,phoneId:c.phoneId,number:c.display,apiVerif
 const serializeMessage=m=>({id:m.id,direction:m.direction,text:m.text,type:m.type,at:m.at,delivery:m.delivery||'',source:m.source||'',media:m.media||null,fileName:m.fileName||null});
 const getToken=(c,env)=>c.tokenEncrypted?revealToken(c.tokenEncrypted,env.APP_SECRET):String(env[`META_TOKEN_${c.slot}`]||'');
 
-export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now(),qrManagerFactory=createQrManager,respondWithAI=intelligentReply,normalizeVoice=normalizeIncomingAudio,transcribeVoice=transcribeAudio,synthesizeReplyVoice=synthesizeVoice}={}){
+export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,dataFile,clock=()=>Date.now(),qrManagerFactory=createQrManager,respondWithAI=intelligentReply}={}){
   // Homologação pode iniciar sem credenciais Meta; webhooks ficam desligados até configurá-las.
   // Não gerar ou simular segredos Meta, números conectados nem mensagens reais.
   // Em FREE_PREVIEW_MODE, liberar apenas prévia anônima e IMUTÁVEL; nunca credenciais reais.
@@ -58,14 +59,39 @@ const qrEnabled=!freePreview&&envFlag(env.WA_QR_ENABLED);
 const qrAutoReply=envFlag(env.WA_QR_AUTOREPLY);
 // Homologação: se WA_QR_TEST_NUMBERS tiver números (ex.: 5541999990000,5541988887777), a IA só responde a eles.
 const qrTestNumbers=String(env.WA_QR_TEST_NUMBERS||'').split(',').map(x=>x.replace(/\D/g,'')).filter(Boolean);
-const qrVoiceEnabled=envFlag(env.WA_QR_VOICE===undefined?'false':env.WA_QR_VOICE); // opt-in: não ligar voz em números reais sem homologação
+const qrVoiceEnabled=envFlag(env.WA_QR_VOICE===undefined?'true':env.WA_QR_VOICE);
+// FFmpeg é obrigatório para GERAR a nota de voz. A transcrição funciona sem ele (degradação controlada).
+const ffmpegPath=String(env.FFMPEG_PATH||'ffmpeg');
+let ffmpegAvailable=null;
+function ffmpegReady(){
+  if(ffmpegAvailable!==null)return ffmpegAvailable;
+  try{ffmpegAvailable=spawnSync(ffmpegPath,['-version'],{timeout:8000,stdio:'ignore'}).status===0;}catch{ffmpegAvailable=false;}
+  console.log(`[voz] FFmpeg ${ffmpegAvailable?'disponível':'INDISPONÍVEL — respostas em áudio desativadas; o cliente recebe texto'}`);
+  return ffmpegAvailable;
+}
+// Nomes reais do cardápio melhoram o reconhecimento de sabores, combos e bebidas.
+const voiceVocabulary=[...(business.sizes||[]),...(business.flavors||[]),...(business.combos||[]),...(business.drinks||[])]
+  .map(x=>String(x?.label||'').trim()).filter(Boolean).slice(0,50);
+// Nunca deixar o cliente sem resposta quando o áudio não pôde ser entendido.
+const AUDIO_FALLBACK={
+  AUDIO_TOO_LONG:'Recebi seu áudio, mas ele ficou longo demais para eu ouvir por aqui. Pode mandar um áudio mais curto, de até 3 minutos, ou escrever o que você precisa?',
+  AUDIO_TOO_LARGE:'Recebi seu áudio, mas o arquivo ficou grande demais para eu ouvir. Pode gravar um mais curto ou escrever o pedido?',
+  AUDIO_UNSUPPORTED:'Recebi um arquivo de áudio que eu não consigo abrir. Pode gravar a mensagem de voz direto no WhatsApp ou escrever, por favor?',
+  AUDIO_CORRUPT:'Seu áudio chegou incompleto e eu não consegui ouvir. Pode gravar novamente, por favor?',
+  AUDIO_EMPTY:'Não consegui ouvir nada no seu áudio. Pode gravar de novo, por favor?',
+  AUDIO_UNCLEAR:'Não consegui entender bem o que foi falado. Pode repetir com um pouco mais de calma, ou me escrever?',
+  AUDIO_TIMEOUT:'Seu áudio demorou mais do que eu consigo processar agora. Pode tentar de novo em instantes ou escrever o pedido?',
+  AUDIO_DOWNLOAD_FAILED:'Não consegui baixar seu áudio aqui. Pode enviar novamente ou escrever o que você precisa?',
+  AUDIO_STT_FAILED:'Estou com dificuldade para ouvir áudios neste momento. Pode escrever sua mensagem? Se preferir, um atendente continua com você.',
+  AUDIO_NO_AI:'No momento eu consigo atender por mensagem escrita. Pode escrever o que você precisa? Se preferir falar, um atendente assume a conversa.'
+};
 const qrAllowed=from=>!qrTestNumbers.length||qrTestNumbers.includes(String(from).replace(/\D/g,''));
 // O eco do WhatsApp (fromMe) pode chegar antes do registro: atualiza a mesma mensagem em vez de duplicar.
 function upsertOutgoing(t,msg){const old=t.messages.find(x=>x.id===msg.id);if(old){Object.assign(old,{...msg,delivery:old.delivery&&old.delivery!=='sent'?old.delivery:msg.delivery,at:old.at});return;}append(t,msg);}
 let qr=null;
 // Mídias recebidas/enviadas ficam no volume persistente, ao lado do estado.
 const mediaDir=path.join(path.dirname(statePath),'media');
-const MEDIA_EXT={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','audio/wav':'wav','audio/aac':'aac','audio/flac':'flac','audio/webm':'webm','video/mp4':'mp4','application/pdf':'pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx','application/msword':'doc','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx','application/vnd.ms-excel':'xls','text/plain':'txt','text/csv':'csv','application/zip':'zip'};
+const MEDIA_EXT={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','audio/ogg':'ogg','audio/mpeg':'mp3','audio/mp4':'m4a','video/mp4':'mp4','application/pdf':'pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx','application/msword':'doc','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx','application/vnd.ms-excel':'xls','text/plain':'txt','text/csv':'csv','application/zip':'zip'};
 const MEDIA_MIME=Object.fromEntries(Object.entries(MEDIA_EXT).map(([k,v])=>[v,k]));const DOC_EXT=new Set(['pdf','docx','doc','xlsx','xls','txt','csv','zip']);
 function saveMedia(id,media){
   if(!media?.buffer?.length)return null;
@@ -90,7 +116,7 @@ async function onQrStatus({slot,id,delivery}){
 }
 async function onQrIncoming(m){
 const tid=`qr${m.slot}:${m.from}`;
-const mediaFile=saveMedia(`qr${m.slot}-${m.id}`,m.media);
+const mediaFile=saveMedia(m.id,m.media);
 // Mensagens enviadas pelo próprio celular, eco das enviadas pela central e histórico: só registrar, sem IA.
 if(m.fromMe||m.history){
   queueLight(d=>{
@@ -104,68 +130,86 @@ if(m.fromMe||m.history){
   });
   return;
 }
+// Idempotência por instância + ID da mensagem ANTES de transcrever (evita custo de STT no replay).
+if(store.snapshot().threads[tid]?.messages?.some(x=>x.id===m.id))return;
 return inThreadOrder(tid,()=>handleLiveQr(m,tid,mediaFile));
 }
-async function handleLiveQr(m,tid,mediaFile){
-if(store.peek().threads[tid]?.messages?.some(x=>x.id===m.id))return; // sem custo de transcrição em reentregas
-// 1) Validar e transcrever apenas o áudio das conversas autorizadas em modo BOT.
-let text=m.text||'',transcribed=false,audioError='';
-const existing=store.peek().threads[tid];
-const mode=existing?.mode||(qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN');
-const audioEligible=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:mode,hasText:true}).ready;
-if(m.type==='audio'&&audioEligible){
+// ===== Entrada de áudio: validar -> converter -> transcrever (reaproveita o motor de texto) =====
+async function audioToText(m){
+  if(m.audio?.error)return {text:'',code:m.audio.error};
+  if(!(aiCfg.provider==='gemini'&&aiCfg.apiKey))return {text:'',code:'AUDIO_NO_AI'};
+  if(!m.audio?.buffer?.length)return {text:'',code:'AUDIO_EMPTY'};
   try{
-    if(!m.audio?.buffer)throw new AudioInputError(m.audio?.error||'AUDIO_DOWNLOAD_FAILED','Áudio não baixado');
-    if(aiCfg.provider!=='gemini')throw new AudioInputError('AUDIO_STT_UNAVAILABLE','Transcrição necessita do Gemini configurado');
-    const validated=await normalizeVoice({buffer:m.audio.buffer,mimeType:m.audio.mimeType,seconds:m.audio.seconds,ffmpegPath:env.FFMPEG_PATH||'ffmpeg'});
-    const vocabulary=(business.flavors||[]).filter(f=>f.available!==false).map(f=>f.label).filter(Boolean);
-    text=await withAiSlot(()=>transcribeVoice({apiKey:aiCfg.apiKey,model:env.GEMINI_TRANSCRIBE_MODEL||aiCfg.model,fetchImpl,vocabulary},validated.buffer,validated.mimeType));
-    transcribed=Boolean(text);
-    if(!transcribed)throw new AudioInputError('AUDIO_INAUDIBLE','Fala não compreensível');
+    const input={buffer:m.audio.buffer,mimeType:m.audio.mimeType,seconds:m.audio.seconds};
+    // Com FFmpeg: OGG/Opus mono 16 kHz normalizado. Sem FFmpeg: mesmas validações, bytes originais.
+    const ready=ffmpegReady()
+      ? await normalizeIncomingAudio({...input,ffmpegPath})
+      : inspectIncomingAudio(input);
+    const text=await withAiSlot(()=>transcribeAudio(
+      {apiKey:aiCfg.apiKey,model:aiCfg.model,fetchImpl,vocabulary:voiceVocabulary},ready.buffer,ready.mimeType));
+    if(!text)return {text:'',code:'AUDIO_UNCLEAR',seconds:ready.durationSeconds};
+    return {text,code:'',seconds:ready.durationSeconds,transcoded:ready.transcoded!==false};
   }catch(e){
-    audioError=e?.code||'AUDIO_TRANSCRIPTION_FAILED';
-    console.error('[QR AUDIO]',JSON.stringify({slot:m.slot,code:audioError}));
-    text='';
+    const code=e instanceof AudioInputError?e.code:'AUDIO_STT_FAILED';
+    console.error('[QR áudio]',JSON.stringify({code,slot:m.slot})); // nunca registrar conteúdo nem telefone
+    return {text:'',code};
   }
 }
-const shown=m.type==='audio'?(transcribed?`🎤 ${text}`:'🎤 [áudio recebido — aguarda atendimento humano]'):(text||`[${m.type}: encaminhar ao atendente]`);
-let session=null,canReply=false,notifyAudioHandoff=false;
+const voiceSettings=slot=>{
+  const fallback={mode:'auto',voiceName:String(env.GEMINI_TTS_VOICE||'Kore'),maxSeconds:25};
+  try{const cfg=channelConfig(store.snapshot(),slot).voice;return {...fallback,...cfg};}catch{return fallback;}
+};
+async function handleLiveQr(m,tid,mediaFile){
+// 1) Áudio do cliente -> texto (fora do lock do armazenamento; pode levar alguns segundos).
+let text=m.text||'',transcribed=false,audioCode='',audioSeconds=0;
+if(m.type==='audio'){
+  const heard=await audioToText(m);
+  text=heard.text;transcribed=Boolean(heard.text);audioCode=heard.code;audioSeconds=heard.seconds||0;
+}
+// Quando o áudio não pôde ser entendido, o cliente recebe um pedido gentil de reenvio (nunca silêncio).
+const audioFallback=!transcribed&&m.type==='audio'?(AUDIO_FALLBACK[audioCode]||AUDIO_FALLBACK.AUDIO_UNCLEAR):'';
+const shown=m.type==='audio'
+  ?(transcribed?`🎤 ${text}`:'🎤 [áudio não transcrito — ouvir no celular]')
+  :(text||`[${m.type}: encaminhar ao atendente]`);
+let session=null,canReply=false;
 await store.change(d=>{
 const now=new Date(clock()).toISOString();
 const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
 t.via='qr';t.jid=m.jid;if(m.name)t.customerName=m.name;
 if(t.messages.some(x=>x.id===m.id))return;
-append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR',media:mediaFile});
+append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR',media:mediaFile,...(audioSeconds?{audioSeconds}:{})});
 t.unread=(t.unread||0)+1;t.lastInboundAt=now;if(t.operationalState==='CLOSED'||t.operationalState==='FAILED')delete t.operationalState;t.archived=false;d.threads[tid]=t;
-// Não assumir conteúdo de fotos, stickers, documentos ou áudios não compreendidos.
-if(m.type==='audio'&&audioError&&audioEligible&&t.mode==='BOT'){
-  notifyAudioHandoff=true;
-  t.qrLastBlocker=audioError;t.qrLastErrorAt=now;
-  t.mode='HUMAN';t.session=t.session||newSession();t.session.mode='HUMAN';t.operationalState='WAITING';
-  audit(d,{actor:'system',action:'QR_AUDIO_TO_HUMAN',slot:t.slot,clock});
-}
-const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)&&(m.type==='audio'||m.type==='text')});
+// Um thread em modo humano não vira BOT sozinho quando a variável é modificada.
+const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)||Boolean(audioFallback)});
 canReply=assessment.ready;
-if(assessment.blockers.length&&t.mode==='BOT')t.qrLastBlocker=assessment.blockers[0];
-else if(!audioError&&t.mode==='BOT')delete t.qrLastBlocker;
-if(canReply)session=structuredClone(t.session||newSession());
+if(assessment.blockers.length && t.mode==='BOT')t.qrLastBlocker=assessment.blockers[0];
+else if(audioCode&&t.mode==='BOT')t.qrLastBlocker=audioCode;
+else delete t.qrLastBlocker;
+if(canReply)session=structuredClone(t.session);
 });
-if(!canReply){
-  // A mensagem não compreendida não deve produzir pedido inventado. Aviso claro e transferência humana.
-  if(notifyAudioHandoff&&qr?.isConnected(m.slot)){
-    const note='Sou a assistente virtual da Guto Express. Não consegui compreender seu áudio com segurança. Encaminhei a conversa para nossa equipe. Se preferir, envie sua mensagem por escrito.';
-    try{
-      const result=await qr.send(m.slot,m.jid,note);
-      await store.change(d=>{const t=d.threads[tid];if(t)upsertOutgoing(t,{id:result.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:note,at:new Date(clock()).toISOString(),delivery:'sent',source:'Orientação automática · encaminhamento humano'});});
-    }catch{console.error('[QR AUDIO]',JSON.stringify({slot:m.slot,code:'AUDIO_HANDOFF_NOTICE_FAILED'}));}
+if(!canReply)return;
+const cfgVoice=voiceSettings(m.slot);
+// Voz exige Gemini + FFmpeg + preferência do número diferente de "somente texto".
+const voice=qrVoiceEnabled&&aiCfg.provider==='gemini'&&cfgVoice.mode!=='text'&&ffmpegReady();
+const expectVoice=voice&&(cfgVoice.mode==='voice'||m.type==='audio');
+// 2) Áudio sem transcrição: resposta de cortesia, sem acionar a IA e sem alterar a sessão.
+if(!text&&audioFallback){
+  await qr.presence(m.slot,m.jid,'composing');
+  try{
+    const sent=await qr.send(m.slot,m.jid,audioFallback);
+    await store.change(d=>{const t=d.threads[tid];if(!t)return;delete t.typing;
+      upsertOutgoing(t,{id:sent?.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:audioFallback,at:new Date(clock()).toISOString(),delivery:'sent',source:'Áudio não compreendido'});});
+  }catch(e){
+    console.error('[QR envio]',JSON.stringify({slot:m.slot,code:'QR_SEND_FAILED'}));
+    await store.change(d=>{const t=d.threads[tid];if(t){delete t.typing;t.qrLastBlocker='QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}});
   }
+  finally{await qr.presence(m.slot,m.jid,'paused');}
   return;
 }
-// 2) IA responde usando o mesmo motor de atendimento das mensagens de texto.
-const voice=qrVoiceEnabled&&aiCfg.provider==='gemini'&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply:'prévia'});
-await store.change(d=>{const t=d.threads[tid];if(t)t.typing=m.type==='audio'&&voice?'recording':'composing';});
+// 3) IA responde (mesmo motor, mesmas regras comerciais do atendimento por texto).
+await store.change(d=>{const t=d.threads[tid];if(t)t.typing=expectVoice?'recording':'composing';});
 const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typing;});
-await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
+await qr.presence(m.slot,m.jid,expectVoice?'recording':'composing');
 let reply='';
 try{reply=await withAiSlot(()=>respondWithAI(text,session,business,aiCfg));}
 catch(e){
@@ -175,75 +219,41 @@ catch(e){
   await qr.presence(m.slot,m.jid,'paused');await clearTyping();
   return;
 }
-session.history.push({role:'user',content:text},{role:'assistant',content:reply});
-session.history=session.history.slice(-30);
-// Enviar somente se o atendente não assumiu a conversa enquanto a IA processava.
-const stillAutomated=()=>{
-  const t=store.peek().threads[tid];
-  return t?.mode==='BOT'&&t.operationalState!=='CLOSED'&&qrAutoReply&&qrAllowed(m.from)&&qr?.isConnected(m.slot);
-};
-if(!stillAutomated()){
-  console.info('[QR AUDIO]',JSON.stringify({slot:m.slot,code:'QR_CANCELLED_BY_HUMAN'}));
-  await qr.presence(m.slot,m.jid,'paused');await clearTyping();
+session.history.push({role:'user',content:text},{role:'assistant',content:reply});session.history=session.history.slice(-30);
+// 4) Voz: cliente mandou áudio, pediu áudio ou o número está em modo "áudio preferencial".
+let sent=null,asVoice=false,writtenCopy='',synthFailed=false,disclosed=false;
+const wantsVoice=voice&&(cfgVoice.mode==='voice'||shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply}));
+if(wantsVoice){
+  const alreadyDisclosed=Boolean(store.snapshot().threads[tid]?.voiceDisclosedAt);
+  const plan=voicePlan(reply,{disclose:!alreadyDisclosed,maxChars:Math.round((cfgVoice.maxSeconds||25)*15)});
+  if(plan.voice)try{
+    const ogg=await synthesizeVoice({apiKey:aiCfg.apiKey,ttsModel:env.GEMINI_TTS_MODEL||'gemini-2.5-flash-preview-tts',
+      voice:cfgVoice.voiceName||env.GEMINI_TTS_VOICE||'Kore',fetchImpl,ffmpegPath,disclose:plan.disclose},plan.spoken);
+    sent=(await qr.sendVoice(m.slot,m.jid,ogg))||{};
+    asVoice=true;disclosed=plan.disclose;writtenCopy=plan.writtenCopy;
+    sent.media=saveMedia(sent.id||crypto.randomUUID(),{buffer:ogg,mimeType:'audio/ogg'});
+  }catch(e){synthFailed=true;console.error('[QR voz]',JSON.stringify({slot:m.slot,code:'VOICE_SYNTH_FAILED'}));}
+}
+// 5) Fallback e cópia escrita: valores/confirmações e áudios cortados também vão por texto.
+try{if(!sent)sent=await qr.send(m.slot,m.jid,reply);}
+catch(e){
+  console.error('[QR envio]',JSON.stringify({slot:m.slot,code:'QR_SEND_FAILED'}));
+  await store.change(d=>{const t=d.threads[tid];if(t){delete t.typing;t.qrLastBlocker='QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}});
   return;
 }
-const wantVoice=voice&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply});
-const copyRequired=wantVoice&&requiresWrittenCopy(reply);
-const sentMessages=[];let voiceError=null,voiceDelivered=false,copyDelivered=false,cancelled=false;
-try{
-  let ogg=null;
-  if(wantVoice){
-    const seen=!!store.peek().threads[tid]?.voiceDisclosureSent;
-    const speak=spokenCustomerReply(reply,{disclose:!seen});
-    try{
-      ogg=await withAiSlot(()=>synthesizeReplyVoice({
-        apiKey:aiCfg.apiKey,
-        ttsModel:env.GEMINI_TTS_MODEL||'gemini-2.5-flash-preview-tts',
-        voice:env.GEMINI_TTS_VOICE||'Kore',fetchImpl,ffmpegPath:env.FFMPEG_PATH||'ffmpeg'
-      },speak));
-      if(!opusOggValid(ogg))throw new Error('OGG Opus inválido');
-    }catch{
-      voiceError='AUDIO_TTS_FAILED';
-      console.error('[QR VOICE]',JSON.stringify({slot:m.slot,code:voiceError}));
-    }
-  }
-  if(!stillAutomated()){cancelled=true;return;}
-  // Uma cópia escrita dos valores/confirmacões precede a voz, para o cliente conferir.
-  if(ogg&&copyRequired){
-    const out=await qr.send(m.slot,m.jid,reply);
-    sentMessages.push({id:out.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA · conferência escrita'});
-    copyDelivered=true;
-  }
-  if(ogg){
-    if(!stillAutomated()){cancelled=true;return;}
-    const out=await qr.sendVoice(m.slot,m.jid,ogg);
-    const media=saveMedia(`qr${m.slot}-${out.id||crypto.randomUUID()}`,{buffer:ogg,mimeType:'audio/ogg'});
-    sentMessages.push({id:out.id||crypto.randomUUID(),direction:'outgoing',type:'audio',text:`🔊 ${reply}`,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA · voz sintética',media});
-    voiceDelivered=true;
-  }else if(!copyDelivered){
-    // Falha no TTS: comunicar claramente que o áudio não foi gerado; jamais simular voz.
-    const payload=voiceError?`Sou a assistente virtual da Guto Express. Não consegui gerar áudio agora; segue minha resposta por escrito: ${reply}`:reply;
-    const out=await qr.send(m.slot,m.jid,payload);
-    sentMessages.push({id:out.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:payload,at:new Date(clock()).toISOString(),delivery:'sent',source:voiceError?'IA · contingência texto':'IA'});
-  }
-}catch{
-  console.error('[QR SEND]',JSON.stringify({slot:m.slot,code:'QR_SEND_FAILED'}));
-  if(!voiceError)voiceError='QR_SEND_FAILED';
-}finally{
-  await qr.presence(m.slot,m.jid,'paused');
-  await store.change(d=>{
-    const t=d.threads[tid];if(!t)return;
-    delete t.typing;
-    if(!sentMessages.length){if(!cancelled){t.qrLastBlocker=voiceError||'QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}return;}
-    t.session=session;
-    if(session.mode==='HUMAN')t.mode='HUMAN';
-    if(voiceDelivered)t.voiceDisclosureSent=true;
-    if(voiceError){t.qrLastBlocker=voiceError;t.qrLastErrorAt=new Date(clock()).toISOString();}
-    else{delete t.qrLastBlocker;delete t.qrLastErrorAt;}
-    for(const message of sentMessages)upsertOutgoing(t,message);
-  });
+let copySent=null;
+if(asVoice&&writtenCopy){
+  try{copySent=await qr.send(m.slot,m.jid,writtenCopy);}
+  catch(e){console.error('[QR envio]',JSON.stringify({slot:m.slot,code:'QR_COPY_FAILED'}));}
 }
-
+await qr.presence(m.slot,m.jid,'paused');
+await store.change(d=>{const t=d.threads[tid];if(!t)return;t.session=session;delete t.typing;delete t.qrLastErrorAt;
+if(synthFailed)t.qrLastBlocker='VOICE_SYNTH_FAILED';else delete t.qrLastBlocker;
+if(disclosed)t.voiceDisclosedAt=new Date(clock()).toISOString();
+if(session.mode==='HUMAN')t.mode='HUMAN';
+upsertOutgoing(t,{id:sent.id||crypto.randomUUID(),direction:'outgoing',type:asVoice?'audio':'text',text:asVoice?`🔊 ${reply}`:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:asVoice?'IA · voz':'IA',media:sent.media||null});
+if(copySent)upsertOutgoing(t,{id:copySent.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:writtenCopy,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA · cópia escrita'});
+});
 }
 // Ao desconectar um WhatsApp (pelo painel ou removendo o aparelho no celular), apaga as conversas e mídias dele.
 async function purgeQrSlot(slot){
@@ -369,16 +379,16 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
-      if(p==='/api/qr/status'&&req.method==='GET')return json(res,200,{...qrSummary(),voice:qrVoiceEnabled});
-      if(p==='/api/audio/health'&&req.method==='GET'){
-        const runtime=await inspectAudioRuntime({ffmpegPath:env.FFMPEG_PATH||'ffmpeg'});
-        const voiceConfigured=qrVoiceEnabled&&aiCfg.provider==='gemini'&&Boolean(aiCfg.apiKey);
-        return json(res,200,{ok:true,mode:'HOMOLOGACAO',incoming:'QR_BAILEYS',provider:aiCfg.provider,
-          sttConfigured:aiCfg.provider==='gemini'&&Boolean(aiCfg.apiKey),
-          ttsConfigured:voiceConfigured,qrConnected:Boolean(qr&&(qr.isConnected(1)||qr.isConnected(2))),
-          ffmpegAvailable:runtime.ffmpegAvailable,opusEncoder:runtime.opusEncoder,
-          error:runtime.error||(!runtime.opusEncoder?'OPUS_ENCODER_UNAVAILABLE':null),
-          voiceFlagEnabled:qrVoiceEnabled,sendToPdv:false,productionReady:false});
+      if(p==='/api/qr/status'&&req.method==='GET'){
+        const ffmpeg=qrVoiceEnabled?ffmpegReady():null;
+        const voiceBlockers=[];
+        if(qrVoiceEnabled&&aiCfg.provider!=='gemini')voiceBlockers.push('AUDIO_NO_AI');
+        if(qrVoiceEnabled&&ffmpeg===false)voiceBlockers.push('FFMPEG_UNAVAILABLE');
+        return json(res,200,{...qrSummary(),voice:qrVoiceEnabled,
+          audio:{enabled:qrVoiceEnabled,ffmpeg:ffmpeg,transcription:Boolean(aiCfg.provider==='gemini'&&aiCfg.apiKey),
+            voiceReady:Boolean(qrVoiceEnabled&&ffmpeg&&aiCfg.provider==='gemini'&&aiCfg.apiKey),
+            maxInputSeconds:180,blockers:voiceBlockers,help:qrBlockerMessage(voiceBlockers),
+            channels:[1,2].map(slot=>({slot,...voiceSettings(slot)}))}});
       }
 const qrPath=p.match(/^\/api\/qr\/([12])\/(start|logout)$/);
 if(qrPath&&req.method==='POST'){if(!qr)return json(res,409,{error:'Conexão por QR desativada no servidor (WA_QR_ENABLED=true).'});const slot=Number(qrPath[1]);try{return json(res,200,qrPath[2]==='start'?await qr.start(slot):await qr.logout(slot));}catch(e){return json(res,503,{error:'Falha no WhatsApp QR: '+String(e.message||e).slice(0,140)});}}

@@ -65,9 +65,9 @@ export function requiresWrittenCopy(text){
   return /R\$|\b(total|subtotal|confirmo|pedido confirmado|pagamento|desconto|troco|pix)\b/i.test(String(text||''));
 }
 /** Gera voz Gemini TTS e converte PCM/WAV para OGG/Opus do WhatsApp. */
-export async function synthesizeVoice({apiKey, ttsModel='gemini-2.5-flash-preview-tts',voice='Kore',fetchImpl=globalThis.fetch,ffmpegPath='ffmpeg'},text){
+export async function synthesizeVoice({apiKey, ttsModel='gemini-2.5-flash-preview-tts',voice='Kore',fetchImpl=globalThis.fetch,ffmpegPath='ffmpeg',disclose=false},text){
   if(!apiKey)throw new Error('GEMINI_API_KEY ausente');
-  const say=spokenCustomerReply(text);
+  const say=spokenCustomerReply(text,{disclose});
   const r=await gemini(ttsModel,{
     contents:[{role:'user',parts:[{text:'Leia integralmente o texto a seguir, sem mudar palavras. Idioma: português brasileiro. Tom simpático, acolhedor e profissional. Não use efeitos, música nem imite pessoa real. Texto: '+say}]}],
     generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:voice}}}}
@@ -126,4 +126,30 @@ export function shouldReplyWithVoice({incomingType,incomingText='',reply=''}){
   const asked=/\b(manda|mande|envia|envie|responde|responda|fala|fale|grava|grave)\b.{0,25}\b(audio|voz)\b/.test(t)
     || /\b(nao (sei|consigo) ler|prefiro (audio|voz))\b/.test(t);
   return Boolean(String(reply||'').trim())&&(incomingType==='audio'||asked);
+}
+
+// Duração confortável de nota de voz: ~10 a 25 s de fala em pt-BR (≈ 15 caracteres por segundo).
+export const VOICE_TARGET_CHARS=380;
+function trimToSpeech(text,maxChars){
+  if(text.length<=maxChars)return text;
+  const head=text.slice(0,maxChars);
+  const sentence=Math.max(head.lastIndexOf('. '),head.lastIndexOf('! '),head.lastIndexOf('? '),head.lastIndexOf('\n'));
+  if(sentence>maxChars*0.45)return head.slice(0,sentence+1).trim();
+  const space=head.lastIndexOf(' ');
+  return (space>maxChars*0.45?head.slice(0,space):head).trim();
+}
+/**
+ * Decide o que é falado e o que precisa ir por escrito na MESMA resposta.
+ * - respostas longas: áudio curto + texto completo (nada é omitido do cliente);
+ * - valores, totais e confirmações: áudio + cópia escrita auditável (requiresWrittenCopy).
+ */
+export function voicePlan(reply,{disclose=false,maxChars=VOICE_TARGET_CHARS}={}){
+  const full=String(reply||'').trim();
+  const say=speakable(full);
+  if(!say)return {voice:false,spoken:'',writtenCopy:full,truncated:false,disclose:false};
+  const limit=Math.max(120,Number(maxChars)||VOICE_TARGET_CHARS);
+  const spoken=trimToSpeech(say,limit);
+  const truncated=spoken.length<say.length;
+  return {voice:true,spoken,truncated,disclose:Boolean(disclose),
+    writtenCopy:(truncated||requiresWrittenCopy(full))?full:''};
 }

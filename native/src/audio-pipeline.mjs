@@ -18,8 +18,6 @@ export function detectAudioFormat(bytes){
   if(bytes.toString('ascii',0,4)==='OggS')return 'ogg';
   if(bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WAVE')return 'wav';
   if(bytes.toString('ascii',0,4)==='fLaC')return 'flac';
-  if(bytes.toString('ascii',0,4)==='FORM'&&['AIFF','AIFC'].includes(bytes.toString('ascii',8,12)))return 'aiff';
-  if(bytes[0]===0xff&&(bytes[1]&0xf6)===0xf0)return 'aac'; // ADTS AAC
   if(bytes[0]===0x1a&&bytes[1]===0x45&&bytes[2]===0xdf&&bytes[3]===0xa3)return 'webm';
   if(bytes.toString('ascii',4,8)==='ftyp')return 'mp4';
   if(bytes.toString('ascii',0,3)==='ID3'||(bytes[0]===0xff&&(bytes[1]&0xe0)===0xe0))return 'mpeg';
@@ -89,20 +87,28 @@ export async function normalizeIncomingAudio({buffer,mimeType,seconds=0,ffmpegPa
   return {buffer:ogg,mimeType:'audio/ogg',durationSeconds:Number(duration.toFixed(2)),format:'opus'};
 }
 
-/** Diagnóstico do binário local, sem acessar WhatsApp, chaves ou áudio de clientes. */
-export function inspectAudioRuntime({ffmpegPath='ffmpeg',timeoutMs=5000}={}){
-  return new Promise(resolve=>{
-    let done=false,stdout='',timer;
-    const finish=reason=>{if(done)return;done=true;clearTimeout(timer);resolve({
-      ffmpegAvailable:reason==='ok',opusEncoder:reason==='ok'&&stdout.includes('libopus'),
-      error:reason==='ok'?null:reason
-    });};
-    let proc;
-    try{proc=spawn(ffmpegPath,['-hide_banner','-encoders'],{stdio:['ignore','pipe','ignore']});}
-    catch{return finish('FFMPEG_UNAVAILABLE');}
-    timer=setTimeout(()=>{proc.kill('SIGKILL');finish('FFMPEG_TIMEOUT');},timeoutMs);
-    proc.stdout.on('data',c=>{stdout+=c.toString('utf8');if(stdout.length>100000){proc.kill('SIGKILL');finish('FFMPEG_OUTPUT_LIMIT');}});
-    proc.on('error',()=>finish('FFMPEG_UNAVAILABLE'));
-    proc.on('close',code=>finish(code===0?'ok':'FFMPEG_UNAVAILABLE'));
-  });
+/** Duração declarada/estimada sem FFmpeg (OGG lê o granule; outros formatos usam o metadado do WhatsApp). */
+export function audioSeconds(bytes,declaredSeconds=0){
+  const fromOgg=Buffer.isBuffer(bytes)&&bytes.toString('ascii',0,4)==='OggS'?oggSeconds(bytes):null;
+  const declared=Number(declaredSeconds);
+  if(Number.isFinite(fromOgg)&&fromOgg>0)return Number(fromOgg.toFixed(2));
+  return Number.isFinite(declared)&&declared>0?Number(declared.toFixed(2)):0;
+}
+/**
+ * Validação sem FFmpeg: mesmas recusas de tamanho, MIME, assinatura e duração do
+ * normalizador, mas devolve os bytes originais. Usada quando o FFmpeg não está
+ * instalado no servidor, para não derrubar a transcrição (degradação controlada).
+ */
+const CANONICAL_MIME={ogg:'audio/ogg',wav:'audio/wav',flac:'audio/flac',webm:'audio/webm',mp4:'audio/mp4',mpeg:'audio/mpeg'};
+export function inspectIncomingAudio({buffer,mimeType,seconds=0}={}){
+  if(!Buffer.isBuffer(buffer)||!buffer.length)throw new AudioInputError('AUDIO_EMPTY','Mensagem sem áudio baixado');
+  if(buffer.length>MAX_INPUT_BYTES)throw new AudioInputError('AUDIO_TOO_LARGE','Áudio excede 12 MB');
+  const declared=audioBaseMime(mimeType);
+  if(declared&&!AUDIO_MIME.has(declared))throw new AudioInputError('AUDIO_UNSUPPORTED','Formato de áudio não permitido');
+  const format=detectAudioFormat(buffer);
+  if(!format)throw new AudioInputError('AUDIO_UNSUPPORTED','Formato ou assinatura de áudio inválida');
+  const duration=audioSeconds(buffer,seconds);
+  if(duration>MAX_DURATION_SECONDS)throw new AudioInputError('AUDIO_TOO_LONG','Áudio excede 3 minutos');
+  // MIME canônico pela assinatura real, aceito pelo serviço de transcrição.
+  return {buffer,mimeType:CANONICAL_MIME[format]||'audio/ogg',durationSeconds:duration,format,transcoded:false};
 }

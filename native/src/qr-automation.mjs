@@ -26,7 +26,19 @@ const reasons={
   WHATSAPP_DISCONNECTED:'O WhatsApp deste canal não está conectado por QR.',
   WA_QR_TEST_NUMBERS:'Este cliente não está na lista WA_QR_TEST_NUMBERS.',
   THREAD_HUMAN:'A conversa está em atendimento humano. Clique em Ativar IA para essa conversa.',
-  MESSAGE_NOT_TEXT:'Não existe texto processável nesta mensagem. Verifique áudio/mídia.'
+  MESSAGE_NOT_TEXT:'Não existe texto processável nesta mensagem. Verifique áudio/mídia.',
+  AUDIO_NO_AI:'A transcrição de áudio exige AI_PROVIDER=gemini com GEMINI_API_KEY no servidor.',
+  AUDIO_EMPTY:'O áudio chegou vazio ou curto demais para transcrever.',
+  AUDIO_TOO_LARGE:'O áudio excede o limite de 12 MB aceito para transcrição.',
+  AUDIO_TOO_LONG:'O áudio excede 3 minutos; o cliente foi orientado a reenviar.',
+  AUDIO_UNSUPPORTED:'Formato de áudio não aceito ou assinatura de arquivo inválida.',
+  AUDIO_CORRUPT:'O arquivo de áudio chegou danificado e não pôde ser decodificado.',
+  AUDIO_TIMEOUT:'A conversão de áudio excedeu o tempo de segurança do servidor.',
+  AUDIO_DOWNLOAD_FAILED:'Não foi possível baixar a mídia do WhatsApp para transcrever.',
+  AUDIO_UNCLEAR:'A fala não foi compreendida; o cliente foi convidado a repetir.',
+  AUDIO_STT_FAILED:'O serviço de transcrição falhou. Confira chave, modelo e cota da IA.',
+  VOICE_SYNTH_FAILED:'A síntese de voz falhou; a resposta foi enviada por texto.',
+  FFMPEG_UNAVAILABLE:'FFmpeg não está instalado no servidor: respostas em áudio ficam desativadas. Faça o deploy pelo Dockerfile de native/ ou instale o ffmpeg no builder.'
 };
 export function qrBlockerMessage(blockers){
   if(!Array.isArray(blockers)||!blockers.length)return 'Resposta automática disponível.';
