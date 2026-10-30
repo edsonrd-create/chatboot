@@ -18,6 +18,8 @@ export function detectAudioFormat(bytes){
   if(bytes.toString('ascii',0,4)==='OggS')return 'ogg';
   if(bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WAVE')return 'wav';
   if(bytes.toString('ascii',0,4)==='fLaC')return 'flac';
+  if(bytes.toString('ascii',0,4)==='FORM'&&['AIFF','AIFC'].includes(bytes.toString('ascii',8,12)))return 'aiff';
+  if(bytes[0]===0xff&&(bytes[1]&0xf6)===0xf0)return 'aac'; // ADTS AAC
   if(bytes[0]===0x1a&&bytes[1]===0x45&&bytes[2]===0xdf&&bytes[3]===0xa3)return 'webm';
   if(bytes.toString('ascii',4,8)==='ftyp')return 'mp4';
   if(bytes.toString('ascii',0,3)==='ID3'||(bytes[0]===0xff&&(bytes[1]&0xe0)===0xe0))return 'mpeg';
