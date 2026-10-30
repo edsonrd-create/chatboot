@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {transcribeAudio, synthesizeVoice, shouldReplyWithVoice, speakable, pcmToOggOpus} from '../src/voice.mjs';
+import {transcribeAudio, synthesizeVoice, shouldReplyWithVoice, speakable, pcmToOggOpus,spokenCustomerReply,requiresWrittenCopy} from '../src/voice.mjs';
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
 const ok = body => ({ok: true, status: 200, json: async () => body});
@@ -34,10 +34,14 @@ test('texto é o padrão; voz só quando o cliente manda ou pede áudio', () => 
   assert.equal(shouldReplyWithVoice({incomingType: 'text', incomingText: 'me manda um áudio por favor', reply: 'Claro!'}), true);
 });
 
-test('resumo, valores e confirmação sempre vão por escrito', () => {
-  for (const reply of ['Total: R$ 59,90', 'Subtotal: R$ 40,00', 'Responda *Confirmo* para enviar']) {
-    assert.equal(shouldReplyWithVoice({incomingType: 'audio', reply}), false, reply);
+test('áudio recebe voz mesmo quando contém valores, com cópia escrita adicional',()=>{
+  for(const reply of ['Total: R$ 59,90','Subtotal: R$ 40,00','Responda *Confirmo* para enviar']){
+    assert.equal(shouldReplyWithVoice({incomingType:'audio',reply}),true,reply);
+    assert.equal(requiresWrittenCopy(reply),true,reply);
   }
+  assert.equal(requiresWrittenCopy('Qual sabor você deseja?'),false);
+  assert.equal(shouldReplyWithVoice({incomingType:'text',incomingText:'quero calabresa',reply:'Claro!'}),false);
+  assert.match(spokenCustomerReply('Olá! Quais sabores?',{disclose:true}),/assistente virtual da Guto Express/);
 });
 
 test('texto falado sem asteriscos, emojis e marcadores', () => {
