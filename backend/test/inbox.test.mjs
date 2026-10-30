@@ -37,7 +37,7 @@ test('central WhatsApp expõe interface mas APIs privadas exigem login',async t=
  assert.equal(st.qrGenerated,false);
  assert.equal(st.channels[0].connection,'UNVERIFIED');
 });
-test('inboxes separados, resposta manual só com humano, idempotência',async t=>{
+test('inboxes separados e envio manual bloqueado na homologação',async t=>{
  const {request,webhook,wait,tmp}=await setup(t);
  await webhook(11,31001,'Preciso de uma pizza grande');
  await webhook(22,31002,'Qual o tamanho da gigante?');
@@ -49,15 +49,16 @@ test('inboxes separados, resposta manual só com humano, idempotência',async t=
  assert.equal((await request('/api/inbox/conversations/9%3A33%3A533')).status,404);
  const url='/api/inbox/conversations/'+encodeURIComponent(a)+'/messages';
  const body=JSON.stringify({content:'Boa noite! Vou confirmar o pedido.',requestId:'request-123456789'});
- const first=await request(url,{method:'POST',body});assert.equal(first.status,202);
- const second=await request(url,{method:'POST',body});assert.equal(second.status,200);
- assert.equal((await second.json()).duplicate,true);
+ const first=await request(url,{method:'POST',body});assert.equal(first.status,403);
+ const second=await request(url,{method:'POST',body});assert.equal(second.status,403);
+ const dashboard=await (await request('/api/dashboard')).json();assert.equal(dashboard.outboundEnabled,false);
+ const channels=await (await request('/api/channels/status')).json();assert.equal(channels.channels[0].outboundEnabled,false);
  detail=await (await request('/api/inbox/conversations/'+encodeURIComponent(a))).json();
- assert.equal(detail.history.filter(m=>m.role==='human').length,1);
+ assert.equal(detail.history.filter(m=>m.role==='human').length,0);
  const db=JSON.parse(fs.readFileSync(path.join(tmp,'state.json'),'utf8'));
- assert.equal(Object.keys(db.outbox).filter(id=>id.startsWith('manual:')).length,1);
+ assert.equal(Object.keys(db.outbox).filter(id=>id.startsWith('manual:')).length,0);
  assert.equal((await request('/api/conversations/'+encodeURIComponent(a)+'/mode',{method:'POST',body:JSON.stringify({mode:'BOT'})})).status,200);
- assert.equal((await request(url,{method:'POST',body:JSON.stringify({content:'test',requestId:'request-abcdef123'})})).status,409);
+ assert.equal((await request(url,{method:'POST',body:JSON.stringify({content:'test',requestId:'request-abcdef123'})})).status,403);
  const detailB=await (await request('/api/inbox/conversations/'+encodeURIComponent(b))).json();assert.equal(detailB.name,'Cliente 22');
 });
 test('mensagens recebidas não somem após transferência humana',async t=>{
