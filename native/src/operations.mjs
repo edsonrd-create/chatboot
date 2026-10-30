@@ -8,34 +8,19 @@ const text=(value,max=300)=>typeof value==='string'?value.trim().slice(0,max):''
 const channelId=x=>Number.isInteger(Number(x))&&CHANNEL_SLOTS.includes(Number(x))?Number(x):null;
 const validActor=v=>/^[a-zA-Z0-9_ .-]{2,50}$/.test(String(v||''));
 const stamp=(clock)=>new Date(clock()).toISOString();
-const VOICE_MODES=Object.freeze(['auto','text','voice']);
-const baseVoice=()=>({mode:'auto',voiceName:'Kore',maxSeconds:25});
-const baseConfig=slot=>({slot,provider:'gemini',model:'gemini-2.5-flash',enabled:false,requestedEnabled:false,instructions:'',personality:'Atendimento claro e cordial',hours:{start:'15:00',end:'23:45'},humanTransfer:true,voice:baseVoice()});
-// Preferências de atendimento por áudio de cada número (o interruptor-mestre continua nas variáveis do servidor).
-export function normalizeVoiceConfig(value){
-  const base=baseVoice();
-  if(value===undefined)return base;
-  if(!value||typeof value!=='object'||Array.isArray(value))reject(422,'Configuração de voz inválida');
-  const mode=value.mode===undefined?base.mode:String(value.mode);
-  if(!VOICE_MODES.includes(mode))reject(422,'Modo de voz deve ser auto, text ou voice');
-  const voiceName=value.voiceName===undefined?base.voiceName:String(value.voiceName);
-  if(!/^[A-Za-z][A-Za-z0-9-]{1,30}$/.test(voiceName))reject(422,'Nome de voz inválido');
-  const maxSeconds=value.maxSeconds===undefined?base.maxSeconds:Number(value.maxSeconds);
-  if(!Number.isFinite(maxSeconds)||maxSeconds<5||maxSeconds>60)reject(422,'Duração máxima de voz deve ficar entre 5 e 60 segundos');
-  return {mode,voiceName,maxSeconds:Math.round(maxSeconds)};
-}
+const baseConfig=slot=>({slot,provider:'gemini',model:'gemini-2.5-flash',enabled:false,requestedEnabled:false,instructions:'',personality:'Atendimento claro e cordial',hours:{start:'15:00',end:'23:45'},humanTransfer:true});
 const hoursValid=v=>typeof v==='string'&&/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v);
 const getChannel=d=>d?.settings?.channels||{};
 export function channelConfig(d,slot){
   const id=channelId(slot);if(!id)reject(422,'WhatsApp deve ser 01 ou 02');
   const cfg=getChannel(d)?.[String(id)]||{};
-  const {provider,model,requestedEnabled,instructions,personality,hours,humanTransfer,voice}=cfg;
-  return {...baseConfig(id),provider:provider||'gemini',model:model||'gemini-2.5-flash',enabled:false,requestedEnabled:Boolean(requestedEnabled),instructions:instructions||'',personality:personality||'Atendimento claro e cordial',hours:hours||{start:'15:00',end:'23:45'},humanTransfer:humanTransfer!==false,voice:{...baseVoice(),...(voice&&typeof voice==='object'&&!Array.isArray(voice)?voice:{})}};
+  const {provider,model,enabled,requestedEnabled,instructions,personality,hours,humanTransfer}=cfg;
+  return {...baseConfig(id),provider:provider||'gemini',model:model||'gemini-2.5-flash',enabled:false,requestedEnabled:Boolean(requestedEnabled),instructions:instructions||'',personality:personality||'Atendimento claro e cordial',hours:hours||{start:'15:00',end:'23:45'},humanTransfer:humanTransfer!==false};
 }
 export function setChannelConfig(d,slot,config,{clock=Date.now,actor='admin'}={}){
   const id=channelId(slot);if(!id)reject(422,'Número de canal inválido');
   if(!config||typeof config!=='object'||Array.isArray(config))reject(422,'Configuração inválida');
-  const allowed=new Set(['provider','model','requestedEnabled','instructions','personality','hours','humanTransfer','voice']);
+  const allowed=new Set(['provider','model','requestedEnabled','instructions','personality','hours','humanTransfer']);
   if(Object.keys(config).some(k=>!allowed.has(k)))reject(422,'Campo não autorizado para esta configuração');
   if(config.provider!==undefined&&config.provider!=='gemini')reject(422,'Nesta fase, cada canal usa Gemini somente em homologação');
   if(config.model!==undefined&&(!/^gemini-[a-z0-9.-]{3,70}$/.test(config.model)))reject(422,'Modelo Gemini inválido');
@@ -46,7 +31,6 @@ export function setChannelConfig(d,slot,config,{clock=Date.now,actor='admin'}={}
   if(config.hours!==undefined&&(!config.hours||typeof config.hours!=='object'||!hoursValid(config.hours.start)||!hoursValid(config.hours.end)))reject(422,'Horários inválidos');
   const previous=channelConfig(d,id);
   const next={...previous,...config,slot:id,provider:'gemini',enabled:false};
-  next.voice=normalizeVoiceConfig(config.voice===undefined?previous.voice:config.voice);
   next.instructions=text(next.instructions,4000);
   next.personality=text(next.personality,160);
   if(!d.settings)d.settings={};
