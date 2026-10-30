@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createNativeServer} from '../src/server.mjs';
 import {parseWaMessage} from '../src/wa-qr.mjs';
-import {AudioInputError} from '../src/audio-pipeline.mjs';
+import {AudioInputError,opusOggValid} from '../src/audio-pipeline.mjs';
 
 const admin='secure-admin-pass-for-guto-audio-tests';
 const secret='guto-audio-tests-secret-32-characters!';
@@ -14,12 +14,15 @@ const input=(id,{slot=1,from='5541999991111',type='audio',text='',self=false,his
   text,type,fromMe:self,history,audio:type==='audio'?{buffer:Buffer.from('fake bytes normalized by mock'),mimeType:'audio/ogg',seconds:2}:null
 });
 function oggFixture(){
-  // Estrutura Ogg mínima utilizada exclusivamente no mock do transporte.
-  const body=Buffer.from('OpusHead\x01\x01\x00\x00\x00\x00\x00\x00', 'latin1');
-  const page=Buffer.alloc(28+body.length);
-  page.write('OggS');page[4]=0;page.writeBigUInt64LE(48000n,6);
-  page[26]=1;page[27]=body.length;body.copy(page,28);
-  return page;
+  // Páginas sintéticas somente para mock de transporte; o teste real usa FFmpeg.
+  const page=(payload,granule,sequence)=>{
+    const out=Buffer.alloc(28+payload.length);out.write('OggS');out[4]=0;
+    out.writeBigUInt64LE(granule,6);out.writeUInt32LE(1,14);out.writeUInt32LE(sequence,18);
+    out[26]=1;out[27]=payload.length;payload.copy(out,28);return out;
+  };
+  const head=page(Buffer.from('OpusHead\x01\x01\x00\x00\x00\x00\x00\x00','latin1'),0n,0);
+  const body=page(Buffer.from('OpusTags + teste sintético'.padEnd(40,'!')),48000n,1);
+  return Buffer.concat([head,body]);
 }
 async function fixture(t,{env={},reply='Olá! Pode informar o sabor?',transcription='Quero uma pizza grande de calabresa',normalizeVoice,synthesizeReplyVoice,respondWithAI}={}){
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'guto-audio-test-'));
@@ -48,7 +51,7 @@ async function fixture(t,{env={},reply='Olá! Pode informar o sabor?',transcript
  return {app,holder,messages,metrics,request,login};
 }
 test('WhatsApp áudio -> normalização -> STT -> motor existente -> áudio OGG/Opus no mesmo número',async t=>{
- const x=await fixture(t);await x.holder.receive(input('voice-in-1'));
+ const x=await fixture(t);assert.ok(opusOggValid(oggFixture()));await x.holder.receive(input('voice-in-1'));
  assert.equal(x.metrics.normalize,1);assert.equal(x.metrics.stt,1);assert.equal(x.metrics.ai,1);assert.equal(x.metrics.tts,1);
  assert.equal(x.messages.length,1);
  assert.equal(x.messages[0].type,'audio');assert.equal(x.messages[0].slot,1);
