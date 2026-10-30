@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {normalizeIncomingAudio,detectAudioFormat,AUDIO_MIME,opusOggValid,MAX_INPUT_BYTES} from '../src/audio-pipeline.mjs';
+import {normalizeIncomingAudio,detectAudioFormat,AUDIO_MIME,opusOggValid,MAX_INPUT_BYTES,inspectAudioRuntime} from '../src/audio-pipeline.mjs';
 import {synthesizeVoice} from '../src/voice.mjs';
 const hasFfmpeg=spawnSync('ffmpeg',['-version'],{encoding:'utf8'}).status===0;
 const wav=seconds=>{
@@ -48,4 +48,13 @@ test('Gemini TTS reconhece WAV moderno e gera áudio Opus para WhatsApp',{skip:!
  const fetchImpl=async()=>({ok:true,json:async()=>({candidates:[{content:{parts:[{inlineData:{mimeType:'audio/wav',data:wav(.4).toString('base64')}}]}}]})});
  const out=await synthesizeVoice({apiKey:'TEST_KEY_NOT_REAL',fetchImpl,ttsModel:'gemini-2.5-flash-preview-tts'},'Olá. Sou a assistente virtual.');
  assert.ok(opusOggValid(out));
+});
+
+test('Diagnóstico identifica disponibilidade e suporte Opus sem acessar áudio de cliente',async()=>{
+  const d=await inspectAudioRuntime();
+  assert.equal(d.ffmpegAvailable,hasFfmpeg);
+  if(hasFfmpeg)assert.equal(d.opusEncoder,true);
+  const no=await inspectAudioRuntime({ffmpegPath:'ffmpeg-not-installed-guto-test'});
+  assert.equal(no.ffmpegAvailable,false);
+  assert.equal(no.error,'FFMPEG_UNAVAILABLE');
 });
