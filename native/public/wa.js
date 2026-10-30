@@ -14,12 +14,24 @@ function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = fals
 
 const COLORS = ['#25a366', '#e17055', '#0984e3', '#a55eea', '#fd9644', '#20bf6b', '#eb3b5a', '#4b7bec', '#8854d0', '#0fb9b1'];
 // Foto de perfil real do WhatsApp (quando o contato permite); senão, iniciais coloridas como no WhatsApp Web.
+// Fotos só são baixadas quando a conversa aparece na tela (com 1.000+ conversas isso evita travar).
+const photoSeen = new Map();
+const photoObserver = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
+  for (const e of entries) if (e.isIntersecting) { photoObserver.unobserve(e.target); loadPhoto(e.target); }
+}, {rootMargin: '200px'}) : null;
+function loadPhoto(node) {
+  const id = node.dataset.pid; if (!id) return;
+  if (photoSeen.get(id) === false) return;
+  const img = new Image(); img.alt = ''; img.decoding = 'async';
+  img.onload = () => { photoSeen.set(id, true); node.textContent = ''; node.style.background = 'none'; node.append(img); };
+  img.onerror = () => photoSeen.set(id, false);
+  img.src = '/api/avatar?id=' + encodeURIComponent(id);
+}
 function photo(node, t) {
   avatar(node, t.customerName || t.customer, t.id);
   if (t.via !== 'qr') return;
-  const img = new Image(); img.alt = ''; img.decoding = 'async';
-  img.onload = () => { node.textContent = ''; node.style.background = 'none'; node.append(img); };
-  img.src = '/api/avatar?id=' + encodeURIComponent(t.id);
+  node.dataset.pid = t.id;
+  if (photoObserver && !node.closest('.chat-head')) photoObserver.observe(node); else loadPhoto(node);
 }
 function avatar(node, name, id) {
   const clean = String(name || '').replace(/[^\p{L}\p{N} ]/gu, '').trim();
@@ -55,7 +67,8 @@ function renderList() {
   const items = st.list.filter(t => (!st.slot || t.slot === st.slot) && !t.archived
     && (st.filter !== 'unread' || t.unread) && (st.filter !== 'bot' || t.mode === 'BOT') && (st.filter !== 'human' || t.mode !== 'BOT')
     && (!q || `${t.customerName} ${t.customer} ${t.lastText}`.toLowerCase().includes(q)));
-  for (const t of items) {
+  st.limit ||= 80;
+  for (const t of items.slice(0, st.limit)) {
     const row = el('button', 'row' + (t.id === st.sel ? ' sel' : '') + (t.unread ? ' unread' : '')); row.type = 'button';
     const av = el('div', 'avatar'); photo(av, t);
     const meta = el('div', 'meta'), top = el('div', 'top'), bot = el('div', 'bot');
@@ -74,6 +87,12 @@ function renderList() {
     row.onmouseenter = () => prefetch(t.id);
     row.ontouchstart = () => prefetch(t.id);
     list.append(row);
+  }
+  if (items.length > st.limit) {
+    const more = el('div', 'empty', `Carregando mais conversas… (${st.limit} de ${items.length})`);
+    list.append(more);
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); st.limit += 80; renderList(); } }, {root: list, rootMargin: '300px'});
+    io.observe(more);
   }
   if (!items.length) list.append(el('div', 'empty', st.list.length ? 'Nenhuma conversa neste filtro.' : 'Nenhuma conversa ainda. Conecte o WhatsApp e as mensagens aparecem aqui.'));
   const total = st.list.reduce((n, t) => n + (t.unread || 0), 0);
@@ -258,7 +277,7 @@ function live() {
 function bind() {
   document.querySelectorAll('.acc').forEach(b => b.onclick = () => { st.slot = Number(b.dataset.slot); document.querySelectorAll('.acc').forEach(x => x.classList.toggle('on', x === b)); renderList(); });
   document.querySelectorAll('.chip').forEach(b => b.onclick = () => { st.filter = b.dataset.filter; document.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x === b)); renderList(); });
-  $('search').oninput = e => { st.q = e.target.value; renderList(); };
+  $('search').oninput = e => { st.q = e.target.value; st.limit = 80; clearTimeout(st.qt); st.qt = setTimeout(renderList, 120); };
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
   $('send').onclick = send;
   $('text').addEventListener('input', grow);
