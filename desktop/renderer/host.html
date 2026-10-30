@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'">
+<meta name="theme-color" content="#ed352b">
+<title>Auto Atendimento Express | WhatsApp Web</title>
+<link rel="stylesheet" href="host.css">
+<script src="host.js" defer></script>
+</head>
+<body>
+<header class="header"><div class="logo">G</div><div class="identity"><strong>AUTO ATENDIMENTO EXPRESS</strong><small>GUTO EXPRESS • CENTRAL DE VENDAS</small></div><div class="header-center"><span class="live-dot"></span> WhatsApp Web oficial • duas sessões independentes</div><div class="stage"><span>EM HOMOLOGAÇÃO</span></div></header>
+<div class="workspace">
+<aside class="rail"><div class="rail-mark">GE</div><div class="rail-icon active" title="Conversas">▤</div><div class="rail-icon" title="Pedidos em acompanhamento">▦</div><div class="rail-spacer"></div><div class="rail-icon" title="Sistema próprio">⚙</div></aside>
+<main class="main">
+ <section class="toolbar">
+  <div class="tabs" role="tablist" aria-label="Selecione o WhatsApp">
+   <button class="tab active" role="tab" aria-selected="true" data-slot="1"><span class="tab-circle">1</span> WhatsApp 01 <span class="tiny">SESSÃO INDEPENDENTE</span></button>
+   <button class="tab" role="tab" aria-selected="false" data-slot="2"><span class="tab-circle">2</span> WhatsApp 02 <span class="tiny">SESSÃO INDEPENDENTE</span></button>
+  </div>
+  <div class="toolbar-actions"><span id="connection-status">Iniciando sessão…</span><button id="split-view-toggle" class="view-toggle" type="button" aria-pressed="false" title="Mostrar os dois WhatsApps reais simultaneamente">◫ 2 números lado a lado</button><button id="reload" class="ghost" title="Recarregar WhatsApp Web ativo">⟳</button><button id="order-toggle" class="ghost" title="Mostrar ou ocultar rascunho do pedido">▥</button></div>
+ </section>
+ <div class="body-grid">
+  <section class="web-pane" aria-label="WhatsApp Web original ao vivo">
+     <div class="web-stage-grid" id="web-stage-grid">
+       <section class="live-pane" id="live-pane-1" aria-label="Primeiro WhatsApp oficial">
+         <div class="live-pane-header"><b><span class="live-mini">1</span> WhatsApp Web 01</b><span id="status-1">Aguardando inicialização</span></div>
+         <div id="whatsapp-stage-1" class="whatsapp-stage" aria-label="WhatsApp Web original · número 01"><div class="loading-card">Carregando WhatsApp Web oficial...<small>QR Code exibido pelo site original, se disponível.</small></div></div>
+       </section>
+       <section class="live-pane" id="live-pane-2" aria-label="Segundo WhatsApp oficial" hidden>
+         <div class="live-pane-header"><b><span class="live-mini">2</span> WhatsApp Web 02</b><span id="status-2">Sessão independente</span></div>
+         <div id="whatsapp-stage-2" class="whatsapp-stage" aria-label="WhatsApp Web original · número 02"><div class="loading-card">Carregando WhatsApp Web oficial...<small>Perfil local separado do WhatsApp 01.</small></div></div>
+       </section>
+     </div>
+   </section>
+  <aside class="orders" id="orders-panel">
+   <div class="order-head"><div><span class="caption">ACOMPANHAMENTO MANUAL</span><h2>Pedido em andamento</h2></div><span class="dot-label">RASCUNHO</span></div>
+   <div class="info-alert">Este painel acompanha o atendimento, mas <strong>não lê a conversa automaticamente</strong> nem envia pedidos ao PDV.</div>
+   <label class="field-label" for="customer">Cliente / referência</label><input id="customer" autocomplete="off" placeholder="Identifique manualmente o cliente" maxlength="90">
+   <label class="field-label" for="pizza-size">Tamanho</label><select id="pizza-size"><option value="Broto · 6 fatias">Broto · 6 fatias</option><option value="Média · 8 fatias">Média · 8 fatias</option><option value="Grande · 10 fatias" selected>Grande · 10 fatias</option><option value="Big · 12 fatias">Big · 12 fatias</option><option value="Gigante · 16 fatias">Gigante · 16 fatias</option></select>
+   <label class="field-label" for="flavors">Sabores informados pelo cliente</label><input id="flavors" autocomplete="off" placeholder="Ex.: calabresa / frango catupiry" maxlength="180">
+   <div class="two-fields"><div><label class="field-label" for="quantity">Qtd.</label><input id="quantity" type="number" min="1" max="10" value="1"></div><div><label class="field-label" for="fulfillment">Modalidade</label><select id="fulfillment"><option>Entrega</option><option>Retirada</option></select></div></div>
+   <button id="add-item" class="add">+ Adicionar ao rascunho</button>
+   <div class="items-title"><span>Itens anotados</span><span id="item-count">0</span></div>
+   <div id="draft-list" class="draft-list"><p class="empty">Acompanhe o cliente pelo WhatsApp Web à esquerda e anote os itens aqui.</p></div>
+   <label class="field-label" for="notes">Observações do pedido</label><textarea id="notes" placeholder="Endereço, troco, borda, observações..." rows="3" maxlength="500"></textarea>
+   <div class="order-footer"><button id="copy-draft" class="copy">Copiar resumo</button><button id="clear-draft" class="clear">Limpar</button></div>
+   <div class="order-disclaimer">Rascunho temporário no aplicativo. Não realiza pedidos, não calcula valores e não confirma pagamento.</div>
+  </aside>
+ </div>
+ <footer class="footer"><span>Auto Atendimento Express Desktop • dois perfis isolados</span><span id="footer-slot">Canal 01</span><span>WhatsApp Web real • Compatibilidade a homologar</span></footer>
+</main>
+</div>
+</body>
+</html>

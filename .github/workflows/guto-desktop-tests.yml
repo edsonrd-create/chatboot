@@ -1,0 +1,28 @@
+name: Guto Bot Desktop - codigo e seguranca
+on:
+  push:
+    branches: [feature/guto-bot-nativo-meta-v2]
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/guto-desktop-tests.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/guto-desktop-tests.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe
+        run: |
+          node --check desktop/src/main.cjs
+          node --check desktop/src/preload.cjs
+          node --check desktop/renderer/host.js
+      - name: Testes de arquitetura e segurança
+        run: node --test desktop/test/*.test.cjs
