@@ -86,3 +86,21 @@ export async function normalizeIncomingAudio({buffer,mimeType,seconds=0,ffmpegPa
   if(duration<0.1)throw new AudioInputError('AUDIO_EMPTY','Áudio curto demais ou vazio');
   return {buffer:ogg,mimeType:'audio/ogg',durationSeconds:Number(duration.toFixed(2)),format:'opus'};
 }
+
+/** Diagnóstico do binário local, sem acessar WhatsApp, chaves ou áudio de clientes. */
+export function inspectAudioRuntime({ffmpegPath='ffmpeg',timeoutMs=5000}={}){
+  return new Promise(resolve=>{
+    let done=false,stdout='',timer;
+    const finish=reason=>{if(done)return;done=true;clearTimeout(timer);resolve({
+      ffmpegAvailable:reason==='ok',opusEncoder:reason==='ok'&&stdout.includes('libopus'),
+      error:reason==='ok'?null:reason
+    });};
+    let proc;
+    try{proc=spawn(ffmpegPath,['-hide_banner','-encoders'],{stdio:['ignore','pipe','ignore']});}
+    catch{return finish('FFMPEG_UNAVAILABLE');}
+    timer=setTimeout(()=>{proc.kill('SIGKILL');finish('FFMPEG_TIMEOUT');},timeoutMs);
+    proc.stdout.on('data',c=>{stdout+=c.toString('utf8');if(stdout.length>100000){proc.kill('SIGKILL');finish('FFMPEG_OUTPUT_LIMIT');}});
+    proc.on('error',()=>finish('FFMPEG_UNAVAILABLE'));
+    proc.on('close',code=>finish(code===0?'ok':'FFMPEG_UNAVAILABLE'));
+  });
+}
