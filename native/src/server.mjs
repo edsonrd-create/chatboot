@@ -173,22 +173,75 @@ catch(e){
   await qr.presence(m.slot,m.jid,'paused');await clearTyping();
   return;
 }
-session.history.push({role:'user',content:text},{role:'assistant',content:reply});session.history=session.history.slice(-30);
-// 3) Voz só quando necessário: cliente mandou áudio ou pediu áudio, e a resposta não tem valores/resumo.
-let sent=null,asVoice=false;
-if(voice&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply})){
-  let voiceFile=null;
-  try{const ogg=await synthesizeVoice({apiKey:aiCfg.apiKey,ttsModel:env.GEMINI_TTS_MODEL||'gemini-2.5-flash-preview-tts',voice:env.GEMINI_TTS_VOICE||'Kore',fetchImpl},reply);sent=await qr.sendVoice(m.slot,m.jid,ogg);asVoice=true;voiceFile=saveMedia(sent.id||crypto.randomUUID(),{buffer:ogg,mimeType:'audio/ogg'});sent.media=voiceFile;}
-  catch(e){console.error('[QR voz] enviando como texto:',String(e.message||e).slice(0,120));}
-}
-try{if(!sent)sent=await qr.send(m.slot,m.jid,reply);}
-catch(e){
-  console.error('[QR envio]',JSON.stringify({slot:m.slot,code:'QR_SEND_FAILED'}));
-  await store.change(d=>{const t=d.threads[tid];if(t){delete t.typing;t.qrLastBlocker='QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}});
+session.history.push({role:'user',content:text},{role:'assistant',content:reply});
+session.history=session.history.slice(-30);
+// Enviar somente se o atendente não assumiu a conversa enquanto a IA processava.
+const stillAutomated=()=>{
+  const t=store.peek().threads[tid];
+  return t?.mode==='BOT'&&t.operationalState!=='CLOSED'&&qrAutoReply&&qrAllowed(m.from)&&qr?.isConnected(m.slot);
+};
+if(!stillAutomated()){
+  console.info('[QR AUDIO]',JSON.stringify({slot:m.slot,code:'QR_CANCELLED_BY_HUMAN'}));
+  await qr.presence(m.slot,m.jid,'paused');await clearTyping();
   return;
 }
-finally{await qr.presence(m.slot,m.jid,'paused');}
-await store.change(d=>{const t=d.threads[tid];if(!t)return;t.session=session;delete t.typing;delete t.qrLastBlocker;delete t.qrLastErrorAt;if(session.mode==='HUMAN')t.mode='HUMAN';upsertOutgoing(t,{id:sent.id||crypto.randomUUID(),direction:'outgoing',type:asVoice?'audio':'text',text:asVoice?`🔊 ${reply}`:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:asVoice?'IA · voz':'IA',media:sent.media||null});});
+const wantVoice=voice&&shouldReplyWithVoice({incomingType:m.type,incomingText:text,reply});
+const copyRequired=wantVoice&&requiresWrittenCopy(reply);
+const sentMessages=[];let voiceError=null,voiceDelivered=false,copyDelivered=false;
+try{
+  let ogg=null;
+  if(wantVoice){
+    const seen=!!store.peek().threads[tid]?.voiceDisclosureSent;
+    const speak=spokenCustomerReply(reply,{disclose:!seen});
+    try{
+      ogg=await withAiSlot(()=>synthesizeReplyVoice({
+        apiKey:aiCfg.apiKey,
+        ttsModel:env.GEMINI_TTS_MODEL||'gemini-2.5-flash-preview-tts',
+        voice:env.GEMINI_TTS_VOICE||'Kore',fetchImpl,ffmpegPath:env.FFMPEG_PATH||'ffmpeg'
+      },speak));
+      if(!opusOggValid(ogg))throw new Error('OGG Opus inválido');
+    }catch{
+      voiceError='AUDIO_TTS_FAILED';
+      console.error('[QR VOICE]',JSON.stringify({slot:m.slot,code:voiceError}));
+    }
+  }
+  if(!stillAutomated())return;
+  // Uma cópia escrita dos valores/confirmacões precede a voz, para o cliente conferir.
+  if(ogg&&copyRequired){
+    const out=await qr.send(m.slot,m.jid,reply);
+    sentMessages.push({id:out.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA · conferência escrita'});
+    copyDelivered=true;
+  }
+  if(ogg){
+    if(!stillAutomated())return;
+    const out=await qr.sendVoice(m.slot,m.jid,ogg);
+    const media=saveMedia(out.id||crypto.randomUUID(),{buffer:ogg,mimeType:'audio/ogg'});
+    sentMessages.push({id:out.id||crypto.randomUUID(),direction:'outgoing',type:'audio',text:`🔊 ${reply}`,at:new Date(clock()).toISOString(),delivery:'sent',source:'IA · voz sintética',media});
+    voiceDelivered=true;
+  }else if(!copyDelivered){
+    // Falha no TTS: comunicar claramente que o áudio não foi gerado; jamais simular voz.
+    const payload=voiceError?`Sou a assistente virtual da Guto Express. Não consegui gerar áudio agora; segue minha resposta por escrito: ${reply}`:reply;
+    const out=await qr.send(m.slot,m.jid,payload);
+    sentMessages.push({id:out.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:payload,at:new Date(clock()).toISOString(),delivery:'sent',source:voiceError?'IA · contingência texto':'IA'});
+  }
+}catch{
+  console.error('[QR SEND]',JSON.stringify({slot:m.slot,code:'QR_SEND_FAILED'}));
+  if(!voiceError)voiceError='QR_SEND_FAILED';
+}finally{
+  await qr.presence(m.slot,m.jid,'paused');
+  await store.change(d=>{
+    const t=d.threads[tid];if(!t)return;
+    delete t.typing;
+    if(!sentMessages.length){t.qrLastBlocker=voiceError||'QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();return;}
+    t.session=session;
+    if(session.mode==='HUMAN')t.mode='HUMAN';
+    if(voiceDelivered)t.voiceDisclosureSent=true;
+    if(voiceError){t.qrLastBlocker=voiceError;t.qrLastErrorAt=new Date(clock()).toISOString();}
+    else{delete t.qrLastBlocker;delete t.qrLastErrorAt;}
+    for(const message of sentMessages)upsertOutgoing(t,message);
+  });
+}
+
 }
 // Ao desconectar um WhatsApp (pelo painel ou removendo o aparelho no celular), apaga as conversas e mídias dele.
 async function purgeQrSlot(slot){
