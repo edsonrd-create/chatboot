@@ -18,3 +18,11 @@ test('carrinho completo → resumo oficial; Confirmo → envia ao PDV', async ()
   delete b.submitOrder;
 });
 test('negrito markdown vira negrito do WhatsApp', ()=>{assert.equal(whatsappText('**Total:** R$ 1'),'*Total:* R$ 1');});
+
+test('endereço acima do limite → atendente humano, sem resumo', async ()=>{
+  const {applyTool}=await import('../src/ai.mjs');
+  const s=newSession();const bb={...b,validateAddress:async()=>({ok:false,outOfRange:true,km:5.5,radiusKm:4})};
+  addPizza(s,bb,{size:'grande',flavors:['baiana']});
+  const out=await applyTool('definir_endereco',{address:'Rodovia da Uva, 1000',neighborhood:'Roça Grande'},s,bb,'');
+  assert.equal(out.outOfRange,true);assert.equal(s.mode,'HUMAN');assert.match(s.handoffMessage,/5.5 km/);assert.equal(s.address,null);
+});
