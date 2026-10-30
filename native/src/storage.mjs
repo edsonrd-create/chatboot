@@ -35,14 +35,34 @@ this.dbStatus='ok';
 }catch(e){this.dbStatus='error';this.log(`[DB] falha ao carregar do Postgres; seguindo com arquivo local: ${String(e.message||e).slice(0,120)}`);}
 return this;
 }
-writeFile(data){fs.mkdirSync(path.dirname(this.path),{recursive:true});const tmp=`${this.path}.${process.pid}.tmp`;fs.writeFileSync(tmp,JSON.stringify(data,null,2),{mode:0o600});fs.renameSync(tmp,this.path);}
+writeFile(data){fs.mkdirSync(path.dirname(this.path),{recursive:true});const tmp=`${this.path}.${process.pid}.tmp`;fs.writeFileSync(tmp,JSON.stringify(data),{mode:0o600});fs.renameSync(tmp,this.path);}
 async change(fn){const job=this.lock.catch(()=>{}).then(async()=>{const draft=structuredClone(this.data);const result=await fn(draft);draft.revision=(Number(draft.revision)||0)+1;this.writeFile(draft);this.data=draft;
-if(this.mirror){try{await this.mirror.save(draft);this.dbStatus='ok';}catch(e){this.dbStatus='error';this.log(`[DB] falha ao gravar revisão ${draft.revision}: ${String(e.message||e).slice(0,120)}`);}}
+if(this.mirror)this.schedulePersist();
 for(const listener of this.listeners){try{listener(draft.revision);}catch{}}return result;});this.lock=job.then(()=>{},()=>{});return job;}
+// O arquivo local é gravado na hora (rápido). A cópia no Postgres (rede) saiu da fila de alterações:
+// com milhares de conversas, enviar o estado inteiro a cada mensagem travava a central. Agora agrupa (400 ms, máx. 2 s).
+schedulePersist(){
+ if(this.persistDelay===0){this.persistNow();return;}
+ const now=Date.now();this.dirtySince??=now;
+ clearTimeout(this.persistTimer);
+ const wait=Math.max(0,Math.min(this.persistDelay??400,(this.dirtySince+2000)-now));
+ this.persistTimer=setTimeout(()=>this.persistNow(),wait);
+}
+async persistNow(){
+ clearTimeout(this.persistTimer);this.persistTimer=null;this.dirtySince=null;
+ if(this.persisting){this.persistAgain=true;return this.persisting;}
+ const data=this.data;
+ this.persisting=(async()=>{
+  if(this.mirror){try{await this.mirror.save(data);this.dbStatus='ok';}catch(e){this.dbStatus='error';this.log(`[DB] falha ao gravar revisão ${data.revision}: ${String(e.message||e).slice(0,120)}`);}}
+ })();
+ await this.persisting;this.persisting=null;
+ if(this.persistAgain||this.data!==data){this.persistAgain=false;if(this.data!==data)return this.persistNow();}
+}
+async flush(){await this.lock.catch(()=>{});if(this.persistTimer||this.dirtySince!=null)await this.persistNow();else if(this.persisting)await this.persisting;}
 snapshot(){return structuredClone(this.data);}
 /** Leitura sem cópia (somente leitura!). Usar só para montar respostas da API; nunca alterar o objeto. */
 peek(){return this.data;}
-async close(){if(this.mirror)await this.mirror.close();}
+async close(){await this.flush().catch(()=>{});if(this.mirror)await this.mirror.close();}
 }
 export function protectToken(text,secret){if(typeof text!=='string'||!text)return '';const iv=crypto.randomBytes(12),key=crypto.createHash('sha256').update(secret).digest(),cipher=crypto.createCipheriv('aes-256-gcm',key,iv),data=Buffer.concat([cipher.update(text,'utf8'),cipher.final()]);return [iv,cipher.getAuthTag(),data].map(x=>x.toString('base64url')).join('.');}
 export function revealToken(encoded,secret){if(!encoded)return '';const [iv,tag,data]=(encoded||'').split('.').map(x=>Buffer.from(x||'','base64url'));if(iv.length!==12||tag.length!==16)throw new Error('Token armazenado inválido');const decipher=crypto.createDecipheriv('aes-256-gcm',crypto.createHash('sha256').update(secret).digest(),iv);decipher.setAuthTag(tag);return Buffer.concat([decipher.update(data),decipher.final()]).toString('utf8');}
