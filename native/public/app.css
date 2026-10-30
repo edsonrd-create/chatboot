@@ -248,3 +248,64 @@ body.full-wa .wa-float{display:flex;position:fixed;right:16px;bottom:16px;z-inde
 body.full-wa .wa-float button{border:0;border-radius:999px;padding:8px 14px;background:transparent;color:#d1d7db;font:600 13px system-ui,sans-serif;cursor:pointer}
 body.full-wa .wa-float button.on{background:#00a884;color:#fff}
 body.full-wa #screen-qr{padding:24px}
+
+
+/* Retorno visível diretamente embaixo de cada botão de salvar o WhatsApp. */
+.gemini-channel-form .channel-save-feedback {
+  display:flex;
+  align-items:center;
+  min-height:42px;
+  padding:10px 12px;
+  border-radius:9px;
+  border:1px solid #d9e5e2;
+  background:#f3f7f6;
+  color:#55706a;
+  font-size:12px;
+  font-weight:650;
+  line-height:1.55;
+  overflow-wrap:anywhere;
+}
+.gemini-channel-form .channel-save-feedback.saved {
+  background:#e6f7ee;
+  border-color:#97d2ad;
+  color:#0b6941;
+}
+.gemini-channel-form .channel-save-feedback.saving {
+  background:#eaf4fc;
+  border-color:#afcce7;
+  color:#225a83;
+}
+.gemini-channel-form .channel-save-feedback.error {
+  background:#fff1ef;
+  border-color:#f5b6ad;
+  color:#a52d25;
+}
+.gemini-channel-form .channel-save-feedback.unsaved {
+  background:#fff6e6;
+  border-color:#f1d49a;
+  color:#865918;
+}
+.gemini-channel-form button.is-saved {
+  background:#06734a;
+  color:#fff;
+}
+.gemini-channel-form button[type=submit] {
+  min-height:44px;
+  transition:background-color .16s ease,opacity .16s ease;
+}
+.gemini-channel-form button[type=submit]:focus-visible {
+  outline:3px solid #088d70;
+  outline-offset:3px;
+}
+/* Avisos gerais visíveis mesmo com a tela rolada até os botões de salvar. */
+.toast:not([hidden]) {
+  position:fixed;
+  z-index:2000;
+  top:18px;
+  right:22px;
+  max-width:min(430px,calc(100vw - 44px));
+  box-shadow:0 9px 28px rgba(18,45,50,.2);
+}
+@media(max-width:600px){
+ .toast:not([hidden]){top:8px;right:8px;max-width:calc(100vw - 16px)}
+}
