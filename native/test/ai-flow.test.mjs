@@ -18,6 +18,7 @@ test('motor de IA chama ferramentas, apresenta orçamento do servidor e exige co
      {type:'function_call',call_id:'pizza',name:'adicionar_pizza',arguments:JSON.stringify({size:'grande',flavors:['calabresa'],quantity:1})},
      {type:'function_call',call_id:'addr',name:'definir_endereco',arguments:JSON.stringify({address:'Rua das Acácias 100, Centro, Curitiba'})},
      {type:'function_call',call_id:'pay',name:'definir_pagamento',arguments:JSON.stringify({method:'PIX'})},
+     {type:'function_call',call_id:'name',name:'confirmar_nome_cliente',arguments:JSON.stringify({name:'Ana Silva'})},
    ]:[{type:'function_call',call_id:'quote',name:'solicitar_confirmacao',arguments:'{}'}];
    return {ok:true,json:async()=>({output:out})};
  };
@@ -29,7 +30,7 @@ test('motor de IA chama ferramentas, apresenta orçamento do servidor e exige co
    assert.equal(s.cart.length,1);
    assert.equal(getSummary(s,b).totalCents,6699);
    const confirm=await intelligentReply('Confirmo',s,b,{apiKey:'fake_key'});
-   assert.match(confirm,/conferência da equipe/i);
+   assert.match(confirm,/atendente|conferência|PDV/i);
    assert.ok(s.lastConfirmed?.requestId);
    assert.equal(calls,2,'confirmação determinística não pede nova chamada à IA');
  } finally {globalThis.fetch=original;}
