@@ -78,9 +78,9 @@ export async function submitPdvOrder(session, business, confirmed) {
     session.pdvOrder = {at: new Date().toISOString(), ok: !!res?.ok, dryRun: !!res?.dryRun, number: res?.number ?? null, totalCents: res?.totalCents ?? null, paymentStatus: res?.paymentStatus ?? null, error: res?.ok ? null : String(res?.error || 'erro').slice(0, 200)};
     session.pdvOrder.externalId = body.externalId;
     if(res?.ok && res?.dryRun){
-      // Modo teste não é venda, mas o carrinho de teste deve ser encerrado,
-      // senão o próximo experimento repetirá as pizzas anteriores.
-      resetCartAfterOrder(session,{requestId:confirmed.requestId,dryRun:true});
+      // Modo teste NÃO é pedido finalizado: preserve o carrinho para revisão.
+      // O cliente pode solicitar "novo pedido" para iniciar outro teste sem repetir itens.
+      session.lastDryRunRequestId=confirmed.requestId;
     }else if(res?.ok){
       session.orderRefs=[...new Set([...(session.orderRefs||[]),body.externalId])].slice(-5);
       resetCartAfterOrder(session,{requestId:confirmed.requestId,orderNumber:res.number??null});
