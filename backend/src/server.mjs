@@ -90,11 +90,25 @@ const inboxRows=()=>Object.entries(store.snapshot().sessions)
  .sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
 const orderSummary=(s)=>({cart:getSummary(s,business).items,address:s.address,payment:s.payment});
 
-async function postMessage(accountId,conversationId,content,isPrivate=false){
+async function postMessage(accountId,conversationId,content,isPrivate=false,attachment=false){
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),12000);
  try{
   const url=`${CW_HOST.replace(/\/$/,'')}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-  const r=await fetch(url,{method:'POST',signal:controller.signal,headers:{api_access_token:CW_TOKEN,'content-type':'application/json'},body:JSON.stringify({content,message_type:'outgoing',private:isPrivate})});
+  let headers,body;
+  if(attachment){
+    if(!menuPdfAvailable())throw Error('Arquivo PDF indisponível');
+    const form=new FormData();
+    form.append('content',content);
+    form.append('message_type','outgoing');
+    form.append('private',String(Boolean(isPrivate)));
+    form.append('attachments[]',new Blob([fs.readFileSync(MENU_PDF_FILE)],{type:'application/pdf'}),'Cardapio-Guto-Express.pdf');
+    headers={api_access_token:CW_TOKEN};
+    body=form;
+  }else{
+    headers={api_access_token:CW_TOKEN,'content-type':'application/json'};
+    body=JSON.stringify({content,message_type:'outgoing',private:isPrivate});
+  }
+  const r=await fetch(url,{method:'POST',signal:controller.signal,headers,body});
   if(!r.ok)throw new Error(`Chatwoot HTTP ${r.status}`);
  }finally{clearTimeout(timer);}
 }
