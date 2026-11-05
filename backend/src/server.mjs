@@ -22,6 +22,8 @@ const CW_ACCOUNT=Number(env.CHATWOOT_ACCOUNT_ID||0);
 const RAW_INBOXES=[env.CHATWOOT_INBOX_1,env.CHATWOOT_INBOX_2].map(Number);
 const INBOXES=RAW_INBOXES.filter(x=>Number.isSafeInteger(x)&&x>0);
 const DATA_FILE=path.resolve(projectRoot,env.DATA_FILE||'./data/state.json');
+const MENU_PDF_FILE=path.join(path.dirname(DATA_FILE),'cardapio-whatsapp.pdf');
+const menuPdfAvailable=()=>{try{const s=fs.statSync(MENU_PDF_FILE);return s.isFile()&&s.size>100&&s.size<=16*1024*1024;}catch{return false;}};
 const BUSINESS_FILE=path.resolve(projectRoot,env.BUSINESS_FILE||'./config/business.json');
 const CW_HOST=env.CHATWOOT_BASE_URL||'';
 const CW_TOKEN=env.CHATWOOT_API_TOKEN||'';
