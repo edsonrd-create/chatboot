@@ -24,15 +24,15 @@ export const newSession = ()=>({mode:'BOT',cart:[],customerName:null,customerPho
 /** Número de origem confiável do webhook é diferente de número informado em uma mensagem. */
 export function normalizeBrazilPhone(phone) {
   if(typeof phone !== 'string')return null;
-  const clean=phone.replace(/[\\s()+.\\-]/g,'');
-  if(!/^\\d{10,13}$/.test(clean))return null;
+  const clean=phone.replace(/[\s()+.\-]/g,'');
+  if(!/^\d{10,13}$/.test(clean))return null;
   let national=clean.startsWith('55') && clean.length>=12 ? clean.slice(2) : clean;
-  if(!/^\\d{10,11}$/.test(national)||!/[1-9]/.test(national.slice(2)))return null;
-  if(!/^[1-9]\\d/.test(national))return null;
+  if(!/^\d{10,11}$/.test(national)||!/[1-9]/.test(national.slice(2)))return null;
+  if(!/^[1-9]\d/.test(national))return null;
   return '+55'+national;
 }
 export function setCustomer(session,{name,phone,verifiedSource=false}={}) {
-  const cleanName=String(name??'').trim().replace(/\\s+/g,' ');
+  const cleanName=String(name??'').trim().replace(/\s+/g,' ');
   const cleanPhone=normalizeBrazilPhone(String(phone??''));
   if(cleanName.length<2||cleanName.length>80||/^(cliente|desconhecido|unknown)$/i.test(cleanName))
     return {ok:false,error:'Informe o nome real do cliente, com 2 a 80 caracteres.'};
