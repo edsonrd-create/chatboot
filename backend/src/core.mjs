@@ -17,12 +17,34 @@ export function normalizeEvent(event, configuredInboxes=[], configuredAccount=nu
   const messageId=String(event.id || '');
   if (![inboxId,conversationId,accountId].every(n=>Number.isSafeInteger(n)&&n>0) || !messageId || !/^\d+$/.test(messageId)) return null;
   if (!configuredInboxes.includes(inboxId) || (configuredAccount && accountId !== configuredAccount)) return null;
-  return {inboxId,conversationId,accountId,messageId,content:event.content.trim(),sender: String(event.sender?.name || 'Cliente').slice(0,80),key:`${accountId}:${inboxId}:${conversationId}`,eventKey:`${accountId}:${messageId}`};
+  return {inboxId,conversationId,accountId,messageId,content:event.content.trim(),sender: String(event.sender?.name || 'Cliente').slice(0,80),senderPhone: String(event.sender?.phone_number || event.conversation?.meta?.sender?.phone_number || '').slice(0,32),key:`${accountId}:${inboxId}:${conversationId}`,eventKey:`${accountId}:${messageId}`};
 }
 
-export const newSession = ()=>({mode:'BOT',cart:[],address:null,payment:null,fulfillment:'DELIVERY',awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
+export const newSession = ()=>({mode:'BOT',cart:[],customerName:null,customerPhone:null,customerPhoneVerified:false,cartOwnerConfirmed:false,address:null,payment:null,fulfillment:'DELIVERY',awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
+/** Número de origem confiável do webhook é diferente de número informado em uma mensagem. */
+export function normalizeBrazilPhone(phone) {
+  if(typeof phone !== 'string')return null;
+  const clean=phone.replace(/[\\s()+.\\-]/g,'');
+  if(!/^\\d{10,13}$/.test(clean))return null;
+  let national=clean.startsWith('55') && clean.length>=12 ? clean.slice(2) : clean;
+  if(!/^\\d{10,11}$/.test(national)||!/[1-9]/.test(national.slice(2)))return null;
+  if(!/^[1-9]\\d/.test(national))return null;
+  return '+55'+national;
+}
+export function setCustomer(session,{name,phone,verifiedSource=false}={}) {
+  const cleanName=String(name??'').trim().replace(/\\s+/g,' ');
+  const cleanPhone=normalizeBrazilPhone(String(phone??''));
+  if(cleanName.length<2||cleanName.length>80||/^(cliente|desconhecido|unknown)$/i.test(cleanName))
+    return {ok:false,error:'Informe o nome real do cliente, com 2 a 80 caracteres.'};
+  if(!cleanPhone)return {ok:false,error:'Informe telefone brasileiro válido com DDD.'};
+  if(session.customerName!==cleanName||session.customerPhone!==cleanPhone)invalidateQuote(session);
+  session.customerName=cleanName;
+  session.customerPhone=cleanPhone;
+  session.customerPhoneVerified=Boolean(verifiedSource);
+  return {ok:true,name:cleanName,phone:cleanPhone,phoneVerified:session.customerPhoneVerified};
+}
 function invalidateQuote(session){session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;session.confirmedRequestId=null;}
-export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,payment:quote.payment,fulfillment:quote.fulfillment,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
+export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,payment:quote.payment,fulfillment:quote.fulfillment,customerName:quote.customerName,customerPhone:quote.customerPhone,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
 export function extractText(response) {
   if (typeof response?.output_text === 'string') return response.output_text.trim();
   return (response?.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n').trim();
@@ -126,7 +148,7 @@ export function getSummary(session,business) {
   const fulfillment=session.fulfillment||'DELIVERY';
   const deliveryFeeCents=fulfillment==='PICKUP'?0:Number.isSafeInteger(business.deliveryFeeCents) && session.address?business.deliveryFeeCents:null;
   const totalCents=subtotalCents!==null && deliveryFeeCents!==null?subtotalCents+deliveryFeeCents:null;
-  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,missing:[...(items.length?[]:['itens']),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
+  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,customerName:session.customerName??null,customerPhone:session.customerPhone??null,missing:[...(session.customerName&&session.customerPhone?[]:['nome e telefone do cliente']),...(items.length?[]:['itens']),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
 }
 
 /** Modalidade explícita, sem presumir entrega quando o cliente escolheu retirada. */
