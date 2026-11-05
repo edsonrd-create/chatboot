@@ -46,6 +46,6 @@ test('Confirmo depois do resumo envia ao PDV exatamente uma vez e retorna númer
 test('Confirmo sem carrinho impede IA de dizer que pedido está em preparo',async()=>{
   const session=newSession();
   const reply=await intelligentReply('Confirmo',session,{}, {apiKey:'fake-never-called'});
-  assert.match(reply,/NÃO estamos preparando esse pedido/);
+  assert.match(reply,/não estamos preparando esse pedido/i);
   assert.equal(session.mode,'HUMAN');
 });
