@@ -1,5 +1,5 @@
 import {TRAINING_PROTOCOL} from './training.mjs';
-import {wantsToFinishOrder,checkoutNextQuestion,asksPaymentBeforeCheckout} from './checkout-flow.mjs';
+import {wantsToFinishOrder,checkoutNextQuestion,asksPaymentBeforeCheckout,asksForCurrentPrice} from './checkout-flow.mjs';
 import {consumeCashAnswer} from './cash-change.mjs';
 import {cardapioChoice,isCommerceIntent} from './cardapio-whatsapp.mjs';
 import {confirmationReply} from './pdv-order.mjs';
@@ -228,9 +228,24 @@ export async function intelligentReply(userText,session,business,cfg={}){
   const normalizedInput=normalize(String(userText||'')).trim();
   session.enforceCheckoutOrder=true;
   if(session.cart?.length && !session.awaitingConfirmation && wantsToFinishOrder(userText)){
+    // O cliente aceitou fechar: nunca voltar à pergunta "posso fechar?".
     session.checkoutRequested=true;
-    return checkoutNextQuestion(session,business) ||
-      'Perfeito! 🍕 Vou organizar o resumo completo para você conferir.';
+    const next=checkoutNextQuestion(session,business);
+    if(next)return next;
+    const result=requestConfirmation(session,business);
+    if(result.ok){
+      session.quotePresented=true;
+      session.lastQuote=formatQuote(result.quote);
+      return QUOTE_PROMPT(session.lastQuote);
+    }
+    return 'Já estamos fechando seu pedido! 😊 Ainda preciso conferir: '+result.quote?.missing?.join(', ')+'.';
+  }
+  if(session.cart?.length && !session.awaitingConfirmation && asksForCurrentPrice(userText)){
+    const summary=getSummary(session,business);
+    const subtotal=summary.subtotalCents===null?'a confirmar no PDV':formatMoney(summary.subtotalCents);
+    const delivery=summary.deliveryFeeCents===null?'a confirmar após validar o endereço':formatMoney(summary.deliveryFeeCents);
+    const total=summary.totalCents===null?'a confirmar após validar os dados':formatMoney(summary.totalCents);
+    return '🍕 Seu pedido está assim: *Subtotal: '+subtotal+'*. Entrega: '+delivery+'. *Total: '+total+'*. 😊 Quer adicionar mais alguma coisa ou podemos finalizar?';
   }
   if(isNewOrderIntent(userText)){
     beginNewOrder(session);
