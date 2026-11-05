@@ -6,7 +6,7 @@ async function api(url,options={}){const headers={'content-type':'application/js
 const timestamp=v=>v?new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
 const deliveryLabel=v=>({received:'Recebida',done:'Enviada',sent:'Enviada',delivered:'Entregue',read:'Lida',failed:'Falhou',queued:'Na fila',pending:'Pendente',sample:'Exemplo',ai:'IA',human:'Atendente'})[String(v||'').toLowerCase()]||v||'';
 const date=v=>v?new Date(v).toLocaleString('pt-BR'):'';
-function navigate(name){ss.screen=name;for(const el of document.querySelectorAll('[data-screen]'))el.classList.toggle('active',el.dataset.screen===name);for(const el of document.querySelectorAll('.screen'))el.hidden=el.id!==`screen-${name}`;$('page-title').textContent=({inbox:'Conversas',orders:'Pedidos',testing:'Laboratório de IA',qr:'Conectar QR',settings:'Configurações'})[name];if(name==='inbox')loadInbox();if(name==='orders')loadOrders();if(name==='settings')loadSettings();if(name==='qr')loadQr();}
+function navigate(name){ss.screen=name;for(const el of document.querySelectorAll('[data-screen]'))el.classList.toggle('active',el.dataset.screen===name);for(const el of document.querySelectorAll('.screen'))el.hidden=el.id!==`screen-${name}`;$('page-title').textContent=({inbox:'Conversas',orders:'Pedidos',testing:'Laboratório de IA',qr:'Conectar QR',cardapio:'Cardápio WhatsApp',settings:'Configurações'})[name];if(name==='inbox')loadInbox();if(name==='orders')loadOrders();if(name==='settings')loadSettings();if(name==='qr')loadQr();if(name==='cardapio')loadCardapioSync();}
 function renderStatus(){const s=ss.status;if(!s)return;const readOnly=Boolean(s.hosting?.readOnly);$('logout').hidden=readOnly;$('ai-check').disabled=readOnly;$('lab-text').disabled=readOnly;$('lab-form').querySelector('button').disabled=readOnly;$('lab-reset').disabled=readOnly;$('system-status').textContent=s.hosting?.freePreview?'Prévia gratuita · Dados temporários':(s.qr?.active?'WhatsApp QR com IA ativa · PDV bloqueado':'Homologação · Pedidos PDV bloqueados');const preview=$('free-preview-banner');if(preview)preview.hidden=!s.hosting?.freePreview;for(const c of s.channels){$('number-'+c.slot).textContent=c.number||'Não conectado';const tag=$('badge-'+c.slot);tag.className='pill '+(c.apiVerifiedAt?'on':'off');tag.textContent=c.apiVerifiedAt?'API Meta verificada':'Aguardando verificação';}const ai=$('ai-config-state');ai.textContent=s.hosting?.readOnly?'Prévia pública: Gemini e outras IAs desativados.':s.ai.configured?`IA: ${s.ai.provider==='gemini'?'Google Gemini':'OpenAI'} · ${s.ai.model} · Teste real: ${s.ai.realTest?'aprovado':'pendente'}`:`IA ${s.ai.provider==='gemini'?'Gemini':'OpenAI'} selecionada, mas chave não configurada no servidor.`;}
 async function loadStatus(){ss.status=await api('/api/status');renderStatus();}
 function renderConversations(){const area=$('conversation-list');area.replaceChildren();const q=$('search').value.trim().toLowerCase();const filtered=ss.conversations.filter(t=>(!ss.slot||t.slot===ss.slot)&&matchesOperationsFilter(t)&&(!q||[t.customer,t.customerName,t.lastText].join(' ').toLowerCase().includes(q)));{const unread=ss.conversations.reduce((n,t)=>n+(t.unread||0),0);const badge=$('unread-total');badge.textContent=unread;badge.hidden=!unread;badge.title=unread?`${unread} mensagem(ns) não lida(s)`:'';}
@@ -358,3 +358,27 @@ if(location.pathname.replace(/\/+$/,'')==='/whatsapp')document.body.classList.ad
 // Tela cheia (/whatsapp): barra flutuante para alternar Conversas ⇄ Conectar QR sem o menu lateral.
 if(document.body.classList.contains('full-wa')){const bar=document.createElement('div');bar.className='wa-float';bar.innerHTML='<button type="button" data-go="inbox" title="Conversas">▤ Conversas</button><button type="button" data-go="qr" title="Conectar WhatsApp por QR Code">▣ Conectar QR</button>';bar.addEventListener('click',e=>{const go=e.target.closest('[data-go]')?.dataset.go;if(!go)return;document.querySelector(`.nav-link[data-screen="${go}"]`)?.click();bar.querySelectorAll('[data-go]').forEach(b=>b.classList.toggle('on',b.dataset.go===go));});(document.getElementById('app')||document.body).append(bar);bar.querySelector('[data-go="inbox"]').classList.add('on');}
 api('/api/status').then(async r=>{ss.status=r;$('login').hidden=true;$('app').hidden=false;renderStatus();await loadInbox();beginLiveUpdates();}).catch(()=>{$('app').hidden=true;$('login').hidden=false;});
+
+async function loadCardapioSync(){
+ const status=$('cardapio-sync-state'),details=$('cardapio-sync-details');
+ if(!status||!details)return;
+ try{
+  const data=await api('/api/cardapio-whatsapp/status');
+  const ok=data.sync?.ok===true;
+  status.textContent=ok?'Sincronizado com o PDV. Última consulta: '+date(data.sync.checkedAt):'Não sincronizado: preços e confirmação pelo bot bloqueados.';
+  details.replaceChildren();
+  for(const [label,value] of [['Fonte',data.source],['Sabores',ok?data.flavors:'Aguardando'],['Tamanhos',ok?(data.sizes||[]).map(s=>s.label).join(', '):'Aguardando'],['Combos',ok?data.combos:'Aguardando'],['Atualização',data.sync?.checkedAt?date(data.sync.checkedAt):'Nunca']]){
+   const row=x('div','setting-row');
+   row.append(x('strong','',label),x('span','',value??'—'));
+   details.append(row);
+  }
+ }catch(e){status.textContent='Falha ao ler status da sincronização: '+e.message;details.replaceChildren();}
+}
+$('cardapio-sync-button')?.addEventListener('click',async()=>{
+ const btn=$('cardapio-sync-button');btn.disabled=true;
+ try{
+  const data=await api('/api/cardapio-whatsapp/sync',{method:'POST'});
+  notify('PDV sincronizado: '+data.flavorCount+' sabores e '+data.sizeCount+' tamanhos.');
+ }catch(e){notify('PDV não sincronizado: '+e.message,true);}
+ finally{btn.disabled=false;await loadCardapioSync();}
+});
