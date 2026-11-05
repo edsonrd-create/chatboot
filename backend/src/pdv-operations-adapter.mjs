@@ -64,3 +64,35 @@ export async function readPdvOperationsSummary(config,fetchImpl=fetch){
   }catch{return {ok:false,error:'PDV_OPERATIONS_UNAVAILABLE'};}
   finally{clearTimeout(timer);}
 }
+
+/** Consulta cadastro mínimo do próprio número WhatsApp, sem expor endereços.
+ * Nome cadastrado é uma sugestão que o cliente ainda precisa confirmar.
+ */
+export async function readRegisteredPdvCustomer(config,trustedPhone,fetchImpl=fetch){
+  if(config.PDV_OPERATIONS_READ_ENABLED!=='true')
+    return {ok:false,error:'PDV_OPERATIONS_DISABLED'};
+  if(typeof trustedPhone!=='string'||!/^\+55\d{10,11}$/.test(trustedPhone))
+    return {ok:false,error:'WHATSAPP_IDENTITY_REQUIRED'};
+  if(!config.PDV_OPERATIONS_API_URL?.startsWith('https://')||
+     !config.PDV_OPERATIONS_READ_TOKEN||config.PDV_OPERATIONS_READ_TOKEN.length<32)
+    return {ok:false,error:'PDV_OPERATIONS_NOT_CONFIGURED'};
+  const url=new URL(config.PDV_OPERATIONS_API_URL);
+  if(url.pathname!=='/api/v1/bot-operations'||url.username||url.password)
+    return {ok:false,error:'PDV_OPERATIONS_INVALID_ENDPOINT'};
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),7000);
+  try{
+    const response=await fetchImpl(url.toString(),{method:'POST',signal:controller.signal,
+      headers:{authorization:'Bearer '+config.PDV_OPERATIONS_READ_TOKEN,
+        'content-type':'application/json'},
+      body:JSON.stringify({action:'customer_profile',phone:trustedPhone})});
+    if(!response.ok)return {ok:false,error:'PDV_HTTP_'+response.status};
+    const data=await response.json();
+    if(data?.ok!==true)return {ok:false,error:'PDV_OPERATIONS_INVALID_RESPONSE'};
+    if(data.ambiguous)return {ok:true,found:false,ambiguous:true};
+    const name=typeof data.name==='string'?data.name.trim().slice(0,80):'';
+    return {ok:true,found:data.found===true&&name.length>=2,
+      name:data.found===true&&name.length>=2?name:null,
+      blocked:data.blocked===true};
+  }catch{return {ok:false,error:'PDV_OPERATIONS_UNAVAILABLE'};}
+  finally{clearTimeout(timer);}
+}
