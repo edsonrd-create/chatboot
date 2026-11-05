@@ -1,4 +1,4 @@
-import {getSummary} from './core.mjs';
+import {getSummary,formatMoney} from './core.mjs';
 
 const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 export function wantsToFinishOrder(text){
@@ -21,7 +21,15 @@ export function checkoutNextQuestion(session,business){
   if(summary.missing.includes('preços válidos'))
     return 'Estou conferindo os valores atualizados do cardápio. Para não cobrar errado, vou precisar da confirmação do sistema antes de finalizar.';
   if(!session.payment)
-    return `Tudo certo, ${first}! 🍕 Já conferimos seu pedido e ${session.fulfillment==='PICKUP'?'a retirada':'a entrega'}. Agora, *para finalizar*, prefere pagar por *PIX, cartão ou dinheiro*?`;
+    return `Tudo certo, ${first}! 🍕 Nosso subtotal é ${formatMoney(summary.subtotalCents)} e ${session.fulfillment==='PICKUP'?'você vai retirar na pizzaria':'a taxa de entrega é '+formatMoney(summary.deliveryFeeCents)}. *Total: ${formatMoney(summary.totalCents)}.* Para finalizar, prefere pagar por *PIX, cartão ou dinheiro*?`;
+  if(session.payment==='DINHEIRO'){
+    if(session.cashChangeNeeded===null||session.cashChangeNeeded===undefined)
+      return `Perfeito, ${first}! 😊 O total é *${formatMoney(summary.totalCents)}*. Vai precisar de *troco*?`;
+    if(session.cashChangeNeeded===true && session.cashReceivedCents===null)
+      return `Claro! 😊 O total é *${formatMoney(summary.totalCents)}*. *Troco para quanto?*`;
+    if(summary.missing.includes('valor do troco válido'))
+      return `O total atualizado ficou em *${formatMoney(summary.totalCents)}*. Para quanto você vai pagar? Preciso conferir o troco certinho. 😊`;
+  }
   return null;
 }
 export function asksPaymentBeforeCheckout(text){
