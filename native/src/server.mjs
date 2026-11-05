@@ -315,7 +315,7 @@ if(session.customerPhone.length>=10&&session.orderRefs?.length)await store.chang
 // Enviar somente se o atendente não assumiu a conversa enquanto a IA processava.
 const stillAutomated=()=>{
   const t=store.peek().threads[tid];
-  return t?.mode==='BOT'&&t.operationalState!=='CLOSED'&&qrAutoReply&&qrAllowed(m.from)&&qr?.isConnected(m.slot);
+  return t?.mode==='BOT'&&t.operationalState!=='CLOSED'&&replyAllowedForThread(t)&&qrAllowed(m.from)&&qr?.isConnected(m.slot);
 };
 if(!stillAutomated()){
   console.info('[QR AUDIO]',JSON.stringify({slot:m.slot,code:'QR_CANCELLED_BY_HUMAN'}));
