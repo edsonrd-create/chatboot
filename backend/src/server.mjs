@@ -8,6 +8,7 @@ import {verifyChatwootSignature,normalizeEvent,newSession,getSummary,normalizeBr
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
 import {loadCatalogV2ForBot} from './catalog-v2-adapter.mjs';
 import {readMyPdvOrders,readPdvOperationsSummary,readRegisteredPdvCustomer} from './pdv-operations-adapter.mjs';
+import {previewPdvOrder} from './pdv-order-preview.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
@@ -152,6 +153,16 @@ async function pump(){
        if(!previouslyHuman && session.mode==='HUMAN'){
          const noteId=`handoff:${evt.id}`;
          if(!d.outbox[noteId])d.outbox[noteId]={id:noteId,accountId:n.accountId,conversationId:n.conversationId,content:`[Guto Bot] Atendimento humano solicitado. Motivo: ${String(session.reason||'necessita conferência').slice(0,200)}. IA pausada para esta conversa.`,private:true,state:'pending',attempts:0,nextAt:Date.now()};
+       }
+       // Apenas o modo TESTE do PDV pode ser acionado nesta homologação.
+       if(session.lastConfirmed && env.PDV_BOT_ORDER_TEST_ENABLED==='true'){
+         const dryRun=await previewPdvOrder(env,session.lastConfirmed,session,business);
+         session.lastConfirmed.pdvDryRun=dryRun;
+         if(!dryRun.ok){
+           session.mode='HUMAN';
+           session.reason='Pré-validação de pedido no PDV exige conferência: '+String(dryRun.error).slice(0,80);
+           reply='Recebi os dados do pedido, mas ainda preciso que a equipe valide a integração com o PDV antes de confirmar qualquer operação. 🍕';
+         }
        }
        session.history.push({role:'assistant',content:reply.slice(0,3000),delivery:'queued',outboxId:`reply:${evt.id}`});
        session.history=session.history.slice(-100);
