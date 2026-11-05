@@ -42,13 +42,16 @@ async function selectThread(id,mark=true){ss.selected=id;renderConversations();t
   const actions=x('div','ops-action-bar');
   for(const [action,label] of operationChoices(t)){const button=x('button','',label);button.type='button';button.disabled=Boolean(ss.status?.hosting?.readOnly);button.onclick=()=>applyOperation(t,action);actions.append(button);}
   if(t.via==='qr'){
-    const toggle=x('button','',t.mode==='BOT'?'Desativar IA / Assumir':'Ativar IA nesta conversa');
+    const activeTest=Number(t.testReplyUntil)>Date.now();
+    const globallyEnabled=ss.status?.globalAutomationActive===true;
+    const needsEnable=t.mode!=='BOT'||(!globallyEnabled&&!activeTest);
+    const toggle=x('button','',needsEnable?(globallyEnabled?'Ativar IA nesta conversa':'Ativar teste nesta conversa (15 min)'):'Desativar IA / Assumir');
     toggle.type='button';toggle.disabled=Boolean(ss.status?.hosting?.readOnly);
     toggle.onclick=async()=>{
       try{
-        const target=t.mode==='BOT'?'HUMAN':'BOT';
-        await api('/api/thread/mode',{method:'POST',body:JSON.stringify({id:t.id,mode:target})});
-        notify(target==='BOT'?'IA ativada: responderá às próximas mensagens recebidas.':'Atendimento humano assumido.');
+        const target=needsEnable?'BOT':'HUMAN';
+        const answer=await api('/api/thread/mode',{method:'POST',body:JSON.stringify({id:t.id,mode:target})});
+        notify(answer.notice||'Atendimento humano assumido.');
         await loadInbox();await selectThread(t.id,false);
       }catch(e){notify(e.message,true);}
     };
@@ -57,7 +60,7 @@ async function selectThread(id,mark=true){ss.selected=id;renderConversations();t
   h.append(actions);
   const area=$('messages');area.replaceChildren();for(const m of data.messages){const bubble=x('div','message '+(m.direction==='incoming'?'incoming':'outgoing'),m.text);bubble.append(x('small','',[timestamp(m.at),deliveryLabel(m.delivery||m.source)].filter(Boolean).join(' · ')));area.append(bubble);}area.scrollTop=area.scrollHeight;
   $('selected-customer').textContent=t.customerName||t.customer;const readOnly=Boolean(ss.status?.hosting?.readOnly);$('selected-mode').textContent=readOnly?'Exemplo fictício · nenhuma mensagem será enviada':
-    t.via==='qr'?(t.mode==='BOT'?'IA por QR habilitada · aguardando próxima mensagem':'WhatsApp QR · atendimento humano'):
+    t.via==='qr'?(Number(t.testReplyUntil)>Date.now()?'IA em teste nesta conversa até '+timestamp(t.testReplyUntil):t.mode==='BOT'&&ss.status?.globalAutomationActive===false?'IA global pausada · clique em Ativar teste (15 min)':t.mode==='BOT'?'IA por QR habilitada · aguardando próxima mensagem':'WhatsApp QR · atendimento humano'):
     t.mode==='HUMAN'?'Modo humano · respostas pelo painel':'Automação Meta não liberada';
   if(t.qrLastBlocker&&!readOnly)$('selected-mode').textContent+=' · Diagnóstico: '+t.qrLastBlocker;$('takeover').disabled=readOnly;$('takeover').hidden=readOnly;
   const canSend=!readOnly&&t.mode==='HUMAN'&&(!t.state||t.state==='HUMAN');$('reply-text').disabled=!canSend;$('send').disabled=!canSend;$('reply-lock').textContent=readOnly?'Prévia somente leitura: mensagens fictícias e envio permanentemente bloqueado.':canSend?(t.via==='qr'?'Envio manual via sessão WhatsApp QR conectada.':'Envio pela API Meta. Necessário número autorizado, janela de 24h e conexão válida.'):'Assuma o atendimento antes de responder.';
