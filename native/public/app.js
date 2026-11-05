@@ -389,9 +389,24 @@ async function loadCardapioSync(){
  try{
   const data=await api('/api/cardapio-whatsapp/status');
   const ok=data.sync?.ok===true;
-  status.textContent=ok?'Sincronizado com o PDV. Última consulta: '+date(data.sync.checkedAt):'Não sincronizado: preços e confirmação pelo bot bloqueados.';
+  const automation=data.automation||{};
+  const blockers={
+    QR_DISABLED:'Integração WhatsApp desativada no Railway',
+    AUTOREPLY_DISABLED:'Autorresposta desligada no Railway',
+    SCHEDULE_PAUSED:'IA desligada ou fora do horário no painel',
+    AI_NOT_CONFIGURED:'Provedor de IA sem chave configurada',
+    WHATSAPP_DISCONNECTED:'WhatsApps desconectados'
+  };
+  const automationMessage=automation.ready
+    ?'IA habilitada. '+(automation.eligibleThreads??0)+' conversa(s) apta(s) a receber respostas.'
+    :'Atendimento automático bloqueado: '+(automation.blockers||[]).map(code=>blockers[code]||code).join('; ')+'.';
+  status.textContent=(ok?'Cardápio sincronizado com PDV. ':'Cardápio do PDV indisponível. ')+automationMessage;
   details.replaceChildren();
-  for(const [label,value] of [['Fonte',data.source],['Sabores',ok?data.flavors:'Aguardando'],['Tamanhos',ok?(data.sizes||[]).map(s=>s.label).join(', '):'Aguardando'],['Combos',ok?data.combos:'Aguardando'],['Atualização',data.sync?.checkedAt?date(data.sync.checkedAt):'Nunca']]){
+  for(const [label,value] of [['Atendimento WhatsApp',automationMessage],
+   ['WhatsApps conectados',(automation.connectedSlots||[]).map(n=>'WhatsApp '+n).join(', ')||'Nenhum'],
+   ['Fonte',data.source],['Sabores',ok?data.flavors:'Aguardando'],
+   ['Tamanhos',ok?(data.sizes||[]).map(s=>s.label).join(', '):'Aguardando'],
+   ['Combos',ok?data.combos:'Aguardando'],['Atualização',data.sync?.checkedAt?date(data.sync.checkedAt):'Nunca']]){
    const row=x('div','setting-row');
    row.append(x('strong','',label),x('span','',value??'—'));
    details.append(row);
