@@ -102,7 +102,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   };
   if(botToken.length>=24)business.submitOrder=async body=>{
     const r=await fetch(`${pdvBase}/api/v1/bot/order`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
-    const j=await r.json().catch(()=>({}));return {...j,ok:r.ok&&j.ok!==false,status:r.status};
+    const j=await r.json().catch(()=>({}));return {...j,ok:r.ok&&j.ok!==false,httpStatus:r.status};
   };
   const version=graphVersion(env.META_GRAPH_VERSION);
   // Seleção explícita do provedor; chave NUNCA é devolvida ao navegador.
