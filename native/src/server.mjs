@@ -54,7 +54,27 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   // Cardápio e preços oficiais vêm do PDV (boot + a cada 5 min). Falha mantém o último catálogo válido.
   const pdvBase=String(env.PDV_BASE_URL||'https://pdvgutoexpress.com.br').replace(/\/$/,'');
   let catalogTimer;
-  const syncCatalog=async()=>{if(env.PDV_CATALOG_SYNC==='false'||!globalThis.fetch)return;try{Object.assign(business,catalogFromPdvMenu(await fetchPdvCatalog({baseUrl:pdvBase}),business));}catch(e){console.warn('[pdv] cardápio não sincronizado:',e.message);}};
+  let catalogSync={ok:false,checkedAt:null,error:'NOT_SYNCED',items:0};
+  let catalogInFlight=null;
+  const syncCatalog=async()=>{
+    if(env.PDV_CATALOG_SYNC==='false')return {ok:false,error:'PDV_CATALOG_SYNC_DISABLED'};
+    if(catalogInFlight)return catalogInFlight;
+    catalogInFlight=(async()=>{
+      try{
+        const remote=await fetchPdvCatalog({fetchImpl,baseUrl:pdvBase});
+        const converted=catalogFromPdvMenu(remote,business);
+        if(!converted.flavors.length||!converted.sizes.length)throw Error('EMPTY_CATALOG');
+        Object.assign(business,converted);
+        catalogSync={ok:true,checkedAt:new Date(clock()).toISOString(),error:null,items:remote.items.length};
+      }catch(e){
+        // O último catálogo fica somente para diagnóstico, nunca para orçar depois de falha.
+        catalogSync={ok:false,checkedAt:new Date(clock()).toISOString(),error:String(e.message||e).slice(0,100),items:0};
+        console.warn('[pdv] falha de sincronização; venda bloqueada:',catalogSync.error);
+      }
+      return {...catalogSync};
+    })();
+    try{return await catalogInFlight;}finally{catalogInFlight=null;}
+  };
   const botToken=String(env.GUTO_BOT_TOKEN||'').trim();
   if(botToken.length>=24)business.validateAddress=async({address,neighborhood,subtotalCents})=>{
     const r=await fetch(`${pdvBase}/api/v1/bot/address`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify({address,neighborhood,subtotalCents}),signal:AbortSignal.timeout(10000)});
@@ -232,7 +252,13 @@ const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typi
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
 session.customerPhone=String(m.from||'').replace(/\D/g,'');{const prof=store.peek().customers?.[session.customerPhone];if(prof&&!session.knownCustomer){session.knownCustomer={name:prof.name||'',address:prof.address||'',neighborhood:prof.neighborhood||''};if(Array.isArray(prof.orderRefs))session.orderRefs=[...new Set([...prof.orderRefs,...(session.orderRefs||[])])].slice(-5);if(!session.customerName&&prof.name)session.customerName=prof.name;}}if(!session.customerName){const nm=store.peek().threads?.[tid]?.customerName;if(nm&&!/^\d+$/.test(nm))session.customerName=String(nm).slice(0,80);}
-try{reply=await withAiSlot(()=>respondWithAI(text,session,business,aiCfg));}
+try{
+  const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='true'?await syncCatalog():null;
+  reply=await withAiSlot(()=>respondWithAI(text,session,business,{
+    ...aiCfg,menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED==='true',
+    catalogSynced:pdvSync?.ok===true,iosUrl:env.GUTO_IOS_APP_URL||''
+  }));
+}
 catch(e){
   const fault=describeAIError(e,aiCfg.provider);
   console.error('[QR IA]',JSON.stringify({code:fault.code,slot:m.slot}));
@@ -439,6 +465,17 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
+      if(p==='/api/cardapio-whatsapp/status'&&req.method==='GET')
+        return json(res,200,{enabled:env.PDV_MENU_REALTIME_ENABLED!=='false',source:pdvBase,
+          sync:{...catalogSync},sizes:catalogSync.ok?business.sizes.map(s=>({label:s.label,active:true})):[],
+          flavors:catalogSync.ok?business.flavors.length:0,combos:catalogSync.ok?business.combos.length:0,
+          pricesFrom:'PDV',ordersMode:'HOMOLOGATION'});
+      if(p==='/api/cardapio-whatsapp/sync'&&req.method==='POST'){
+        const result=await syncCatalog();
+        return json(res,result.ok?200:503,{ok:result.ok,source:pdvBase,sync:result,
+          flavorCount:result.ok?business.flavors.length:0,sizeCount:result.ok?business.sizes.length:0,
+          comboCount:result.ok?business.combos.length:0});
+      }
       // Teste de conexão com o PDV usando GUTO_BOT_TOKEN (o token nunca é devolvido).
       // Diagnóstico (admin): mostra exatamente o que o PDV respondeu para um endereço.
       if(p==='/api/pdv/address-test'&&req.method==='POST'){
@@ -624,7 +661,11 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
         if(!aiCfg.apiKey)return json(res,503,{error:`Modelo de IA indisponível: configure ${aiCfg.provider==='gemini'?'GEMINI_API_KEY':'OPENAI_API_KEY'} no servidor. Não há resposta simulada.`});
         try{
           let reply,summary,mode;
-          await store.change(async d=>{const session=d.simulation||newSession();session.simulation=true;session.customerPhone||='41900000000';session.customerName||='Teste Simulador';reply=await intelligentReply(v.text,session,business,aiCfg);session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
+          await store.change(async d=>{const session=d.simulation||newSession();session.simulation=true;session.customerPhone||='41900000000';session.customerName||='Teste Simulador';const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='true'?await syncCatalog():null;
+            reply=await intelligentReply(v.text,session,business,{
+              ...aiCfg,menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED==='true',
+              catalogSynced:pdvSync?.ok===true,iosUrl:env.GUTO_IOS_APP_URL||''
+            });session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
           return json(res,200,{reply,summary,mode,demo:true,provider:aiCfg.provider,pdvOrder:store.peek().simulation?.pdvOrder||null});
         }catch(e){
           const fault=describeAIError(e,aiCfg.provider),errorId=crypto.randomUUID().replaceAll('-','').slice(0,12);

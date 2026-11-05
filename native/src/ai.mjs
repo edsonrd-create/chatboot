@@ -1,4 +1,5 @@
 import {TRAINING_PROTOCOL} from './training.mjs';
+import {cardapioChoice,isCommerceIntent} from './cardapio-whatsapp.mjs';
 import {confirmationReply} from './pdv-order.mjs';
 import {addPizza,addDrink,replaceFlavor,replaceFlavorOneUnit,removeCartItem,addCartNote,setAddress,setPayment,setFulfillment,getSummary,requestConfirmation,confirmRequest,availableCatalog,formatMoney,extractText,publicMenuKnowledge} from './core.mjs';
 
@@ -201,6 +202,13 @@ const QUOTE_PROMPT=q=>`Confira os dados antes de confirmar: 🍕\n${q}\n\nEstá 
 /** WhatsApp usa *negrito* simples; remove markdown que o cliente veria cru. */
 export function whatsappText(t){return String(t||'').replace(/\*\*(.+?)\*\*/g,'*$1*').replace(/^#{1,6}\s+/gm,'').replace(/ {2,}\n/g,'\n');}
 export async function intelligentReply(userText,session,business,cfg={}){
+  if(cfg.menuFlowEnabled===true){
+    const choice=cardapioChoice(session,userText,{iosUrl:cfg.iosUrl||'',catalogSynced:cfg.catalogSynced===true});
+    if(choice)return choice.reply;
+    // Nunca orçar ou confirmar usando o JSON local ou cache quando PDV não foi consultado.
+    if((isCommerceIntent(userText)||session.awaitingConfirmation===true)&&cfg.catalogSynced!==true)
+      return 'Não consegui consultar o cardápio atualizado do PDV agora. Para evitar preços ou disponibilidades incorretos, não vou confirmar seu pedido. Posso chamar um atendente, ou você pode pedir em https://www.gutoexpress.com.br.';
+  }
   const before={confirmed:session.confirmedRequestId,awaiting:session.awaitingConfirmation};
   const reply=await replyCore(userText,session,business,cfg);
   if(session.handoffMessage){const m=session.handoffMessage;delete session.handoffMessage;return m;}
