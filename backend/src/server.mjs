@@ -163,7 +163,7 @@ async function pump(){
          // Never claim to have an AI agent responding when the model is not configured.
          session.mode='HUMAN';session.reason='Modelo de IA não configurado';
          reply='Nosso atendimento automático está indisponível no momento. Vou encaminhar sua conversa à equipe. 😊';
-       }else try{await ensureCatalogReady();reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini',lookupMyOrders:(phone,number)=>readMyPdvOrders(env,phone,number)});}
+       }else try{await ensureCatalogReady();reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini',lookupMyOrders:(phone,number)=>readMyPdvOrders(env,phone,number),pdfAvailable:menuPdfAvailable(),iosUrl:env.GUTO_IOS_APP_URL||''});}
        catch(error){console.error('AI processing failure',error.message);reply='Tive uma dificuldade para consultar as informações agora. Vou encaminhar sua conversa para a equipe. 🙏';session.mode='HUMAN';session.reason='Falha no processamento de IA';}
        if(session.mode==='HUMAN'&&wantsHuman(n.content))reply='Claro! Vou encaminhar seu atendimento para nossa equipe. 😊';
        if(!previouslyHuman && session.mode==='HUMAN'){
@@ -205,7 +205,7 @@ async function flushOutbox(){
   if(!ONLINE || !OUTBOUND_ENABLED)return;
   const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());
   for(const o of outgoing){
-    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});}
+    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private),Boolean(o.attachment));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});}
     catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8){x.state='failed';for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='failed';}}}});}
   }
  }finally{flushing=false;}
