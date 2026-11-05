@@ -81,7 +81,7 @@ test('venda confirmada pelo PDV encerra carrinho; segunda compra começa sem ite
  assert.equal(s.lastCompletedOrderNumber,345);
  assert.equal(s.history.length,0);
  const fresh=await intelligentReply('novo pedido',s,b);
- assert.match(fresh,/pedido novo/i);
+ assert.match(fresh,/Qual sabor ou combo você prefere/i);
  assert.equal(s.cart.length,0);
 });
 test('falha no PDV mantém pedido para revisão mas não mistura com a compra seguinte',async()=>{
@@ -92,7 +92,7 @@ test('falha no PDV mantém pedido para revisão mas não mistura com a compra se
  assert.equal(s.cart.length,1);
  assert.match((await intelligentReply('me manda pix',s,b)),/não foi registrado/i);
  const start=await intelligentReply('novo pedido',s,b);
- assert.match(start,/Começamos um pedido novo/);
+ assert.match(start,/Qual sabor ou combo você prefere/i);
  assert.equal(s.cart.length,0);
  assert.equal(s.payment,null);
  assert.equal(s.manualReviewOrders.length,1);
