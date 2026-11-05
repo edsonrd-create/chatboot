@@ -206,7 +206,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
     const choice=cardapioChoice(session,userText,{iosUrl:cfg.iosUrl||'',catalogSynced:cfg.catalogSynced===true});
     if(choice)return choice.reply;
     // Nunca orçar ou confirmar usando o JSON local ou cache quando PDV não foi consultado.
-    if(isCommerceIntent(userText)&&cfg.catalogSynced!==true)
+    if((isCommerceIntent(userText)||session.awaitingConfirmation===true)&&cfg.catalogSynced!==true)
       return 'Não consegui consultar o cardápio atualizado do PDV agora. Para evitar preços ou disponibilidades incorretos, não vou confirmar seu pedido. Posso chamar um atendente, ou você pode pedir em https://www.gutoexpress.com.br.';
   }
   const before={confirmed:session.confirmedRequestId,awaiting:session.awaitingConfirmation};
