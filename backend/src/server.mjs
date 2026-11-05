@@ -241,6 +241,21 @@ async function router(req,res){
    if(!authed(req))return json(res,401,{error:'Faça login para acessar'});
    if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
    if(p==='/api/dashboard'&&req.method==='GET')return json(res,200,webData());
+   if(p==='/api/menu-pdf'&&req.method==='GET')
+     return json(res,200,{available:menuPdfAvailable(),maxMb:16,format:'PDF'});
+   if(p==='/api/menu-pdf'&&req.method==='POST'){
+     if(!/application\/pdf/i.test(String(req.headers['content-type']||'')))
+       return json(res,415,{error:'Envie somente um arquivo PDF.'});
+     const bytes=await readBody(req,16*1024*1024);
+     if(bytes.length<100 || bytes.subarray(0,5).toString()!=='%PDF-' ||
+       !bytes.subarray(Math.max(0,bytes.length-2048)).toString('latin1').includes('%%EOF'))
+       return json(res,422,{error:'PDF incompleto ou inválido.'});
+     fs.mkdirSync(path.dirname(MENU_PDF_FILE),{recursive:true});
+     const tmp=MENU_PDF_FILE+'.upload';
+     fs.writeFileSync(tmp,bytes,{mode:0o600});
+     fs.renameSync(tmp,MENU_PDF_FILE);
+     return json(res,200,{ok:true,available:true,sizeBytes:bytes.length});
+   }
    if(p==='/api/operations/summary'&&req.method==='GET'){
      const stats=await readPdvOperationsSummary(env);
      return json(res,stats.ok?200:503,stats,{'Cache-Control':'no-store'});
