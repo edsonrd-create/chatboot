@@ -64,7 +64,7 @@ test('JORNADA REALISTA WhatsApp: duas pizzas, nome, entrega, taxa, dinheiro, tro
   assert.equal(s.cart.length,1);
   assert.equal(s.cart[0].quantity,2);
   reply=await say('novo pedido');
-  assert.match(reply,/pedido novo/i);
+  assert.match(reply,/Qual sabor ou combo você prefere/i);
   assert.equal(s.cart.length,0);
   assert.equal(s.cashReceivedCents,null);
   assert.equal(s.cashChangeNeeded,null);
