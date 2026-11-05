@@ -253,9 +253,9 @@ await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
 session.customerPhone=String(m.from||'').replace(/\D/g,'');{const prof=store.peek().customers?.[session.customerPhone];if(prof&&!session.knownCustomer){session.knownCustomer={name:prof.name||'',address:prof.address||'',neighborhood:prof.neighborhood||''};if(Array.isArray(prof.orderRefs))session.orderRefs=[...new Set([...prof.orderRefs,...(session.orderRefs||[])])].slice(-5);if(!session.customerName&&prof.name)session.customerName=prof.name;}}if(!session.customerName){const nm=store.peek().threads?.[tid]?.customerName;if(nm&&!/^\d+$/.test(nm))session.customerName=String(nm).slice(0,80);}
 try{
-  const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='false'?null:await syncCatalog();
+  const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='true'?await syncCatalog():null;
   reply=await withAiSlot(()=>respondWithAI(text,session,business,{
-    ...aiCfg,menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED!=='false',
+    ...aiCfg,menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED==='true',
     catalogSynced:pdvSync?.ok===true,iosUrl:env.GUTO_IOS_APP_URL||''
   }));
 }
@@ -661,9 +661,9 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
         if(!aiCfg.apiKey)return json(res,503,{error:`Modelo de IA indisponível: configure ${aiCfg.provider==='gemini'?'GEMINI_API_KEY':'OPENAI_API_KEY'} no servidor. Não há resposta simulada.`});
         try{
           let reply,summary,mode;
-          await store.change(async d=>{const session=d.simulation||newSession();session.simulation=true;session.customerPhone||='41900000000';session.customerName||='Teste Simulador';const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='false'?null:await syncCatalog();
+          await store.change(async d=>{const session=d.simulation||newSession();session.simulation=true;session.customerPhone||='41900000000';session.customerName||='Teste Simulador';const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='true'?await syncCatalog():null;
             reply=await intelligentReply(v.text,session,business,{
-              ...aiCfg,menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED!=='false',
+              ...aiCfg,menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED==='true',
               catalogSynced:pdvSync?.ok===true,iosUrl:env.GUTO_IOS_APP_URL||''
             });session.history.push({role:'user',content:v.text},{role:'assistant',content:reply});session.history=session.history.slice(-30);d.simulation=session;summary=getSummary(session,business);mode=session.mode;});
           return json(res,200,{reply,summary,mode,demo:true,provider:aiCfg.provider,pdvOrder:store.peek().simulation?.pdvOrder||null});
