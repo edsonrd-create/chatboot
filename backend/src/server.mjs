@@ -7,6 +7,7 @@ import {FileStore} from './store.mjs';
 import {verifyChatwootSignature,normalizeEvent,newSession,getSummary,normalizeBrazilPhone} from './core.mjs';
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
 import {loadCatalogV2ForBot} from './catalog-v2-adapter.mjs';
+import {readMyPdvOrders,readPdvOperationsSummary} from './pdv-operations-adapter.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
@@ -116,7 +117,13 @@ async function pump(){
      // Origem do telefone: contato informado pela plataforma, nunca pesquisa arbitrária.
      // Não é prova de titularidade do cadastro no PDV.
      const inboundPhone=normalizeBrazilPhone(n.senderPhone);
-     if(inboundPhone && !session.customerPhone)session.customerPhone=inboundPhone;
+     if(inboundPhone && session.trustedPhone && session.trustedPhone!==inboundPhone){
+       session.mode='HUMAN';session.reason='Origem WhatsApp alterada durante a conversa';
+     }
+     if(inboundPhone){
+       session.trustedPhone=inboundPhone;
+       if(!session.customerPhone)session.customerPhone=inboundPhone;
+     }
      session.sender=n.sender;session.inboxId=n.inboxId;session.updatedAt=new Date().toISOString();
      // Keep incoming messages visible to human attendants even after handoff.
      session.history.push({role:'user',content:n.content.slice(0,2000)});
@@ -128,7 +135,7 @@ async function pump(){
          // Never claim to have an AI agent responding when the model is not configured.
          session.mode='HUMAN';session.reason='Modelo de IA não configurado';
          reply='Nosso atendimento automático está indisponível no momento. Vou encaminhar sua conversa à equipe. 😊';
-       }else try{await ensureCatalogReady();reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}
+       }else try{await ensureCatalogReady();reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini',lookupMyOrders:(phone,number)=>readMyPdvOrders(env,phone,number)});}
        catch(error){console.error('AI processing failure',error.message);reply='Tive uma dificuldade para consultar as informações agora. Vou encaminhar sua conversa para a equipe. 🙏';session.mode='HUMAN';session.reason='Falha no processamento de IA';}
        if(session.mode==='HUMAN'&&wantsHuman(n.content))reply='Claro! Vou encaminhar seu atendimento para nossa equipe. 😊';
        if(!previouslyHuman && session.mode==='HUMAN'){
@@ -194,6 +201,10 @@ async function router(req,res){
    if(!authed(req))return json(res,401,{error:'Faça login para acessar'});
    if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
    if(p==='/api/dashboard'&&req.method==='GET')return json(res,200,webData());
+   if(p==='/api/operations/summary'&&req.method==='GET'){
+     const stats=await readPdvOperationsSummary(env);
+     return json(res,stats.ok?200:503,stats,{'Cache-Control':'no-store'});
+   }
    if(p==='/api/channels/status'&&req.method==='GET')return json(res,200,{provider:'Chatwoot / Meta Cloud API',channels:channelStatus(),qrGenerated:false,notice:'O QR Code ou código de verificação, quando disponível, é gerado apenas pela Meta no fluxo oficial.'});
    if(p==='/api/inbox/conversations'&&req.method==='GET')return json(res,200,{items:inboxRows(),channels:channelStatus()});
    const inboxDetail=p.match(/^\/api\/inbox\/conversations\/([^/]+)$/);
