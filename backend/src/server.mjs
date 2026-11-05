@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {FileStore} from './store.mjs';
-import {verifyChatwootSignature,normalizeEvent,newSession,getSummary} from './core.mjs';
+import {verifyChatwootSignature,normalizeEvent,newSession,getSummary,normalizeBrazilPhone} from './core.mjs';
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
 import {loadCatalogV2ForBot} from './catalog-v2-adapter.mjs';
 
@@ -113,6 +113,10 @@ async function pump(){
     const result=await store.tx(async d=>{
      const evt=d.events[e.id];if(!evt||evt.state!=='pending')return null;
      const {n}=evt;const session=d.sessions[n.key]||newSession();
+     // Origem do telefone: contato informado pela plataforma, nunca pesquisa arbitrária.
+     // Não é prova de titularidade do cadastro no PDV.
+     const inboundPhone=normalizeBrazilPhone(n.senderPhone);
+     if(inboundPhone && !session.customerPhone)session.customerPhone=inboundPhone;
      session.sender=n.sender;session.inboxId=n.inboxId;session.updatedAt=new Date().toISOString();
      // Keep incoming messages visible to human attendants even after handoff.
      session.history.push({role:'user',content:n.content.slice(0,2000)});
@@ -137,7 +141,7 @@ async function pump(){
        if(!d.outbox[oid])d.outbox[oid]={id:oid,accountId:n.accountId,conversationId:n.conversationId,content:reply.slice(0,3000),state:'pending',attempts:0,nextAt:Date.now()};
        if(session.lastConfirmed){
          if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId)){
-           d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:n.accountId,inboxId:n.inboxId,conversationId:n.conversationId,customer:n.sender,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote});
+           d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:n.accountId,inboxId:n.inboxId,conversationId:n.conversationId,customer:session.customerName||n.sender,customerPhone:session.customerPhone,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote});
          }
          delete session.lastConfirmed;
        }
@@ -241,7 +245,7 @@ async function router(req,res){
      let reply;
      try{await ensureCatalogReady();reply=await intelligentReply(m.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}catch(e){return json(res,503,{error:'IA indisponível: '+e.message});}
      session.history.push({role:'user',content:m.content},{role:'assistant',content:reply});session.history=session.history.slice(-30);
-     await store.tx(d=>{if(session.lastConfirmed){if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId))d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:0,inboxId:0,conversationId:1,customer:'Cliente (simulador)',status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote,demo:true});delete session.lastConfirmed;}d.sessions[key]=session;});
+     await store.tx(d=>{if(session.lastConfirmed){if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId))d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:0,inboxId:0,conversationId:1,customer:session.customerName||'Cliente (simulador)',customerPhone:session.customerPhone||null,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote,demo:true});delete session.lastConfirmed;}d.sessions[key]=session;});
      return json(res,200,{reply,summary:getSummary(session,business),mode:session.mode});
    }
    if(p==='/api/simulate/reset'&&req.method==='POST'){
