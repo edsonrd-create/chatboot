@@ -222,7 +222,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
   if(session.pdvOrder?.ok===false && session.lastConfirmed){
     return 'Seu pedido anterior *não foi registrado no PDV*. Encaminhei a situação para conferência de um atendente; não vou gerar PIX nem enviar uma venda duplicada. Se quiser começar uma compra diferente, responda *novo pedido*.';
   }
-  if(session.lastDryRunRequestId && !(session.cart||[]).length && /\b(pix|pagamento|confirmo|confirmar|pedido)\b/.test(normalizedInput)){
+  if(session.lastDryRunRequestId && session.lastConfirmed?.requestId===session.lastDryRunRequestId && /\b(pix|pagamento|confirmo|confirmar|pedido)\b/.test(normalizedInput)){
     return 'A última solicitação foi apenas *validada em homologação*, sem registro de venda nem cobrança. Não há código PIX para ela. Para começar, responda *novo pedido*.';
   }
   if(cfg.menuFlowEnabled===true){
