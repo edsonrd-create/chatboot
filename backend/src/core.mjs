@@ -20,7 +20,7 @@ export function normalizeEvent(event, configuredInboxes=[], configuredAccount=nu
   return {inboxId,conversationId,accountId,messageId,content:event.content.trim(),sender: String(event.sender?.name || 'Cliente').slice(0,80),senderPhone: String(event.sender?.phone_number || event.conversation?.meta?.sender?.phone_number || '').slice(0,32),key:`${accountId}:${inboxId}:${conversationId}`,eventKey:`${accountId}:${messageId}`};
 }
 
-export const newSession = ()=>({mode:'BOT',cart:[],customerName:null,customerPhone:null,customerPhoneVerified:false,cartOwnerConfirmed:false,address:null,payment:null,fulfillment:'DELIVERY',awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
+export const newSession = ()=>({mode:'BOT',cart:[],customerName:null,customerPhone:null,customerPhoneVerified:false,cartOwnerConfirmed:false,address:null,neighborhood:null,payment:null,fulfillment:'DELIVERY',awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
 /** Número de origem confiável do webhook é diferente de número informado em uma mensagem. */
 export function normalizeBrazilPhone(phone) {
   if(typeof phone !== 'string')return null;
@@ -44,7 +44,7 @@ export function setCustomer(session,{name,phone,verifiedSource=false}={}) {
   return {ok:true,name:cleanName,phone:cleanPhone,phoneVerified:session.customerPhoneVerified};
 }
 function invalidateQuote(session){session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;session.confirmedRequestId=null;}
-export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,payment:quote.payment,fulfillment:quote.fulfillment,customerName:quote.customerName,customerPhone:quote.customerPhone,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
+export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,neighborhood:quote.neighborhood,payment:quote.payment,fulfillment:quote.fulfillment,customerName:quote.customerName,customerPhone:quote.customerPhone,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
 export function extractText(response) {
   if (typeof response?.output_text === 'string') return response.output_text.trim();
   return (response?.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n').trim();
@@ -148,20 +148,22 @@ export function getSummary(session,business) {
   const fulfillment=session.fulfillment||'DELIVERY';
   const deliveryFeeCents=fulfillment==='PICKUP'?0:Number.isSafeInteger(business.deliveryFeeCents) && session.address?business.deliveryFeeCents:null;
   const totalCents=subtotalCents!==null && deliveryFeeCents!==null?subtotalCents+deliveryFeeCents:null;
-  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,customerName:session.customerName??null,customerPhone:session.customerPhone??null,missing:[...(session.customerName&&session.customerPhone?[]:['nome e telefone do cliente']),...(items.length?[]:['itens']),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
+  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,neighborhood:fulfillment==='PICKUP'?null:session.neighborhood,payment:session.payment,customerName:session.customerName??null,customerPhone:session.customerPhone??null,missing:[...(session.customerName&&session.customerPhone?[]:['nome e telefone do cliente']),...(items.length?[]:['itens']),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
 }
 
 /** Modalidade explícita, sem presumir entrega quando o cliente escolheu retirada. */
 export function setFulfillment(session,{method}){
   if(!['DELIVERY','PICKUP'].includes(method))return {ok:false,error:'Selecione entrega ou retirada.'};
   session.fulfillment=method;
-  if(method==='PICKUP')session.address=null;
+  if(method==='PICKUP'){session.address=null;session.neighborhood=null;}
   invalidateQuote(session);
   return {ok:true,fulfillment:method};
 }
-export function setAddress(session,{address}) {
+export function setAddress(session,{address,neighborhood}) {
   if(typeof address!=='string'||address.trim().length<12 || address.length>500)return {ok:false,error:'Solicite endereço completo com rua, número, bairro e cidade.'};
-  session.address=address.trim();session.fulfillment='DELIVERY';invalidateQuote(session);return {ok:true,address:session.address};
+  session.address=address.trim();
+  session.neighborhood=typeof neighborhood==='string'&&neighborhood.trim().length>=2&&neighborhood.length<=80?neighborhood.trim():null;
+  session.fulfillment='DELIVERY';invalidateQuote(session);return {ok:true,address:session.address,neighborhood:session.neighborhood};
 }
 export function setPayment(session,{method}){
   if(!['PIX','CARTAO','DINHEIRO'].includes(method))return {ok:false,error:'Forma de pagamento inválida.'};
