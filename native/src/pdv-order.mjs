@@ -2,6 +2,7 @@
 // O PDV recalcula preço, taxa e total e decide se grava (modo "active") ou só valida (modo "test").
 // O bot NUNCA declara pagamento confirmado: o Pix só é dado como pago pela conciliação do PDV.
 import {formatMoney,resetCartAfterOrder} from './core.mjs';
+import {reconcilePdvOrder} from './pdv-reconcile.mjs';
 
 const PAY = {PIX: 'pix', CARTAO: 'card', DINHEIRO: 'cash'};
 
@@ -90,7 +91,14 @@ export async function submitPdvOrder(session, business, confirmed) {
       session.mode='HUMAN';session.reason='Simulador sem modo teste validado no PDV';
       return {ok:false,error:'SIMULATION_REQUIRES_TEST_MODE'};
     }
-    const res = await business.submitOrder(body);
+    let res;
+    try{res=await business.submitOrder(body);}
+    catch(e){res={ok:false,error:'PDV_NO_RESPONSE'};}
+    if(!res?.dryRun && (!res?.ok || !Number.isSafeInteger(Number(res.number)) || Number(res.number)<1)){
+      const recovered=await reconcilePdvOrder(body.externalId,business.orderStatus);
+      if(recovered)res=recovered;
+      else if(res?.ok)res={ok:false,error:'PDV_REGISTRATION_UNCONFIRMED'};
+    }
     session.pdvOrder = {at: new Date().toISOString(), ok: !!res?.ok, dryRun: !!res?.dryRun, number: res?.number ?? null, totalCents: res?.totalCents ?? null, paymentStatus: res?.paymentStatus ?? null, error: res?.ok ? null : String(res?.error || 'erro').slice(0, 200)};
     session.pdvOrder.externalId = body.externalId;
     if(res?.ok && res?.dryRun){
@@ -114,7 +122,7 @@ export async function confirmationReply(session, business, out, fallback) {
   const res = await submitPdvOrder(session, business, out);
   if (res?.alreadyProcessed) return 'Esse pedido já foi processado; não vou enviá-lo novamente ao PDV.';
   if (res?.skipped) return 'Não consegui enviar a solicitação ao PDV. Vou chamar um atendente para verificar antes de confirmar.';
-  if (!res?.ok) return '⚠️ Seu pedido NÃO foi registrado no PDV e nenhum PIX foi gerado. Vou chamar um atendente para verificar a integração e finalizar com segurança. Não é necessário repetir as pizzas.';
+  if (!res?.ok) return '⚠️ Ainda não consegui confirmar o registro do pedido no PDV. Vou encaminhar para conferência de um atendente. Não repita as pizzas nem faça pagamento até confirmarmos o número do pedido.';
   if(res.dryRun)return 'Sua solicitação foi validada em *homologação*, mas não foi registrada como pedido no PDV nem enviada à cozinha. Um atendente pode conferir os dados.';
   return pdvOrderMessage(res, out.quote) || fallback;
 }

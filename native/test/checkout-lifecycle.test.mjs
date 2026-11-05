@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {catalogFromPdvMenu} from '../src/pdv-catalog.mjs';
-import {newSession,addPizza,confirmCustomerName,setFulfillment,setPayment,requestConfirmation,confirmRequest,getSummary,beginNewOrder} from '../src/core.mjs';
+import {newSession,addPizza,confirmCustomerName,setFulfillment,setAddress,setPayment,requestConfirmation,confirmRequest,getSummary,beginNewOrder} from '../src/core.mjs';
 import {intelligentReply} from '../src/ai.mjs';
 import {confirmationReply} from '../src/pdv-order.mjs';
 const base=JSON.parse(fs.readFileSync(new URL('../config/business.json',import.meta.url),'utf8'));
@@ -87,7 +87,7 @@ test('venda confirmada pelo PDV encerra carrinho; segunda compra começa sem ite
 test('falha no PDV mantém pedido para revisão mas não mistura com a compra seguinte',async()=>{
  const s=quoted();b.pdvMode=async()=> 'off';
  const response=await intelligentReply('Confirmo',s,b);
- assert.match(response,/NÃO foi registrado/i);
+ assert.match(response,/não consegui confirmar o registro/i);
  assert.equal(s.mode,'HUMAN');
  assert.equal(s.cart.length,1);
  assert.match((await intelligentReply('me manda pix',s,b)),/não foi registrado/i);
@@ -97,4 +97,15 @@ test('falha no PDV mantém pedido para revisão mas não mistura com a compra se
  assert.equal(s.payment,null);
  assert.equal(s.manualReviewOrders.length,1);
  assert.equal(s.manualReviewOrders[0].quote.items.length,1);
+});
+
+test('WhatsApp real não aprova entrega sem validação oficial do endereço',()=>{
+ const s=prepared();
+ s.enforcePdvAddressValidation=true;
+ setFulfillment(s,{method:'DELIVERY'});
+ setAddress(s,{address:'Rua das Flores, 100, Centro, Colombo'});
+ s.deliveryFeeCents=650;
+ assert.ok(getSummary(s,b).missing.includes('taxa de entrega validada'));
+ s.addressCheck={checkedAt:new Date().toISOString(),formatted:s.address};
+ assert.equal(getSummary(s,b).deliveryFeeCents,650);
 });
