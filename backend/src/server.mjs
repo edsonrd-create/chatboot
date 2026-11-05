@@ -91,7 +91,7 @@ const inboxRows=()=>Object.entries(store.snapshot().sessions)
 const orderSummary=(s)=>({cart:getSummary(s,business).items,address:s.address,payment:s.payment});
 
 async function postMessage(accountId,conversationId,content,isPrivate=false,attachment=false){
- const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),12000);
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),attachment?45000:12000);
  try{
   const url=`${CW_HOST.replace(/\/$/,'')}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
   let headers,body;
