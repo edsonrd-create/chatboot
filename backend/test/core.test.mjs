@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {verifyChatwootSignature,normalizeEvent,newSession,addPizza,addDrink,getSummary,setAddress,setPayment,requestConfirmation,confirmRequest,quoteFingerprint} from '../src/core.mjs';
+import {verifyChatwootSignature,normalizeEvent,newSession,normalizeBrazilPhone,setCustomer,addPizza,addDrink,getSummary,setAddress,setPayment,requestConfirmation,confirmRequest,quoteFingerprint} from '../src/core.mjs';
 import {applyTool,explicitYes,wantsHuman,localReply} from '../src/ai.mjs';
 import {FileStore} from '../src/store.mjs';
 import os from 'node:os';
@@ -48,20 +48,20 @@ test('suporta pedido com bebida, endereço e total em centavos',()=>{
  const q=getSummary(s,b);assert.equal(q.subtotalCents,7199);assert.equal(q.deliveryFeeCents,700);assert.equal(q.totalCents,7899);
 });
 test('não confirma sem resumo efetivamente apresentado ao cliente',()=>{
- const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
+ const b=validBusiness(),s=newSession();setCustomer(s,{name:'Cliente Exemplo',phone:'41999998888'});addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
  assert.equal(requestConfirmation(s,b).ok,true);
  assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,false);
  s.quotePresented=true;
  assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,true);
 });
 test('duplicação da confirmação mantém mesmo identificador',()=>{
- const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
+ const b=validBusiness(),s=newSession();setCustomer(s,{name:'Cliente Exemplo',phone:'41999998888'});addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
  requestConfirmation(s,b);s.quotePresented=true;
  const first=confirmRequest(s,b,{explicitConfirmation:true});const second=confirmRequest(s,b,{explicitConfirmation:true});
  assert.equal(first.requestId,second.requestId);
 });
 test('alteração de preço entre orçamento e confirmação bloqueia registro',()=>{
- const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
+ const b=validBusiness(),s=newSession();setCustomer(s,{name:'Cliente Exemplo',phone:'41999998888'});addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
  requestConfirmation(s,b);s.quotePresented=true;b.pizzas.calabresa.grande=6999;
  assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,false);
 });
@@ -93,4 +93,39 @@ test('FileStore persiste operações e serializa gravações',async t=>{
  const file=path.join(dir,'state.json'),store=new FileStore(file).init();
  await Promise.all(Array.from({length:30},()=>store.tx(d=>{d.nextOrder++;})));
  assert.equal(store.snapshot().nextOrder,31);assert.equal(new FileStore(file).init().snapshot().nextOrder,31);
+});
+
+test('pedido completo exige nome e telefone válidos, sem inventar identidade',()=>{
+ const b=validBusiness(),s=newSession();
+ addPizza(s,b,{size:'grande',flavors:['calabresa']});
+ setAddress(s,{address:'Rua do Teste 100, bairro centro, Colombo'});
+ setPayment(s,{method:'PIX'});
+ assert.equal(requestConfirmation(s,b).ok,false);
+ assert.match(getSummary(s,b).missing.join(','),/nome e telefone/);
+ assert.equal(setCustomer(s,{name:'Cliente',phone:'41999998888'}).ok,false);
+ assert.equal(setCustomer(s,{name:'Cliente Exemplo',phone:'123'}).ok,false);
+ const result=setCustomer(s,{name:'Cliente Exemplo',phone:'(41) 99999-8888'});
+ assert.equal(result.ok,true);
+ assert.equal(result.phone,'+5541999998888');
+ assert.equal(requestConfirmation(s,b).ok,true);
+ s.quotePresented=true;
+ assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,true);
+});
+test('alteração de contato invalida cotação já apresentada',()=>{
+ const b=validBusiness(),s=newSession();
+ setCustomer(s,{name:'Ana Silva',phone:'41999998888'});
+ addPizza(s,b,{size:'grande',flavors:['calabresa']});
+ setAddress(s,{address:'Rua do Teste 100, bairro centro, Colombo'});
+ setPayment(s,{method:'PIX'});
+ assert.equal(requestConfirmation(s,b).ok,true);
+ s.quotePresented=true;
+ setCustomer(s,{name:'Ana Silva',phone:'41988887777'});
+ assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,false);
+});
+test('normalização do contato e isolamento de canais',()=>{
+ assert.equal(normalizeBrazilPhone('+55 (41) 99999-8888'),'+5541999998888');
+ assert.equal(normalizeBrazilPhone('0000000000'),null);
+ const n=normalizeEvent({...event,sender:{name:'Pessoa Teste',phone_number:'+55 (41) 99999-8888'}},[11,22],9);
+ assert.equal(n.senderPhone,'+55 (41) 99999-8888');
+ assert.equal(normalizeEvent({...event,inbox:{id:44},sender:{phone_number:'41999998888'}},[11,22],9),null);
 });

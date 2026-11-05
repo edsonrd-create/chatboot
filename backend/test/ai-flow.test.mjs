@@ -18,6 +18,7 @@ test('motor de IA chama ferramentas, apresenta orçamento do servidor e exige co
      {type:'function_call',call_id:'pizza',name:'adicionar_pizza',arguments:JSON.stringify({size:'grande',flavors:['calabresa'],quantity:1})},
      {type:'function_call',call_id:'addr',name:'definir_endereco',arguments:JSON.stringify({address:'Rua das Acácias 100, Centro, Curitiba'})},
      {type:'function_call',call_id:'pay',name:'definir_pagamento',arguments:JSON.stringify({method:'PIX'})},
+     {type:'function_call',call_id:'customer',name:'registrar_cliente',arguments:JSON.stringify({name:'Pessoa Teste',phone:'41999998888'})},
    ]:[{type:'function_call',call_id:'quote',name:'solicitar_confirmacao',arguments:'{}'}];
    return {ok:true,json:async()=>({output:out})};
  };

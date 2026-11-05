@@ -4,8 +4,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {FileStore} from './store.mjs';
-import {verifyChatwootSignature,normalizeEvent,newSession,getSummary} from './core.mjs';
+import {verifyChatwootSignature,normalizeEvent,newSession,getSummary,normalizeBrazilPhone} from './core.mjs';
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
+import {loadCatalogV2ForBot} from './catalog-v2-adapter.mjs';
+import {readMyPdvOrders,readPdvOperationsSummary,readRegisteredPdvCustomer} from './pdv-operations-adapter.mjs';
+import {previewPdvOrder} from './pdv-order-preview.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
@@ -19,6 +22,8 @@ const CW_ACCOUNT=Number(env.CHATWOOT_ACCOUNT_ID||0);
 const RAW_INBOXES=[env.CHATWOOT_INBOX_1,env.CHATWOOT_INBOX_2].map(Number);
 const INBOXES=RAW_INBOXES.filter(x=>Number.isSafeInteger(x)&&x>0);
 const DATA_FILE=path.resolve(projectRoot,env.DATA_FILE||'./data/state.json');
+const MENU_PDF_FILE=path.join(path.dirname(DATA_FILE),'cardapio-whatsapp.pdf');
+const menuPdfAvailable=()=>{try{const s=fs.statSync(MENU_PDF_FILE);return s.isFile()&&s.size>100&&s.size<=16*1024*1024;}catch{return false;}};
 const BUSINESS_FILE=path.resolve(projectRoot,env.BUSINESS_FILE||'./config/business.json');
 const CW_HOST=env.CHATWOOT_BASE_URL||'';
 const CW_TOKEN=env.CHATWOOT_API_TOKEN||'';
@@ -32,6 +37,15 @@ if(ONLINE && env.NODE_ENV==='production' && env.DATA_FILE?.includes('tmp'))throw
 const store=new FileStore(DATA_FILE).init();
 if(!fs.existsSync(BUSINESS_FILE)){fs.mkdirSync(path.dirname(BUSINESS_FILE),{recursive:true});fs.copyFileSync(path.join(projectRoot,'config','business.json'),BUSINESS_FILE);}
 let business=JSON.parse(fs.readFileSync(BUSINESS_FILE,'utf8'));
+let lastV2Read=0;
+async function ensureCatalogReady(){
+  if(env.CARDAPIO_V2_BOT_READ_ENABLED!=='true')return;
+  if(Date.now()-lastV2Read<15000)return;
+  const result=await loadCatalogV2ForBot(env,business);
+  if(result.source!=='v2')throw new Error("Cardápio V2 indisponível: "+result.reason);
+  business=result.business;
+  lastV2Read=Date.now();
+}
 const PUBLIC=path.join(projectRoot,'public');
 
 const json=(res,status,obj,headers={})=>respond(res,status,JSON.stringify(obj),{'content-type':'application/json; charset=utf-8',...headers});
@@ -76,11 +90,25 @@ const inboxRows=()=>Object.entries(store.snapshot().sessions)
  .sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
 const orderSummary=(s)=>({cart:getSummary(s,business).items,address:s.address,payment:s.payment});
 
-async function postMessage(accountId,conversationId,content,isPrivate=false){
- const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),12000);
+async function postMessage(accountId,conversationId,content,isPrivate=false,attachment=false){
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),attachment?45000:12000);
  try{
   const url=`${CW_HOST.replace(/\/$/,'')}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-  const r=await fetch(url,{method:'POST',signal:controller.signal,headers:{api_access_token:CW_TOKEN,'content-type':'application/json'},body:JSON.stringify({content,message_type:'outgoing',private:isPrivate})});
+  let headers,body;
+  if(attachment){
+    if(!menuPdfAvailable())throw Error('Arquivo PDF indisponível');
+    const form=new FormData();
+    form.append('content',content);
+    form.append('message_type','outgoing');
+    form.append('private',String(Boolean(isPrivate)));
+    form.append('attachments[]',new Blob([fs.readFileSync(MENU_PDF_FILE)],{type:'application/pdf'}),'Cardapio-Guto-Express.pdf');
+    headers={api_access_token:CW_TOKEN};
+    body=form;
+  }else{
+    headers={api_access_token:CW_TOKEN,'content-type':'application/json'};
+    body=JSON.stringify({content,message_type:'outgoing',private:isPrivate});
+  }
+  const r=await fetch(url,{method:'POST',signal:controller.signal,headers,body});
   if(!r.ok)throw new Error(`Chatwoot HTTP ${r.status}`);
  }finally{clearTimeout(timer);}
 }
@@ -103,6 +131,27 @@ async function pump(){
     const result=await store.tx(async d=>{
      const evt=d.events[e.id];if(!evt||evt.state!=='pending')return null;
      const {n}=evt;const session=d.sessions[n.key]||newSession();
+     // Origem do telefone: contato informado pela plataforma, nunca pesquisa arbitrária.
+     // Não é prova de titularidade do cadastro no PDV.
+     const inboundPhone=normalizeBrazilPhone(n.senderPhone);
+     if(inboundPhone && session.trustedPhone && session.trustedPhone!==inboundPhone){
+       session.mode='HUMAN';session.reason='Origem WhatsApp alterada durante a conversa';
+     }
+     if(inboundPhone){
+       session.trustedPhone=inboundPhone;
+       if(!session.customerPhone)session.customerPhone=inboundPhone;
+     }
+     // Consulta restrita ao mesmo número; o nome retornado NÃO confirma identidade.
+     if(inboundPhone && !session.customerName && !session.registeredCustomerName &&
+        env.PDV_OPERATIONS_READ_ENABLED==='true'){
+       const profile=await readRegisteredPdvCustomer(env,inboundPhone);
+       if(profile.ok && profile.found && !profile.blocked)
+         session.registeredCustomerName=profile.name;
+       if(profile.ok && profile.blocked){
+         session.mode='HUMAN';
+         session.reason='Cadastro requer verificação da equipe';
+       }
+     }
      session.sender=n.sender;session.inboxId=n.inboxId;session.updatedAt=new Date().toISOString();
      // Keep incoming messages visible to human attendants even after handoff.
      session.history.push({role:'user',content:n.content.slice(0,2000)});
@@ -114,20 +163,32 @@ async function pump(){
          // Never claim to have an AI agent responding when the model is not configured.
          session.mode='HUMAN';session.reason='Modelo de IA não configurado';
          reply='Nosso atendimento automático está indisponível no momento. Vou encaminhar sua conversa à equipe. 😊';
-       }else try{reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}
+       }else try{await ensureCatalogReady();reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini',lookupMyOrders:(phone,number)=>readMyPdvOrders(env,phone,number),pdfAvailable:menuPdfAvailable(),iosUrl:env.GUTO_IOS_APP_URL||''});}
        catch(error){console.error('AI processing failure',error.message);reply='Tive uma dificuldade para consultar as informações agora. Vou encaminhar sua conversa para a equipe. 🙏';session.mode='HUMAN';session.reason='Falha no processamento de IA';}
        if(session.mode==='HUMAN'&&wantsHuman(n.content))reply='Claro! Vou encaminhar seu atendimento para nossa equipe. 😊';
        if(!previouslyHuman && session.mode==='HUMAN'){
          const noteId=`handoff:${evt.id}`;
          if(!d.outbox[noteId])d.outbox[noteId]={id:noteId,accountId:n.accountId,conversationId:n.conversationId,content:`[Guto Bot] Atendimento humano solicitado. Motivo: ${String(session.reason||'necessita conferência').slice(0,200)}. IA pausada para esta conversa.`,private:true,state:'pending',attempts:0,nextAt:Date.now()};
        }
+       // Apenas o modo TESTE do PDV pode ser acionado nesta homologação.
+       if(session.lastConfirmed && env.PDV_BOT_ORDER_TEST_ENABLED==='true'){
+         const dryRun=await previewPdvOrder(env,session.lastConfirmed,session,business);
+         session.lastConfirmed.pdvDryRun=dryRun;
+         if(!dryRun.ok){
+           session.mode='HUMAN';
+           session.reason='Pré-validação de pedido no PDV exige conferência: '+String(dryRun.error).slice(0,80);
+           reply='Recebi os dados do pedido, mas ainda preciso que a equipe valide a integração com o PDV antes de confirmar qualquer operação. 🍕';
+         }
+       }
        session.history.push({role:'assistant',content:reply.slice(0,3000),delivery:'queued',outboxId:`reply:${evt.id}`});
        session.history=session.history.slice(-100);
        const oid=`reply:${evt.id}`;
-       if(!d.outbox[oid])d.outbox[oid]={id:oid,accountId:n.accountId,conversationId:n.conversationId,content:reply.slice(0,3000),state:'pending',attempts:0,nextAt:Date.now()};
+       const attachMenu=Boolean(session.pendingMenuPdf)&&menuPdfAvailable();
+       delete session.pendingMenuPdf;
+       if(!d.outbox[oid])d.outbox[oid]={id:oid,accountId:n.accountId,conversationId:n.conversationId,content:reply.slice(0,3000),attachment:attachMenu,state:'pending',attempts:0,nextAt:Date.now()};
        if(session.lastConfirmed){
          if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId)){
-           d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:n.accountId,inboxId:n.inboxId,conversationId:n.conversationId,customer:n.sender,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote});
+           d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:n.accountId,inboxId:n.inboxId,conversationId:n.conversationId,customer:session.customerName||n.sender,customerPhone:session.customerPhone,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote});
          }
          delete session.lastConfirmed;
        }
@@ -146,7 +207,7 @@ async function flushOutbox(){
   if(!ONLINE || !OUTBOUND_ENABLED)return;
   const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());
   for(const o of outgoing){
-    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});}
+    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private),Boolean(o.attachment));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});}
     catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8){x.state='failed';for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='failed';}}}});}
   }
  }finally{flushing=false;}
@@ -180,6 +241,25 @@ async function router(req,res){
    if(!authed(req))return json(res,401,{error:'Faça login para acessar'});
    if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
    if(p==='/api/dashboard'&&req.method==='GET')return json(res,200,webData());
+   if(p==='/api/menu-pdf'&&req.method==='GET')
+     return json(res,200,{available:menuPdfAvailable(),maxMb:16,format:'PDF'});
+   if(p==='/api/menu-pdf'&&req.method==='POST'){
+     if(!/application\/pdf/i.test(String(req.headers['content-type']||'')))
+       return json(res,415,{error:'Envie somente um arquivo PDF.'});
+     const bytes=await readBody(req,16*1024*1024);
+     if(bytes.length<100 || bytes.subarray(0,5).toString()!=='%PDF-' ||
+       !bytes.subarray(Math.max(0,bytes.length-2048)).toString('latin1').includes('%%EOF'))
+       return json(res,422,{error:'PDF incompleto ou inválido.'});
+     fs.mkdirSync(path.dirname(MENU_PDF_FILE),{recursive:true});
+     const tmp=MENU_PDF_FILE+'.upload';
+     fs.writeFileSync(tmp,bytes,{mode:0o600});
+     fs.renameSync(tmp,MENU_PDF_FILE);
+     return json(res,200,{ok:true,available:true,sizeBytes:bytes.length});
+   }
+   if(p==='/api/operations/summary'&&req.method==='GET'){
+     const stats=await readPdvOperationsSummary(env);
+     return json(res,stats.ok?200:503,stats,{'Cache-Control':'no-store'});
+   }
    if(p==='/api/channels/status'&&req.method==='GET')return json(res,200,{provider:'Chatwoot / Meta Cloud API',channels:channelStatus(),qrGenerated:false,notice:'O QR Code ou código de verificação, quando disponível, é gerado apenas pela Meta no fluxo oficial.'});
    if(p==='/api/inbox/conversations'&&req.method==='GET')return json(res,200,{items:inboxRows(),channels:channelStatus()});
    const inboxDetail=p.match(/^\/api\/inbox\/conversations\/([^/]+)$/);
@@ -215,7 +295,7 @@ async function router(req,res){
    if(p==='/api/business'&&req.method==='PUT'){
      let b;try{b=JSON.parse((await readBody(req,200*1024)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
      if(!validateBusiness(b))return json(res,422,{error:'Cardápio inválido: confira preços em centavos, tamanhos, bebidas e políticas de meia a meia.'});
-     const temp=BUSINESS_FILE+'.tmp';fs.writeFileSync(temp,JSON.stringify(b,null,2));fs.renameSync(temp,BUSINESS_FILE);business=b;return json(res,200,{ok:true});
+     const temp=BUSINESS_FILE+'.tmp';fs.writeFileSync(temp,JSON.stringify(b,null,2));fs.renameSync(temp,BUSINESS_FILE);business=b;lastV2Read=0;return json(res,200,{ok:true});
    }
    if(p==='/api/ai/check'&&req.method==='POST'){
      if(!env.OPENAI_API_KEY)return json(res,503,{ok:false,error:'IA real não configurada. Configure OPENAI_API_KEY somente no servidor.'});
@@ -229,9 +309,9 @@ async function router(req,res){
      const key='demo:0:1';const session=store.snapshot().sessions[key]||newSession();
      if(session.mode==='HUMAN')return json(res,200,{reply:'A conversa está com um atendente. Reinicie o teste para retornar ao bot.',session});
      let reply;
-     try{reply=await intelligentReply(m.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}catch(e){return json(res,503,{error:'IA indisponível: '+e.message});}
+     try{await ensureCatalogReady();reply=await intelligentReply(m.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}catch(e){return json(res,503,{error:'IA indisponível: '+e.message});}
      session.history.push({role:'user',content:m.content},{role:'assistant',content:reply});session.history=session.history.slice(-30);
-     await store.tx(d=>{if(session.lastConfirmed){if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId))d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:0,inboxId:0,conversationId:1,customer:'Cliente (simulador)',status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote,demo:true});delete session.lastConfirmed;}d.sessions[key]=session;});
+     await store.tx(d=>{if(session.lastConfirmed){if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId))d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:0,inboxId:0,conversationId:1,customer:session.customerName||'Cliente (simulador)',customerPhone:session.customerPhone||null,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote,demo:true});delete session.lastConfirmed;}d.sessions[key]=session;});
      return json(res,200,{reply,summary:getSummary(session,business),mode:session.mode});
    }
    if(p==='/api/simulate/reset'&&req.method==='POST'){
