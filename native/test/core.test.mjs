@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {verifyChatwootSignature,normalizeEvent,newSession,addPizza,addDrink,getSummary,setAddress,setPayment,requestConfirmation,confirmRequest,quoteFingerprint} from '../src/core.mjs';
+import {verifyChatwootSignature,normalizeEvent,newSession,addPizza,addDrink,getSummary,setAddress,setPayment,confirmCustomerName,requestConfirmation,confirmRequest,quoteFingerprint} from '../src/core.mjs';
 import {applyTool,explicitYes,wantsHuman,localReply} from '../src/ai.mjs';
 import {FileStore} from '../src/store.mjs';
 import os from 'node:os';
@@ -39,34 +39,34 @@ test('sem política de meia a meia a IA não inventa preço',()=>{
 });
 test('sem preço ou entrega não registra solicitação',()=>{
  const b=structuredClone(business),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});
- setAddress(s,{address:'Rua Exemplo 100 Bairro Centro, Curitiba'});setPayment(s,{method:'PIX'});
+ setAddress(s,{address:'Rua Exemplo 100 Bairro Centro, Curitiba'});setPayment(s,{method:'PIX'});confirmCustomerName(s,{name:'Ana Silva'});
  assert.equal(requestConfirmation(s,b).ok,false);assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,false);
 });
 test('suporta pedido com bebida, endereço e total em centavos',()=>{
  const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});addDrink(s,b,{drinkId:'cini_abacaxi_2l'});
- setAddress(s,{address:'Rua das Palmeiras 100, Bairro Jardim, Curitiba'});setPayment(s,{method:'PIX'});
+ setAddress(s,{address:'Rua das Palmeiras 100, Bairro Jardim, Curitiba'});setPayment(s,{method:'PIX'});confirmCustomerName(s,{name:'Ana Silva'});
  const q=getSummary(s,b);assert.equal(q.subtotalCents,7199);assert.equal(q.deliveryFeeCents,700);assert.equal(q.totalCents,7899);
 });
 test('não confirma sem resumo efetivamente apresentado ao cliente',()=>{
- const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
+ const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});confirmCustomerName(s,{name:'Ana Silva'});
  assert.equal(requestConfirmation(s,b).ok,true);
  assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,false);
  s.quotePresented=true;
  assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,true);
 });
 test('duplicação da confirmação mantém mesmo identificador',()=>{
- const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
+ const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});confirmCustomerName(s,{name:'Ana Silva'});
  requestConfirmation(s,b);s.quotePresented=true;
  const first=confirmRequest(s,b,{explicitConfirmation:true});const second=confirmRequest(s,b,{explicitConfirmation:true});
  assert.equal(first.requestId,second.requestId);
 });
 test('alteração de preço entre orçamento e confirmação bloqueia registro',()=>{
- const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
+ const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});confirmCustomerName(s,{name:'Ana Silva'});
  requestConfirmation(s,b);s.quotePresented=true;b.pizzas.calabresa.grande=6999;
  assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,false);
 });
 test('alterar endereço invalida orçamento anterior',()=>{
- const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});
+ const b=validBusiness(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});setAddress(s,{address:'Rua Exemplo 100, bairro centro, Curitiba'});setPayment(s,{method:'PIX'});confirmCustomerName(s,{name:'Ana Silva'});
  requestConfirmation(s,b);s.quotePresented=true;
  setAddress(s,{address:'Rua Exemplo 111, bairro centro, Curitiba'});
  assert.equal(confirmRequest(s,b,{explicitConfirmation:true}).ok,false);
