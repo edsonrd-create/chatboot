@@ -373,6 +373,22 @@ async function loadCardapioSync(){
    details.append(row);
   }
  }catch(e){status.textContent='Falha ao ler status da sincronização: '+e.message;details.replaceChildren();}
+ const orders=$('cardapio-pdv-orders');
+ if(orders){
+  try{
+    const check=await api('/api/pdv/bot-status');
+    const mode=check.pdv?.mode;
+    if(!check.ok){
+      orders.textContent='Pedidos não estão conectados: '+(check.status===401?'token rejeitado pelo PDV':check.status===403?'integração desativada no PDV':String(check.error||'sem confirmação da API'));
+    }else if(mode==='test'){
+      orders.textContent='Conexão de pedidos validada, mas PDV em modo TESTE: aceita validação e NÃO grava pedidos na fila.';
+    }else if(mode==='active'){
+      orders.textContent='API de pedidos autenticada, modo ATIVO no destino informado. Verifique se este é o PDV de homologação correto antes de qualquer pedido.';
+    }else{
+      orders.textContent='API respondeu, mas o modo de pedidos não foi confirmado.';
+    }
+  }catch(e){orders.textContent='Não consegui verificar a integração de pedidos: '+e.message;}
+ }
 }
 $('cardapio-sync-button')?.addEventListener('click',async()=>{
  const btn=$('cardapio-sync-button');btn.disabled=true;
