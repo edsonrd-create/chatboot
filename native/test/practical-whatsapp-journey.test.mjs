@@ -44,8 +44,8 @@ test('JORNADA REALISTA WhatsApp: duas pizzas, nome, entrega, taxa, dinheiro, tro
   reply=await say('sim');
   assert.match(reply,/troco para quanto/i);
   reply=await say('R$ 200,00');
-  assert.match(reply,/Total: R\\$\\s*126,48/);
-  assert.match(reply,/Troco previsto: R\\$\\s*73,52/);
+  assert.match(reply,/Total: R\$\s*126,48/);
+  assert.match(reply,/Troco previsto: R\$\s*73,52/);
   assert.match(reply,/Confirmo/);
   assert.equal(s.quotePresented,true);
   b.pdvMode=async()=> 'test';
@@ -54,7 +54,7 @@ test('JORNADA REALISTA WhatsApp: duas pizzas, nome, entrega, taxa, dinheiro, tro
     submitted++;
     assert.equal(payload.paymentMethod,'cash');
     assert.equal(payload.items[0].qty,2);
-    assert.match(payload.notes,/Troco para R\\$\\s*200,00/);
+    assert.match(payload.notes,/Troco para R\$\s*200,00/);
     return {ok:true,dryRun:true,mode:'test'};
   };
   reply=await say('Confirmo');
