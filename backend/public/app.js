@@ -12,8 +12,8 @@ function render(){const d=dashboard;$('count-conversations').textContent=d.stats
  const conv=$('conversation-list');conv.replaceChildren();if(!d.conversations.length)conv.append(el('p','muted','Nenhuma conversa recebida.'));for(const s of d.conversations){const row=el('div','row-record');const x=el('div');x.append(el('b','',s.customer),el('div','sub',`${s.key} · ${s.updatedAt}`),el('div','muted',s.lastMessage.slice(0,170)));const y=el('div');y.append(el('span',s.mode==='HUMAN'?'pill warn':'pill',s.mode==='HUMAN'?'Atendimento humano':'Bot ativo'));y.append(btn(s.mode==='HUMAN'?'Reativar bot':'Transferir humano',async()=>{try{await api(`/api/conversations/${encodeURIComponent(s.key)}/mode`,{method:'POST',body:JSON.stringify({mode:s.mode==='HUMAN'?'BOT':'HUMAN'})});message('Modo de conversa alterado.');await load();}catch(e){message(e.message,true);}}));row.append(x,y);conv.append(row);}
  const orders=$('orders-list');orders.replaceChildren();if(!d.orders.length)orders.append(el('p','muted','Nenhum pedido registrado.'));for(const o of d.orders){const row=el('div','row-record');const x=el('div');x.append(el('b','',`${o.number} ${o.demo?'[TESTE]':''} • ${o.customer}`),el('div','sub',`${o.status} · WhatsApp inbox ${o.inboxId} · ${o.createdAt}`));for(const item of o.cart||[])x.append(el('div','muted',`${item.quantity}x ${item.description} • ${money(item.unitPriceCents)}`));x.append(el('div','muted',`Endereço: ${o.address||'—'} | ${o.payment||'—'} | Total: ${money(o.quote?.totalCents)}`));const y=el('div');const transitions={PENDING_STAFF_REVIEW:['CONFIRMED','REJECTED'],CONFIRMED:['PREPARING','CANCELED'],PREPARING:['READY','CANCELED'],READY:['DISPATCHED','CANCELED'],DISPATCHED:['DELIVERED']};for(const target of transitions[o.status]||[])y.append(btn(target,async()=>{if(!confirm(`Alterar ${o.number} para ${target}?`))return;try{await api(`/api/orders/${o.id}/status`,{method:'POST',body:JSON.stringify({status:target})});message('Status atualizado.');await load();}catch(e){message(e.message,true);}}));row.append(x,y);orders.append(row);}
 }
-const names={overview:'Visão geral',conversations:'Conversas',orders:'Pedidos',simulator:'Simulador inteligente',catalog:'Cardápio e regras'};
-function page(name){for(const s of document.querySelectorAll('.page'))s.hidden=s.id!==name;for(const b of document.querySelectorAll('[data-page]'))b.classList.toggle('active',b.dataset.page===name);$('page-title').textContent=names[name];if(name==='catalog')loadBusiness();}
+const names={overview:'Visão geral',conversations:'Conversas',orders:'Pedidos',simulator:'Simulador inteligente',catalog:'Cardápio e regras','whatsapp-menu':'Cardápio WhatsApp'};
+function page(name){for(const s of document.querySelectorAll('.page'))s.hidden=s.id!==name;for(const b of document.querySelectorAll('[data-page]'))b.classList.toggle('active',b.dataset.page===name);$('page-title').textContent=names[name];if(name==='catalog')loadBusiness();if(name==='whatsapp-menu')loadMenuPdfStatus();}
 async function loadBusiness(){try{$('business-json').value=JSON.stringify(await api('/api/business'),null,2);}catch(e){message(e.message,true);}}
 $('login-form').addEventListener('submit',async e=>{e.preventDefault();$('login-error').textContent='';try{await api('/api/login',{method:'POST',body:JSON.stringify({password:$('password').value})});$('password').value='';await load();}catch(err){$('login-error').textContent=err.message;}});
 $('logout').addEventListener('click',async()=>{await api('/api/logout',{method:'POST'});loginUI(true);});
@@ -26,3 +26,27 @@ $('save-business').addEventListener('click',async()=>{try{const body=JSON.parse(
 load().catch(()=>loginUI(true));
 
 $('check-ai').addEventListener('click',async()=>{const b=$('check-ai');b.disabled=true;try{const r=await api('/api/ai/check',{method:'POST'});$('ai-mode-detail').textContent=`IA respondeu ao teste. Modelo: ${r.model}.`;message('Conexão com modelo validada.');}catch(e){$('ai-mode-detail').textContent=e.message;message(e.message,true);}finally{b.disabled=false;}});
+
+async function loadMenuPdfStatus(){
+ const status=$('menu-pdf-status');
+ try{
+  const x=await api('/api/menu-pdf');
+  status.textContent=x.available?'PDF cadastrado no servidor e pronto para envio após a escolha do cliente.':'Nenhum PDF cadastrado. Envie o cardápio oficial para habilitar o anexo.';
+ }catch(e){status.textContent='Não foi possível consultar o arquivo: '+e.message;}
+}
+$('upload-menu-form').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const file=$('menu-pdf').files?.[0];
+ if(!file||file.type!=='application/pdf'||file.size>16*1024*1024||file.size<100){
+  message('Selecione um PDF válido de até 16 MB.',true);return;
+ }
+ const button=$('upload-menu-button');button.disabled=true;
+ try{
+  const response=await fetch('/api/menu-pdf',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/pdf'},body:file});
+  const body=await response.json();
+  if(!response.ok)throw Error(body.error||'Falha ao enviar PDF');
+  message('PDF salvo. O bot enviará o arquivo somente quando o cliente escolher WhatsApp.');
+  await loadMenuPdfStatus();
+ }catch(err){message(err.message,true);}
+ finally{button.disabled=false;}
+});
