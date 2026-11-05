@@ -8,12 +8,12 @@ export function menuChoiceReply(session,input,{pdfAvailable=false,iosUrl=''}={})
  const site='🌐 Site: '+OFFICIAL_SITE;
  const app='📱 Android: '+ANDROID_URL;
  const iphone=iosUrl?'🍎 iPhone: '+iosUrl:'🍎 iPhone: procure Guto Express na App Store.';
- if(session.menuChoice==='awaiting'){
+ if(session.menuChoice==='awaiting'||session.menuChoice==='app'){
    if(wantsWhatsapp(input)){
      session.menuChoice='whatsapp';
      return {reply:pdfAvailable?'🍕 Perfeito! Vou enviar nosso cardápio em PDF. Qual pizza ou combo você gostaria? Os preços serão confirmados no PDV.':'🍕 Vamos pedir por aqui! Consulte o cardápio em https://www.gutoexpress.com.br/cardapio e me diga a pizza e o tamanho. Confirmaremos os valores no PDV.',sendPdf:pdfAvailable};
    }
-   if(wantsApp(input)){session.menuChoice='app';return {reply:[site,app,iphone,'Se preferir o WhatsApp, responda 2.'].join('\n')};}
+   if(wantsApp(input)){session.menuChoice='awaiting';return {reply:[site,app,iphone,'Se preferir o WhatsApp, responda 2.'].join('\n')};}
    if(/\b(quero|pizza|combo|calabresa|broto|media|grande|big|gigante)\b/.test(clean(input))){session.menuChoice='whatsapp';return null;}
    return {reply:'Responda *1* para pedir pelo app/site ou *2* para pedir aqui no WhatsApp.'};
  }
