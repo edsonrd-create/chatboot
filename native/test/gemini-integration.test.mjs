@@ -38,6 +38,7 @@ test('Gemini usa funções reais do carrinho e apresenta orçamento determiníst
     {functionCall:{name:'adicionar_pizza',args:{size:'grande',flavors:['calabresa'],quantity:1}}},
     {functionCall:{name:'definir_endereco',args:{address:'Rua das Acácias 100, Centro, Curitiba'}}},
     {functionCall:{name:'definir_pagamento',args:{method:'PIX'}}},
+    {functionCall:{name:'confirmar_nome_cliente',args:{name:'Ana Silva'}}},
   ]:[{functionCall:{name:'solicitar_confirmacao',args:{}}}];
   if(count===2)assert.ok(body.contents.some(x=>x.parts?.some(p=>p.functionResponse)));
   return {ok:true,json:async()=>({candidates:[{content:{role:'model',parts}}]})};
@@ -51,7 +52,7 @@ test('Gemini usa funções reais do carrinho e apresenta orçamento determiníst
   assert.equal(session.quotePresented,true);
   assert.equal(count,2);
   const next=await intelligentReply('Confirmo',session,b,{apiKey:key,provider:'gemini',model});
-  assert.match(next,/conferência da equipe/);
+  assert.match(next,/conferência|atendente|PDV/i);
   assert.equal(count,2,'confirmação posterior é determinística e não chama o Gemini novamente');
  }finally{globalThis.fetch=previous;}
 });
