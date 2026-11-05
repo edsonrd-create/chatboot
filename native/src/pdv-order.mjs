@@ -1,7 +1,7 @@
 // Envio do pedido confirmado ao PDV (POST /api/v1/bot/order).
 // O PDV recalcula preço, taxa e total e decide se grava (modo "active") ou só valida (modo "test").
 // O bot NUNCA declara pagamento confirmado: o Pix só é dado como pago pela conciliação do PDV.
-import {formatMoney} from './core.mjs';
+import {formatMoney,resetCartAfterOrder} from './core.mjs';
 
 const PAY = {PIX: 'pix', CARTAO: 'card', DINHEIRO: 'cash'};
 
@@ -18,7 +18,7 @@ export function buildPdvOrder(session, business, quote, requestId) {
     fulfillment: quote.fulfillment === 'PICKUP' ? 'pickup' : 'delivery',
     paymentMethod: PAY[quote.payment] || '',
     customerPhone: String(session.customerPhone || '').replace(/\D/g, ''),
-    customerName: String(session.customerName || '').trim().slice(0, 80) || 'Cliente WhatsApp',
+    customerName: String(session.customerName || '').trim().slice(0, 80),
     address: quote.fulfillment === 'PICKUP' ? '' : String(quote.address || ''),
     neighborhood: String(session.neighborhood || ''),
     items,
@@ -39,18 +39,32 @@ export function pdvOrderMessage(res, quote) {
 }
 
 export async function submitPdvOrder(session, business, confirmed) {
-  if (typeof business.submitOrder !== 'function') return {skipped: true};
+  if (session.lastCompletedRequestId===confirmed?.requestId)
+    return {ok:true,alreadyProcessed:true,number:session.lastCompletedOrderNumber};
+  if (typeof business.submitOrder !== 'function') {
+    session.mode='HUMAN';session.reason='Integração com PDV não configurada';
+    session.pdvOrder={at:new Date().toISOString(),ok:false,error:'PDV_ORDER_INTEGRATION_DISABLED'};
+    return {ok:false,error:'PDV_ORDER_INTEGRATION_DISABLED'};
+  }
+  if (!session.customerNameConfirmed || !String(session.customerName||'').trim() || !confirmed.quote?.payment) {
+    session.mode='HUMAN';session.reason='Nome ou pagamento não confirmado';
+    return {ok:false,error:'INCOMPLETE_CUSTOMER_OR_PAYMENT'};
+  }
   const body = buildPdvOrder(session, business, confirmed.quote, confirmed.requestId);
   try {
     // Simulador do painel nunca grava pedido real: só envia quando o PDV está em modo teste.
     if (session.simulation && (typeof business.pdvMode !== 'function' || await business.pdvMode() !== 'test')) {
       session.pdvOrder = {at: new Date().toISOString(), ok: false, error: 'Simulador só envia ao PDV em modo teste'};
-      return {skipped: true};
+      session.mode='HUMAN';session.reason='Simulador sem modo teste validado no PDV';
+      return {ok:false,error:'SIMULATION_REQUIRES_TEST_MODE'};
     }
     const res = await business.submitOrder(body);
     session.pdvOrder = {at: new Date().toISOString(), ok: !!res?.ok, dryRun: !!res?.dryRun, number: res?.number ?? null, totalCents: res?.totalCents ?? null, paymentStatus: res?.paymentStatus ?? null, error: res?.ok ? null : String(res?.error || 'erro').slice(0, 200)};
     session.pdvOrder.externalId = body.externalId;
-    if (res?.ok && !res?.dryRun) session.orderRefs = [...new Set([...(session.orderRefs || []), body.externalId])].slice(-5);
+    if (res?.ok && !res?.dryRun) {
+      session.orderRefs = [...new Set([...(session.orderRefs || []), body.externalId])].slice(-5);
+      resetCartAfterOrder(session,{requestId:confirmed.requestId,orderNumber:res.number??null});
+    }
     if (!res?.ok) { session.mode = 'HUMAN'; session.reason = `PDV recusou o pedido: ${session.pdvOrder.error}`; }
     return res;
   } catch (e) {
@@ -62,7 +76,9 @@ export async function submitPdvOrder(session, business, confirmed) {
 
 export async function confirmationReply(session, business, out, fallback) {
   const res = await submitPdvOrder(session, business, out);
-  if (res?.skipped) return fallback;
+  if (res?.alreadyProcessed) return 'Esse pedido já foi processado; não vou enviá-lo novamente ao PDV.';
+  if (res?.skipped) return 'Não consegui enviar a solicitação ao PDV. Vou chamar um atendente para verificar antes de confirmar.';
   if (!res?.ok) return 'Recebi sua confirmação! Não consegui registrar automaticamente no sistema da loja, então um atendente vai finalizar seu pedido agora. 🙏';
+  if(res.dryRun)return 'Sua solicitação foi validada em *homologação*, mas não foi registrada como pedido no PDV nem enviada à cozinha. Um atendente pode conferir os dados.';
   return pdvOrderMessage(res, out.quote) || fallback;
 }
