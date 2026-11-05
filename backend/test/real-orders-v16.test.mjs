@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {newSession,addPizza,getSummary,replaceFlavor,replaceFlavorOneUnit,setFulfillment,setAddress,setPayment,requestConfirmation,confirmRequest} from '../src/core.mjs';
+import {newSession,setCustomer,addPizza,getSummary,replaceFlavor,replaceFlavorOneUnit,setFulfillment,setAddress,setPayment,requestConfirmation,confirmRequest} from '../src/core.mjs';
 import {applyTool,intelligentReply,localReply,flagsAllergy} from '../src/ai.mjs';
 const base=JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../config/business.json'),'utf8'));
 const setup=()=>{const b=structuredClone(base);b.pizzas.calabresa.grande=5999;b.pizzas.portuguesa.grande=6299;b.pizzas.frango_catupiry.grande=6499;b.halfHalfPricing='MAX';b.deliveryFeeCents=700;return b;};
@@ -29,7 +29,7 @@ test('duas pizzas iguais: uma troca divide a quantidade sem modificar a outra',(
 });
 
 test('retirada no balcão dispensa endereço e taxa de entrega',()=>{
- const b=setup(),s=newSession();addPizza(s,b,{size:'grande',flavors:['calabresa']});
+ const b=setup(),s=newSession();setCustomer(s,{name:'Pessoa Teste',phone:'41999998888'});addPizza(s,b,{size:'grande',flavors:['calabresa']});
  assert.equal(setFulfillment(s,{method:'PICKUP'}).ok,true);
  setPayment(s,{method:'PIX'});let q=getSummary(s,b);
  assert.deepEqual(q.missing,[]);assert.equal(q.deliveryFeeCents,0);assert.equal(q.totalCents,5999);
@@ -91,6 +91,7 @@ test('IA simulada por respostas HTTP: retirada, pizza e pagamento no mesmo turno
    {type:'function_call',call_id:'p',name:'adicionar_pizza',arguments:JSON.stringify({size:'grande',flavors:['calabresa'],quantity:1})},
    {type:'function_call',call_id:'f',name:'definir_modalidade',arguments:JSON.stringify({method:'PICKUP'})},
    {type:'function_call',call_id:'m',name:'definir_pagamento',arguments:JSON.stringify({method:'PIX'})},
+   {type:'function_call',call_id:'customer',name:'registrar_cliente',arguments:JSON.stringify({name:'Pessoa Teste',phone:'41999998888'})},
   ]:[{type:'function_call',call_id:'q',name:'solicitar_confirmacao',arguments:'{}'}];
   return {ok:true,json:async()=>({output})};
  };
