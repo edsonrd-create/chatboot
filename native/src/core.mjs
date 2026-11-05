@@ -218,7 +218,7 @@ export function confirmRequest(session,business,{explicitConfirmation}){
   if(explicitConfirmation!==true || !session.awaitingConfirmation || !session.quotePresented)return {ok:false,error:'É necessário apresentar o resumo ao cliente e receber uma confirmação explícita em mensagem posterior.'};
   const quote=getSummary(session,business);
   if(quote.missing.length || quoteFingerprint(quote)!==session.quoteSnapshot)return {ok:false,error:'Orçamento incompleto ou alterado; gere um novo resumo para o cliente.',quote};
-  const requestId=crypto.randomUUID();session.confirmedRequestId=requestId;session.awaitingConfirmation=false;
+  const requestId=session.confirmationMessageId || crypto.randomUUID();session.confirmedRequestId=requestId;session.awaitingConfirmation=false;
   return {ok:true,requestId,quote,status:'PENDING_STAFF_REVIEW',note:'Solicitação para conferência humana: ainda não foi enviada à cozinha nem registrada como pedido confirmado.'};
 }
 export function formatMoney(cents){return Number.isInteger(cents)?new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100):'a confirmar';}
