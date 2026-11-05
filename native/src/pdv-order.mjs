@@ -114,7 +114,7 @@ export async function confirmationReply(session, business, out, fallback) {
   const res = await submitPdvOrder(session, business, out);
   if (res?.alreadyProcessed) return 'Esse pedido já foi processado; não vou enviá-lo novamente ao PDV.';
   if (res?.skipped) return 'Não consegui enviar a solicitação ao PDV. Vou chamar um atendente para verificar antes de confirmar.';
-  if (!res?.ok) return '⚠️ Seu pedido NÃO foi registrado no PDV e nenhum PIX foi gerado. Vou chamar um atendente para verificar a integração e finalizar com segurança. Não é necessário repetir as pizzas.';
+  if (!res?.ok) return '⚠️ Ainda não consegui confirmar o registro do pedido no PDV. Vou encaminhar para conferência de um atendente. Não repita as pizzas nem faça pagamento até confirmarmos o número do pedido.';
   if(res.dryRun)return 'Sua solicitação foi validada em *homologação*, mas não foi registrada como pedido no PDV nem enviada à cozinha. Um atendente pode conferir os dados.';
   return pdvOrderMessage(res, out.quote) || fallback;
 }
