@@ -2,7 +2,11 @@ import {getSummary,formatMoney} from './core.mjs';
 
 const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 export function wantsToFinishOrder(text){
-  return /^(?:so isso|e so|era so isso|pode fechar|pode finalizar|finalizar(?: (?:o )?pedido)?|fechar(?: (?:o )?pedido)?|concluir(?: (?:o )?pedido)?|pode concluir|terminar pedido|pronto(?: pode fechar)?|nao quero mais nada|quero finalizar|quero confirmar|pode confirmar|vamos fechar|pode mandar o resumo)$/.test(norm(text).replace(/[.!?]+$/,''));
+  const message=norm(text).replace(/[.!?,;:]+$/,'').replace(/\s+/g,' ');
+  return /^(?:so isso|e so|era so isso|pode|sim|isso|pode sim|sim pode|pode fechar|pode finalizar|pode concluir|pode confirmar|fechar|fechar o pedido|fechar pedido|fechar seu pedido|fecha meu pedido|fecha o pedido|pode fechar meu pedido|pode fechar seu pedido|finalizar|finalizar pedido|finalizar o pedido|finaliza meu pedido|concluir|concluir pedido|concluir o pedido|terminar pedido|pronto|pronto pode fechar|nao quero mais nada|quero finalizar|quero confirmar|vamos fechar|pode mandar o resumo|manda o resumo|pode enviar o resumo|pode fechar sim|vamos finalizar)$/.test(message);
+}
+export function asksForCurrentPrice(text){
+  return /^(?:qual (?:o )?valor(?: total)?|quanto (?:deu|ficou|vai ficar|custa|e o total)|qual o total|me passa o valor|me fala o valor|valor total|preco total|total(?: do pedido)?|quanto ta(?: meu pedido)?|qual o preco)$/.test(norm(text).replace(/[.!?,;:]+$/,''));
 }
 export function checkoutNextQuestion(session,business){
   if(!session.checkoutRequested || !Array.isArray(session.cart)||!session.cart.length)return null;
