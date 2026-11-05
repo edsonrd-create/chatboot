@@ -2,7 +2,7 @@ import {getSummary} from './core.mjs';
 
 const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 export function wantsToFinishOrder(text){
-  return /^(?:so isso|e so|era so isso|pode fechar|pode finalizar|finalizar(?: o pedido)?|fechar(?: o pedido)?|concluir(?: o pedido)?|pode concluir|terminar pedido|pronto(?: pode fechar)?|nao quero mais nada|quero finalizar|vamos fechar|pode mandar o resumo)$/.test(norm(text).replace(/[.!?]+$/,''));
+  return /^(?:so isso|e so|era so isso|pode fechar|pode finalizar|finalizar(?: (?:o )?pedido)?|fechar(?: (?:o )?pedido)?|concluir(?: (?:o )?pedido)?|pode concluir|terminar pedido|pronto(?: pode fechar)?|nao quero mais nada|quero finalizar|quero confirmar|pode confirmar|vamos fechar|pode mandar o resumo)$/.test(norm(text).replace(/[.!?]+$/,''));
 }
 export function checkoutNextQuestion(session,business){
   if(!session.checkoutRequested || !Array.isArray(session.cart)||!session.cart.length)return null;
