@@ -145,7 +145,7 @@ export function setAddress(session,{address}) {
 }
 export function confirmCustomerName(session,{name}={}){
  const value=String(name||'').trim().replace(/\s+/g,' ');
- if(value.length<2||value.length>80||/^(cliente|teste|nome|sim|ok|confirmo|nao|não)$/i.test(value))return {ok:false,error:'Informe seu nome para registrar este pedido.'};
+ if(value.length<2||value.length>80||!/[A-Za-zÀ-ÿ]{2}/.test(value)||/\d/.test(value)||/\b(pix|cart[aã]o|dinheiro|pedido|card[aá]pio|pizza|manda|quero|pagar|confirmar|confirmo|sim|n[aã]o|atendente|telefone|contato)\b/i.test(value)||/^(cliente|teste|nome|ok)$/i.test(value))return {ok:false,error:'Preciso do seu nome para registrar o pedido. Como você se chama?'};
  session.customerName=value;
  session.customerNameConfirmed=true;
  session.awaitingCustomerName=false;
@@ -157,6 +157,7 @@ export function resetCartAfterOrder(session,{requestId,orderNumber=null}={}){
    return {ok:false,error:'Somente o pedido efetivamente confirmado pode limpar o carrinho.'};
  session.lastCompletedRequestId=requestId;
  session.lastCompletedOrderNumber=orderNumber;
+ session.lastCompletedAt=new Date().toISOString();
  // Remover o contexto de compras anteriores para a IA não reconstruir o carrinho já encerrado.
  session.history=[];
  session.cart=[];
