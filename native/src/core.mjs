@@ -145,18 +145,41 @@ export function setAddress(session,{address}) {
 }
 export function confirmCustomerName(session,{name}={}){
  const value=String(name||'').trim().replace(/\s+/g,' ');
- if(value.length<2||value.length>80||/^(cliente|teste|nome|sim|ok|confirmo|nao|não)$/i.test(value))return {ok:false,error:'Informe seu nome para registrar este pedido.'};
+ if(value.length<2||value.length>80||!/[A-Za-zÀ-ÿ]{2}/.test(value)||/\d/.test(value)||/\b(pix|cart[aã]o|dinheiro|pedido|card[aá]pio|pizza|manda|quero|pagar|confirmar|confirmo|sim|n[aã]o|atendente|telefone|contato)\b/i.test(value)||/^(cliente|teste|nome|ok)$/i.test(value))return {ok:false,error:'Preciso do seu nome para registrar o pedido. Como você se chama?'};
  session.customerName=value;
  session.customerNameConfirmed=true;
  session.awaitingCustomerName=false;
  invalidateQuote(session);
  return {ok:true,name:value};
 }
-export function resetCartAfterOrder(session,{requestId,orderNumber=null}={}){
+/** Inicia carrinho novo somente mediante solicitação explícita, sem apagar a revisão de um pedido que falhou. */
+export function beginNewOrder(session){
+ if(session.lastConfirmed && session.pdvOrder?.ok===false){
+   session.manualReviewOrders??=[];
+   session.manualReviewOrders.push({requestId:session.lastConfirmed.requestId,
+     quote:session.lastConfirmed.quote,reason:session.pdvOrder.error||'PDV_UNAVAILABLE',
+     at:new Date().toISOString()});
+   session.manualReviewOrders=session.manualReviewOrders.slice(-5);
+ }
+ session.lastDryRunRequestId=null;
+ session.cart=[];session.history=[];session.address=null;session.neighborhood=null;
+ session.payment=null;session.fulfillment='DELIVERY';session.deliveryFeeCents=null;
+ session.addressCheck=null;session.customerNameConfirmed=false;session.awaitingCustomerName=false;
+ session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;
+ session.confirmedRequestId=null;session.lastQuote=null;session.lastConfirmed=null;
+ session.cardapioChannel=null;session.pdvOrder=null;
+ return {ok:true};
+}
+export function resetCartAfterOrder(session,{requestId,orderNumber=null,dryRun=false}={}){
  if(!requestId||!session.lastConfirmed||session.lastConfirmed.requestId!==requestId)
    return {ok:false,error:'Somente o pedido efetivamente confirmado pode limpar o carrinho.'};
- session.lastCompletedRequestId=requestId;
- session.lastCompletedOrderNumber=orderNumber;
+ if(dryRun){session.lastDryRunRequestId=requestId;}
+ else {
+   session.lastCompletedRequestId=requestId;
+   session.lastCompletedOrderNumber=orderNumber;
+   session.lastCompletedAt=new Date().toISOString();
+   session.lastDryRunRequestId=null;
+ }
  // Remover o contexto de compras anteriores para a IA não reconstruir o carrinho já encerrado.
  session.history=[];
  session.cart=[];

@@ -51,7 +51,23 @@ export async function submitPdvOrder(session, business, confirmed) {
     return {ok:false,error:'INCOMPLETE_CUSTOMER_OR_PAYMENT'};
   }
   const body = buildPdvOrder(session, business, confirmed.quote, confirmed.requestId);
+  if(!/^\d{10,13}$/.test(body.customerPhone) || !body.items.length ||
+     body.items.some(i=>!i.qty||!i.name||!['string','object'].includes(typeof i.sizeLabel))){
+    session.mode='HUMAN';session.reason='Dados incompletos para integração ao PDV';
+    session.pdvOrder={at:new Date().toISOString(),ok:false,error:'ORDER_PAYLOAD_INVALID'};
+    return {ok:false,error:'ORDER_PAYLOAD_INVALID'};
+  }
   try {
+    // Antes de enviar, confirmar se token e modo de operação do PDV respondem.
+    // Nunca transformar 'test' em 'active' nem registrar em produção automaticamente.
+    if(typeof business.pdvMode==='function'){
+      const mode=await business.pdvMode();
+      if(mode!=='test'&&mode!=='active'){
+        session.pdvOrder={at:new Date().toISOString(),ok:false,error:'PDV_AUTH_OR_MODE_UNAVAILABLE'};
+        session.mode='HUMAN';session.reason='Token inválido, integração desligada ou PDV sem modo autorizado';
+        return {ok:false,error:'PDV_AUTH_OR_MODE_UNAVAILABLE'};
+      }
+    }
     // Simulador do painel nunca grava pedido real: só envia quando o PDV está em modo teste.
     if (session.simulation && (typeof business.pdvMode !== 'function' || await business.pdvMode() !== 'test')) {
       session.pdvOrder = {at: new Date().toISOString(), ok: false, error: 'Simulador só envia ao PDV em modo teste'};
@@ -61,8 +77,12 @@ export async function submitPdvOrder(session, business, confirmed) {
     const res = await business.submitOrder(body);
     session.pdvOrder = {at: new Date().toISOString(), ok: !!res?.ok, dryRun: !!res?.dryRun, number: res?.number ?? null, totalCents: res?.totalCents ?? null, paymentStatus: res?.paymentStatus ?? null, error: res?.ok ? null : String(res?.error || 'erro').slice(0, 200)};
     session.pdvOrder.externalId = body.externalId;
-    if (res?.ok && !res?.dryRun) {
-      session.orderRefs = [...new Set([...(session.orderRefs || []), body.externalId])].slice(-5);
+    if(res?.ok && res?.dryRun){
+      // Modo teste NÃO é pedido finalizado: preserve o carrinho para revisão.
+      // O cliente pode solicitar "novo pedido" para iniciar outro teste sem repetir itens.
+      session.lastDryRunRequestId=confirmed.requestId;
+    }else if(res?.ok){
+      session.orderRefs=[...new Set([...(session.orderRefs||[]),body.externalId])].slice(-5);
       resetCartAfterOrder(session,{requestId:confirmed.requestId,orderNumber:res.number??null});
     }
     if (!res?.ok) { session.mode = 'HUMAN'; session.reason = `PDV recusou o pedido: ${session.pdvOrder.error}`; }
@@ -78,7 +98,7 @@ export async function confirmationReply(session, business, out, fallback) {
   const res = await submitPdvOrder(session, business, out);
   if (res?.alreadyProcessed) return 'Esse pedido já foi processado; não vou enviá-lo novamente ao PDV.';
   if (res?.skipped) return 'Não consegui enviar a solicitação ao PDV. Vou chamar um atendente para verificar antes de confirmar.';
-  if (!res?.ok) return 'Recebi sua confirmação! Não consegui registrar automaticamente no sistema da loja, então um atendente vai finalizar seu pedido agora. 🙏';
+  if (!res?.ok) return '⚠️ Seu pedido NÃO foi registrado no PDV e nenhum PIX foi gerado. Vou chamar um atendente para verificar a integração e finalizar com segurança. Não é necessário repetir as pizzas.';
   if(res.dryRun)return 'Sua solicitação foi validada em *homologação*, mas não foi registrada como pedido no PDV nem enviada à cozinha. Um atendente pode conferir os dados.';
   return pdvOrderMessage(res, out.quote) || fallback;
 }

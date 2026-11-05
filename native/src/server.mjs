@@ -252,6 +252,8 @@ const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typi
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
 session.customerPhone=String(m.from||'').replace(/\D/g,'');{const prof=store.peek().customers?.[session.customerPhone];if(prof&&!session.knownCustomer){session.knownCustomer={name:prof.name||'',address:prof.address||'',neighborhood:prof.neighborhood||''};if(Array.isArray(prof.orderRefs))session.orderRefs=[...new Set([...prof.orderRefs,...(session.orderRefs||[])])].slice(-5);if(!session.customerName&&prof.name)session.customerName=prof.name;}}if(!session.customerName){const nm=store.peek().threads?.[tid]?.customerName;if(nm&&!/^\d+$/.test(nm))session.customerName=String(nm).slice(0,80);}
+const beforeClose=session.lastCompletedRequestId||null;
+const beforeDryRun=session.lastDryRunRequestId||null;
 try{
   const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='true'?await syncCatalog():null;
   reply=await withAiSlot(()=>respondWithAI(text,session,business,{
@@ -267,8 +269,13 @@ catch(e){
   const transient=['AI_TIMEOUT','AI_NETWORK','AI_UPSTREAM','AI_QUOTA','AI_EMPTY_RESPONSE','AI_INVALID_RESPONSE'].includes(fault.code);
   return {retry:transient,code:fault.code};
 }
-session.history.push({role:'user',content:text},{role:'assistant',content:reply});
-session.history=session.history.slice(-30);
+if((session.lastCompletedRequestId||null)!==beforeClose || (session.lastDryRunRequestId||null)!==beforeDryRun){
+  // Finalização real ou teste: não recolocar a compra encerrada no contexto da IA.
+  session.history=[];
+}else{
+  session.history.push({role:'user',content:text},{role:'assistant',content:reply});
+  session.history=session.history.slice(-30);
+}
 // Cliente recorrente: guarda só nome e endereço JÁ VALIDADO pelo PDV (a taxa é sempre recalculada).
 if(session.customerPhone.length>=10&&session.address&&session.addressCheck)await store.change(d=>{d.customers??={};d.customers[session.customerPhone]={...d.customers[session.customerPhone],name:session.customerName||d.customers[session.customerPhone]?.name||'',address:session.address,neighborhood:session.neighborhood||'',updatedAt:new Date(clock()).toISOString()};});
 if(session.customerPhone.length>=10&&session.orderRefs?.length)await store.change(d=>{d.customers??={};const c=d.customers[session.customerPhone]??={name:session.customerName||''};c.orderRefs=[...new Set([...(c.orderRefs||[]),...session.orderRefs])].slice(-5);c.updatedAt=new Date(clock()).toISOString();});
