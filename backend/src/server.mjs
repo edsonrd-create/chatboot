@@ -7,7 +7,7 @@ import {FileStore} from './store.mjs';
 import {verifyChatwootSignature,normalizeEvent,newSession,getSummary,normalizeBrazilPhone} from './core.mjs';
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
 import {loadCatalogV2ForBot} from './catalog-v2-adapter.mjs';
-import {readMyPdvOrders,readPdvOperationsSummary} from './pdv-operations-adapter.mjs';
+import {readMyPdvOrders,readPdvOperationsSummary,readRegisteredPdvCustomer} from './pdv-operations-adapter.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
@@ -123,6 +123,17 @@ async function pump(){
      if(inboundPhone){
        session.trustedPhone=inboundPhone;
        if(!session.customerPhone)session.customerPhone=inboundPhone;
+     }
+     // Consulta restrita ao mesmo número; o nome retornado NÃO confirma identidade.
+     if(inboundPhone && !session.customerName && !session.registeredCustomerName &&
+        env.PDV_OPERATIONS_READ_ENABLED==='true'){
+       const profile=await readRegisteredPdvCustomer(env,inboundPhone);
+       if(profile.ok && profile.found && !profile.blocked)
+         session.registeredCustomerName=profile.name;
+       if(profile.ok && profile.blocked){
+         session.mode='HUMAN';
+         session.reason='Cadastro requer verificação da equipe';
+       }
      }
      session.sender=n.sender;session.inboxId=n.inboxId;session.updatedAt=new Date().toISOString();
      // Keep incoming messages visible to human attendants even after handoff.
