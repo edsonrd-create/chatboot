@@ -95,8 +95,11 @@ test('Flag WA_QR_AUTOREPLY desligada: administrador habilita só uma conversa po
  assert.equal(j.mode,'BOT');
  assert.ok(Number(j.testReplyUntil)>Date.now());
  assert.match(j.notice,/SOMENTE nesta conversa/);
+ const stateBefore=app.store.snapshot().threads[id];
+ assert.equal(stateBefore.mode,'BOT');
+ assert.ok(stateBefore.testReplyUntil>Date.now(),JSON.stringify({mode:stateBefore.mode,testReplyUntil:stateBefore.testReplyUntil}));
  await holder.onIncoming(incoming('during-test'));
- assert.equal(sent.length,1);
+ assert.equal(sent.length,1,JSON.stringify({sent,thread:app.store.snapshot().threads[id],qrJobs:app.store.snapshot().qrJobs}).slice(0,3500));
  await holder.onIncoming(incoming('other-thread','5541999999999'));
  assert.equal(sent.length,1,'não pode responder em outra conversa');
  const off=await(await request('/api/qr/status',{headers:{cookie}})).json();
