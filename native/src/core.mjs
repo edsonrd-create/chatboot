@@ -152,6 +152,23 @@ export function confirmCustomerName(session,{name}={}){
  invalidateQuote(session);
  return {ok:true,name:value};
 }
+/** Inicia carrinho novo somente mediante solicitação explícita, sem apagar a revisão de um pedido que falhou. */
+export function beginNewOrder(session){
+ if(session.lastConfirmed && session.pdvOrder?.ok===false){
+   session.manualReviewOrders??=[];
+   session.manualReviewOrders.push({requestId:session.lastConfirmed.requestId,
+     quote:session.lastConfirmed.quote,reason:session.pdvOrder.error||'PDV_UNAVAILABLE',
+     at:new Date().toISOString()});
+   session.manualReviewOrders=session.manualReviewOrders.slice(-5);
+ }
+ session.cart=[];session.history=[];session.address=null;session.neighborhood=null;
+ session.payment=null;session.fulfillment='DELIVERY';session.deliveryFeeCents=null;
+ session.addressCheck=null;session.customerNameConfirmed=false;session.awaitingCustomerName=false;
+ session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;
+ session.confirmedRequestId=null;session.lastQuote=null;session.lastConfirmed=null;
+ session.cardapioChannel=null;session.pdvOrder=null;
+ return {ok:true};
+}
 export function resetCartAfterOrder(session,{requestId,orderNumber=null}={}){
  if(!requestId||!session.lastConfirmed||session.lastConfirmed.requestId!==requestId)
    return {ok:false,error:'Somente o pedido efetivamente confirmado pode limpar o carrinho.'};
