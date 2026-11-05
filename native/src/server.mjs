@@ -465,6 +465,17 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
+      if(p==='/api/cardapio-whatsapp/status'&&req.method==='GET')
+        return json(res,200,{enabled:env.PDV_MENU_REALTIME_ENABLED!=='false',source:pdvBase,
+          sync:{...catalogSync},sizes:catalogSync.ok?business.sizes.map(s=>({label:s.label,active:true})):[],
+          flavors:catalogSync.ok?business.flavors.length:0,combos:catalogSync.ok?business.combos.length:0,
+          pricesFrom:'PDV',ordersMode:'HOMOLOGATION'});
+      if(p==='/api/cardapio-whatsapp/sync'&&req.method==='POST'){
+        const result=await syncCatalog();
+        return json(res,result.ok?200:503,{ok:result.ok,source:pdvBase,sync:result,
+          flavorCount:result.ok?business.flavors.length:0,sizeCount:result.ok?business.sizes.length:0,
+          comboCount:result.ok?business.combos.length:0});
+      }
       // Teste de conexão com o PDV usando GUTO_BOT_TOKEN (o token nunca é devolvido).
       // Diagnóstico (admin): mostra exatamente o que o PDV respondeu para um endereço.
       if(p==='/api/pdv/address-test'&&req.method==='POST'){
