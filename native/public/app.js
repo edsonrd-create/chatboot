@@ -7,8 +7,32 @@ const timestamp=v=>v?new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minu
 const deliveryLabel=v=>({received:'Recebida',done:'Enviada',sent:'Enviada',delivered:'Entregue',read:'Lida',failed:'Falhou',queued:'Na fila',pending:'Pendente',sample:'Exemplo',ai:'IA',human:'Atendente'})[String(v||'').toLowerCase()]||v||'';
 const date=v=>v?new Date(v).toLocaleString('pt-BR'):'';
 function navigate(name){ss.screen=name;for(const el of document.querySelectorAll('[data-screen]'))el.classList.toggle('active',el.dataset.screen===name);for(const el of document.querySelectorAll('.screen'))el.hidden=el.id!==`screen-${name}`;$('page-title').textContent=({inbox:'Conversas',orders:'Pedidos',testing:'Laboratório de IA',qr:'Conectar QR',cardapio:'Cardápio WhatsApp',settings:'Configurações'})[name];if(name==='inbox')loadInbox();if(name==='orders')loadOrders();if(name==='settings')loadSettings();if(name==='qr')loadQr();if(name==='cardapio')loadCardapioSync();}
-function renderStatus(){const s=ss.status;if(!s)return;const readOnly=Boolean(s.hosting?.readOnly);$('logout').hidden=readOnly;$('ai-check').disabled=readOnly;$('lab-text').disabled=readOnly;$('lab-form').querySelector('button').disabled=readOnly;$('lab-reset').disabled=readOnly;$('system-status').textContent=s.hosting?.freePreview?'Prévia gratuita · Dados temporários':(s.qr?.active?'WhatsApp QR com IA ativa · PDV bloqueado':'Homologação · Pedidos PDV bloqueados');const preview=$('free-preview-banner');if(preview)preview.hidden=!s.hosting?.freePreview;for(const c of s.channels){$('number-'+c.slot).textContent=c.number||'Não conectado';const tag=$('badge-'+c.slot);tag.className='pill '+(c.apiVerifiedAt?'on':'off');tag.textContent=c.apiVerifiedAt?'API Meta verificada':'Aguardando verificação';}const ai=$('ai-config-state');ai.textContent=s.hosting?.readOnly?'Prévia pública: Gemini e outras IAs desativados.':s.ai.configured?`IA: ${s.ai.provider==='gemini'?'Google Gemini':'OpenAI'} · ${s.ai.model} · Teste real: ${s.ai.realTest?'aprovado':'pendente'}`:`IA ${s.ai.provider==='gemini'?'Gemini':'OpenAI'} selecionada, mas chave não configurada no servidor.`;}
-async function loadStatus(){ss.status=await api('/api/status');renderStatus();}
+function renderStatus(){const s=ss.status;if(!s)return;const readOnly=Boolean(s.hosting?.readOnly);$('logout').hidden=readOnly;$('ai-check').disabled=readOnly;$('lab-text').disabled=readOnly;$('lab-form').querySelector('button').disabled=readOnly;$('lab-reset').disabled=readOnly;$('system-status').textContent=s.hosting?.freePreview?'Prévia gratuita · Dados temporários':'PDV: verificando autenticação de pedidos…';const preview=$('free-preview-banner');if(preview)preview.hidden=!s.hosting?.freePreview;for(const c of s.channels){$('number-'+c.slot).textContent=c.number||'Não conectado';const tag=$('badge-'+c.slot);tag.className='pill '+(c.apiVerifiedAt?'on':'off');tag.textContent=c.apiVerifiedAt?'API Meta verificada':'Aguardando verificação';}const ai=$('ai-config-state');ai.textContent=s.hosting?.readOnly?'Prévia pública: Gemini e outras IAs desativados.':s.ai.configured?`IA: ${s.ai.provider==='gemini'?'Google Gemini':'OpenAI'} · ${s.ai.model} · Teste real: ${s.ai.realTest?'aprovado':'pendente'}`:`IA ${s.ai.provider==='gemini'?'Gemini':'OpenAI'} selecionada, mas chave não configurada no servidor.`;}
+async function loadStatus(){ss.status=await api('/api/status');renderStatus();await updatePdvOrderStatus();}
+async function updatePdvOrderStatus(){
+ const label=$('system-status');
+ try{
+  const result=await api('/api/pdv/bot-status');
+  if(!label)return;
+  if(!result.ok){
+   const reasons={
+     TOKEN_NOT_CONFIGURED:'Token do bot ausente no Railway',
+     TOKEN_REJECTED:'PDV recusou o token do bot (401)',
+     PDV_DISABLED:'PDV com integração de pedidos desligada (403)',
+     ROUTE_NOT_FOUND:'API de pedidos não encontrada no PDV (404)',
+     PDV_UNREACHABLE:'PDV inacessível',
+     INVALID_PDV_MODE:'PDV retornou modo inválido',
+   };
+   label.textContent='PDV: '+(reasons[result.reason]||('Conexão falhou ('+(result.httpStatus||'sem resposta')+')'));
+   return;
+  }
+  const titles={test:'Conectado em TESTE · pedidos não são gravados',off:'Conectado, mas pedidos desativados',active:'Conectado · modo ATIVO no PDV'};
+  label.textContent='PDV: '+(titles[result.mode]||'Estado desconhecido')+
+    (ss.status?.qr?.active?' · WhatsApp QR ativo':'');
+ }catch{
+   if(label)label.textContent='PDV: não foi possível consultar o estado dos pedidos';
+ }
+}
 function renderConversations(){const area=$('conversation-list');area.replaceChildren();const q=$('search').value.trim().toLowerCase();const filtered=ss.conversations.filter(t=>(!ss.slot||t.slot===ss.slot)&&matchesOperationsFilter(t)&&(!q||[t.customer,t.customerName,t.lastText].join(' ').toLowerCase().includes(q)));{const unread=ss.conversations.reduce((n,t)=>n+(t.unread||0),0);const badge=$('unread-total');badge.textContent=unread;badge.hidden=!unread;badge.title=unread?`${unread} mensagem(ns) não lida(s)`:'';}
   if(!filtered.length){area.append(x('div','empty-mini','Nenhuma conversa disponível neste filtro.'));return;}
   for(const t of filtered){const b=x('button','conversation'+(ss.selected===t.id?' active':''));b.type='button';const av=x('div','avatar',(t.customerName||'C')[0].toUpperCase());const body=x('div','info');body.append(x('b','',t.customerName||t.customer),x('span','',t.lastText||'Sem mensagens'));const aside=x('div','stamp',timestamp(t.updatedAt));if(t.unread)aside.append(x('div','unread',t.unread));b.append(av,body,aside);b.addEventListener('click',()=>selectThread(t.id));area.append(b);}
@@ -377,6 +401,7 @@ async function loadCardapioSync(){
  if(orders){
   try{
     const check=await api('/api/pdv/bot-status');
+    updatePdvOrderStatus();
     const mode=check.pdv?.mode;
     if(!check.ok){
       orders.textContent='Pedidos não estão conectados: '+(check.status===401?'token rejeitado pelo PDV':check.status===403?'integração desativada no PDV':String(check.error||'sem confirmação da API'));
