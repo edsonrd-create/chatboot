@@ -266,7 +266,8 @@ await store.change(d=>{const t=d.threads[tid];if(t)t.typing=m.type==='audio'&&vo
 const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typing;});
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
-session.customerPhone=String(m.from||'').replace(/\D/g,'');session.enforcePdvAddressValidation=true;{const prof=store.peek().customers?.[session.customerPhone];if(prof&&!session.knownCustomer){session.knownCustomer={name:prof.name||'',address:prof.address||'',neighborhood:prof.neighborhood||''};if(Array.isArray(prof.orderRefs))session.orderRefs=[...new Set([...prof.orderRefs,...(session.orderRefs||[])])].slice(-5);if(!session.customerName&&prof.name)session.customerName=prof.name;}}if(!session.customerName){const nm=store.peek().threads?.[tid]?.customerName;if(nm&&!/^\d+$/.test(nm))session.customerName=String(nm).slice(0,80);}
+session.customerPhone=String(m.from||'').replace(/\D/g,'');session.enforcePdvAddressValidation=true;
+session.confirmationMessageId=crypto.createHash('sha256').update([m.slot,m.id,session.customerPhone].join(':')).digest('hex').slice(0,32);{const prof=store.peek().customers?.[session.customerPhone];if(prof&&!session.knownCustomer){session.knownCustomer={name:prof.name||'',address:prof.address||'',neighborhood:prof.neighborhood||''};if(Array.isArray(prof.orderRefs))session.orderRefs=[...new Set([...prof.orderRefs,...(session.orderRefs||[])])].slice(-5);if(!session.customerName&&prof.name)session.customerName=prof.name;}}if(!session.customerName){const nm=store.peek().threads?.[tid]?.customerName;if(nm&&!/^\d+$/.test(nm))session.customerName=String(nm).slice(0,80);}
 const beforeClose=session.lastCompletedRequestId||null;
 const beforeDryRun=session.lastDryRunRequestId||null;
 try{
