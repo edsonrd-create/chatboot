@@ -13,10 +13,14 @@ function prepared(){
  setFulfillment(s,{method:'PICKUP'});
  return s;
 }
-function confirmed(){
+function quoted(){
  const s=prepared();confirmCustomerName(s,{name:'Ana Silva'});setPayment(s,{method:'PIX'});
  const q=requestConfirmation(s,b);assert.equal(q.ok,true);
  s.quotePresented=true;
+ return s;
+}
+function confirmed(){
+ const s=quoted();
  const x=confirmRequest(s,b,{explicitConfirmation:true});assert.equal(x.ok,true);
  s.lastConfirmed=x;return s;
 }
@@ -40,7 +44,7 @@ test('bot exige nome e pagamento em CADA novo pedido',async()=>{
  assert.match(summary,/Nome: Ana Silva/i);
 });
 test('pedir PIX com orçamento apresentado não envia nada ao PDV nem refaz o carrinho',async()=>{
- const s=confirmed();let calls=0;
+ const s=quoted();let calls=0;
  b.submitOrder=async()=>{calls++;return {ok:true}};
  const count=s.cart.length;
  const answer=await intelligentReply('me manda o pix',s,b);
@@ -61,7 +65,7 @@ test('modo teste encerra carrinho mas não registra venda',async()=>{
  assert.notEqual(s.lastCompletedRequestId,original);
 });
 test('venda confirmada pelo PDV encerra carrinho; segunda compra começa sem itens antigos',async()=>{
- const s=confirmed();
+ const s=quoted();
  b.pdvMode=async()=> 'active';
  b.submitOrder=async()=>({ok:true,number:345,totalCents:5999,paymentStatus:'pending',pixCopiaECola:'PIX-TESTE'});
  const answer=await intelligentReply('Confirmo',s,b);
@@ -77,7 +81,7 @@ test('venda confirmada pelo PDV encerra carrinho; segunda compra começa sem ite
  assert.equal(s.cart.length,0);
 });
 test('falha no PDV mantém pedido para revisão mas não mistura com a compra seguinte',async()=>{
- const s=confirmed();b.pdvMode=async()=> 'off';
+ const s=quoted();b.pdvMode=async()=> 'off';
  const response=await intelligentReply('Confirmo',s,b);
  assert.match(response,/NÃO foi registrado/i);
  assert.equal(s.mode,'HUMAN');
