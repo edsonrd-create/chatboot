@@ -20,9 +20,9 @@ export function normalizeEvent(event, configuredInboxes=[], configuredAccount=nu
   return {inboxId,conversationId,accountId,messageId,content:event.content.trim(),sender: String(event.sender?.name || 'Cliente').slice(0,80),key:`${accountId}:${inboxId}:${conversationId}`,eventKey:`${accountId}:${messageId}`};
 }
 
-export const newSession = ()=>({mode:'BOT',cart:[],address:null,payment:null,fulfillment:'DELIVERY',customerNameConfirmed:false,awaitingCustomerName:false,awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
+export const newSession = ()=>({mode:'BOT',cart:[],address:null,payment:null,fulfillment:'DELIVERY',fulfillmentChosen:false,checkoutRequested:false,cashChangeNeeded:null,cashReceivedCents:null,customerNameConfirmed:false,awaitingCustomerName:false,awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
 function invalidateQuote(session){session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;session.confirmedRequestId=null;}
-export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,customerName:quote.customerName,customerPhone:quote.customerPhone,payment:quote.payment,fulfillment:quote.fulfillment,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
+export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,customerName:quote.customerName,customerPhone:quote.customerPhone,payment:quote.payment,cashChangeNeeded:quote.cashChangeNeeded,cashReceivedCents:quote.cashReceivedCents,fulfillment:quote.fulfillment,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
 export function extractText(response) {
   if (typeof response?.output_text === 'string') return response.output_text.trim();
   return (response?.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n').trim();
@@ -128,20 +128,21 @@ export function getSummary(session,business) {
   // Taxa oficial: a que o PDV calculou para o endereço validado (session.deliveryFeeCents). Sem ela, não há total.
   const deliveryFeeCents=fulfillment==='PICKUP'?0:session.address&&Number.isSafeInteger(session.deliveryFeeCents)?session.deliveryFeeCents:Number.isSafeInteger(business.deliveryFeeCents)&&session.address?business.deliveryFeeCents:null;
   const totalCents=subtotalCents!==null && deliveryFeeCents!==null?subtotalCents+deliveryFeeCents:null;
-  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,customerName:session.customerNameConfirmed?String(session.customerName||'').trim():null,customerPhone:String(session.customerPhone||'').replace(/\D/g,''),missing:[...(session.customerNameConfirmed&&typeof session.customerName==='string'&&session.customerName.trim().length>=2?[]:['nome do cliente']),...(items.length?[]:['itens']),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
+  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,cashChangeNeeded:session.payment==='DINHEIRO'?session.cashChangeNeeded:null,cashReceivedCents:session.payment==='DINHEIRO'?session.cashReceivedCents:null,cashChangeCents:session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&Number.isSafeInteger(session.cashReceivedCents)&&Number.isSafeInteger(totalCents)?session.cashReceivedCents-totalCents:null,customerName:session.customerNameConfirmed?String(session.customerName||'').trim():null,customerPhone:String(session.customerPhone||'').replace(/\D/g,''),missing:[...(session.customerNameConfirmed&&typeof session.customerName==='string'&&session.customerName.trim().length>=2?[]:['nome do cliente']),...(items.length?[]:['itens']),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(session.payment==='DINHEIRO'&&(session.cashChangeNeeded===null||session.cashChangeNeeded===undefined)?['informar troco']:[]),...(session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&(!Number.isSafeInteger(session.cashReceivedCents)||!Number.isSafeInteger(totalCents)||session.cashReceivedCents<totalCents)?['valor do troco válido']:[]),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
 }
 
 /** Modalidade explícita, sem presumir entrega quando o cliente escolheu retirada. */
 export function setFulfillment(session,{method}){
   if(!['DELIVERY','PICKUP'].includes(method))return {ok:false,error:'Selecione entrega ou retirada.'};
   session.fulfillment=method;
+  session.fulfillmentChosen=true;
   if(method==='PICKUP')session.address=null;
   invalidateQuote(session);
   return {ok:true,fulfillment:method};
 }
 export function setAddress(session,{address}) {
   if(typeof address!=='string'||address.trim().length<12 || address.length>500)return {ok:false,error:'Solicite endereço completo com rua, número, bairro e cidade.'};
-  session.address=address.trim();session.fulfillment='DELIVERY';delete session.deliveryFeeCents;delete session.addressCheck;invalidateQuote(session);return {ok:true,address:session.address};
+  session.address=address.trim();session.fulfillment='DELIVERY';session.fulfillmentChosen=true;delete session.deliveryFeeCents;delete session.addressCheck;invalidateQuote(session);return {ok:true,address:session.address};
 }
 export function confirmCustomerName(session,{name}={}){
  const value=String(name||'').trim().replace(/\s+/g,' ');
@@ -163,7 +164,8 @@ export function beginNewOrder(session){
  }
  session.lastDryRunRequestId=null;
  session.cart=[];session.history=[];session.address=null;session.neighborhood=null;
- session.payment=null;session.fulfillment='DELIVERY';session.deliveryFeeCents=null;
+ session.checkoutRequested=false;session.fulfillmentChosen=false;
+ session.payment=null;session.cashChangeNeeded=null;session.cashReceivedCents=null;session.fulfillment='DELIVERY';session.deliveryFeeCents=null;
  session.addressCheck=null;session.customerNameConfirmed=false;session.awaitingCustomerName=false;
  session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;
  session.confirmedRequestId=null;session.lastQuote=null;session.lastConfirmed=null;
@@ -185,7 +187,8 @@ export function resetCartAfterOrder(session,{requestId,orderNumber=null,dryRun=f
  session.cart=[];
  session.address=null;
  session.neighborhood=null;
- session.payment=null;
+ session.payment=null;session.cashChangeNeeded=null;session.cashReceivedCents=null;
+ session.checkoutRequested=false;session.fulfillmentChosen=false;
  session.fulfillment='DELIVERY';
  session.deliveryFeeCents=null;
  session.addressCheck=null;
@@ -202,6 +205,7 @@ export function resetCartAfterOrder(session,{requestId,orderNumber=null,dryRun=f
 }
 export function setPayment(session,{method}){
   if(!['PIX','CARTAO','DINHEIRO'].includes(method))return {ok:false,error:'Forma de pagamento inválida.'};
+  if(session.payment!==method){session.cashChangeNeeded=null;session.cashReceivedCents=null;}
   session.payment=method;invalidateQuote(session);return {ok:true,payment:method};
 }
 export function requestConfirmation(session,business){
