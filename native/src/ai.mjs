@@ -26,6 +26,12 @@ const tools=[
  {name:'chamar_atendente',description:'Transfere a conversa para um humano quando cliente pedir ou houver bloqueio.',parameters:params({reason:field('string','Motivo breve')},['reason'])}
 ];
 const normalize=(s)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+/** Intenção de iniciar compra separada, independente do provedor de IA. */
+export function isNewOrderIntent(message){
+  const text=normalize(String(message??'')).trim()
+    .replace(/[!?.,;:]+$/g,'').replace(/\s+/g,' ');
+  return /^(?:novo pedido|nova compra|comecar (?:um |uma )?(?:novo|outro) pedido|iniciar (?:um )?(?:novo|outro) pedido|quero (?:fazer |comecar |iniciar )?(?:um )?(?:novo|outro) pedido|vamos (?:fazer |comecar )?(?:um )?(?:novo|outro) pedido|pode (?:comecar|iniciar) (?:um )?(?:novo|outro) pedido|limpar (?:o )?carrinho|cancelar (?:o )?carrinho)$/.test(text);
+}
 export function explicitYes(s){const t=normalize(s).trim().replace(/[!.]+$/,'');return /^(sim|confirmo|confirmado|pode confirmar|pode fechar|fechar pedido|isso mesmo|correto|pode enviar|esta certo|ok confirmo)$/.test(t);}
 export function wantsHuman(s){return /\b(atendente|humano|pessoa de verdade|falar com alguem|funcionario|gerente)\b/i.test(normalize(s));}
 
@@ -226,9 +232,9 @@ export async function intelligentReply(userText,session,business,cfg={}){
     return checkoutNextQuestion(session,business) ||
       'Perfeito! 🍕 Vou organizar o resumo completo para você conferir.';
   }
-  if(/^(novo pedido|nova compra|comecar outro pedido|iniciar novo pedido|limpar carrinho|cancelar carrinho)$/.test(normalizedInput)){
+  if(isNewOrderIntent(userText)){
     beginNewOrder(session);
-    return '🍕 Começamos um pedido novo! Me conta: qual pizza ou combo você está com vontade de pedir? 😊';
+    return '🍕 Combinado! Vamos escolher uma pizza deliciosa? 😋 Qual sabor ou combo você prefere?';
   }
   if(session.pdvOrder?.ok===false && session.lastConfirmed){
     return 'Seu pedido anterior *não foi registrado no PDV*. Encaminhei a situação para conferência de um atendente; não vou gerar PIX nem enviar uma venda duplicada. Se quiser começar uma compra diferente, responda *novo pedido*.';
