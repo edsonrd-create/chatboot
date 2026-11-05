@@ -251,6 +251,33 @@ export async function intelligentReply(userText,session,business,cfg={}){
     beginNewOrder(session);
     return '🍕 Combinado! Vamos escolher uma pizza deliciosa? 😋 Qual sabor ou combo você prefere?';
   }
+  // CONFIRMO é uma operação financeira/operacional, nunca uma resposta livre da IA.
+  // Se houve perda do estado entre resumo e mensagem, apresentar NOVO resumo em vez de fingir envio.
+  if(/^(?:confirmo|ok confirmo|pode confirmar|confirmado)$/.test(normalizedInput)){
+    if(session.lastCompletedRequestId && session.pdvOrder?.ok && Number.isSafeInteger(Number(session.pdvOrder.number)) && Number(session.pdvOrder.number)>0)
+      return 'Seu pedido nº '+session.pdvOrder.number+' já foi registrado no PDV. Não vou enviá-lo novamente.';
+    if(session.pdvOrder?.ok===false && session.lastConfirmed)
+      return '⚠️ Seu pedido NÃO foi registrado no PDV. Vou chamar um atendente para conferir; não faça pagamento até receber um número real de pedido.';
+    if(session.awaitingConfirmation && session.quotePresented){
+      const result=confirmRequest(session,business,{explicitConfirmation:true});
+      if(result.ok){
+        session.lastConfirmed=result;
+        return confirmationReply(session,business,result,'Não foi possível comprovar o registro do pedido no PDV.');
+      }
+    }
+    if(session.cart?.length){
+      const next=requestConfirmation(session,business);
+      if(next.ok){
+        session.quotePresented=true;
+        session.lastQuote=formatQuote(next.quote);
+        return 'Preciso validar novamente o resumo antes de registrar no PDV. Nenhum pedido foi enviado ainda.\\n\\n'+QUOTE_PROMPT(session.lastQuote);
+      }
+      return '⚠️ Não consegui registrar o pedido: '+next.error+' Vou chamar um atendente para conferir os dados.';
+    }
+    session.mode='HUMAN';
+    session.reason='Confirmação recebida sem carrinho ou resumo válido';
+    return '⚠️ Sua confirmação chegou, mas não encontrei um pedido válido para registrar no PDV. Não estamos preparando esse pedido. Vou chamar um atendente para conferir.';
+  }
   if(session.pdvOrder?.ok===false && session.lastConfirmed){
     return 'Seu pedido anterior *não foi registrado no PDV*. Encaminhei a situação para conferência de um atendente; não vou gerar PIX nem enviar uma venda duplicada. Se quiser começar uma compra diferente, responda *novo pedido*.';
   }
@@ -294,6 +321,10 @@ export async function intelligentReply(userText,session,business,cfg={}){
     }
   }
   if(!session.confirmedRequestId&&!session.pdvOrder?.ok&&/pedido (foi )?(enviado|registrado|confirmado)/i.test(reply)&&!before.confirmed)return whatsappText(reply.replace(/pedido (foi )?(enviado|registrado|confirmado)[^.!\n]*[.!]?/gi,'').trim()||'Posso te mostrar o resumo para confirmar?');
+  // Bloqueio final de alegações de preparação/entrega sem comprovante de registro no PDV.
+  if(!session.pdvOrder?.ok && /(?:j[aá] estamos preparando|pedido (?:j[aá] )?(?:est[aá] (?:em preparo|sendo preparado)|foi (?:para a cozinha|recebido))|entrega (?:j[aá] )?(?:saiu|est[aá] a caminho))/i.test(reply)){
+    return '⚠️ Ainda não tenho confirmação de registro no PDV. Seu pedido NÃO está confirmado para preparo; vou pedir conferência de um atendente.';
+  }
   return whatsappText(reply);
 }
 async function replyCore(userText,session,business,{apiKey,model='gpt-4.1-mini',provider='openai'}={}){
