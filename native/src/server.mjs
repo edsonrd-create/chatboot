@@ -503,11 +503,28 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
-      if(p==='/api/cardapio-whatsapp/status'&&req.method==='GET')
-        return json(res,200,{enabled:env.PDV_MENU_REALTIME_ENABLED!=='false',source:pdvBase,
+      if(p==='/api/cardapio-whatsapp/status'&&req.method==='GET'){
+        const scheduleActive=botActiveNow();
+        const connectedSlots=[1,2].filter(slot=>Boolean(qr?.isConnected(slot)));
+        const snapshot=store.snapshot();
+        const eligibleThreads=Object.values(snapshot.threads||{}).filter(t=>
+          t.via==='qr'&&t.mode==='BOT'&&connectedSlots.includes(t.slot)&&qrAllowed(t.customer)).length;
+        const blockers=[
+          ...(!qrEnabled?['QR_DISABLED']:[]),
+          ...(!qrAutoReply?['AUTOREPLY_DISABLED']:[]),
+          ...(!scheduleActive?['SCHEDULE_PAUSED']:[]),
+          ...(!aiCfg.apiKey?['AI_NOT_CONFIGURED']:[]),
+          ...(!connectedSlots.length?['WHATSAPP_DISCONNECTED']:[])
+        ];
+        return json(res,200,{
+          enabled:env.PDV_MENU_REALTIME_ENABLED!=='false',source:pdvBase,
           sync:{...catalogSync},sizes:catalogSync.ok?business.sizes.map(s=>({label:s.label,active:true})):[],
           flavors:catalogSync.ok?business.flavors.length:0,combos:catalogSync.ok?business.combos.length:0,
-          pricesFrom:'PDV',ordersMode:'HOMOLOGATION'});
+          pricesFrom:'PDV',
+          automation:{ready:blockers.length===0,blockers,connectedSlots,eligibleThreads,
+            configured:qrAutoReply,scheduleActive,aiConfigured:Boolean(aiCfg.apiKey)}
+        });
+      }
       if(p==='/api/cardapio-whatsapp/sync'&&req.method==='POST'){
         const result=await syncCatalog();
         return json(res,result.ok?200:503,{ok:result.ok,source:pdvBase,sync:result,
