@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {FileStore} from './store.mjs';
 import {verifyChatwootSignature,normalizeEvent,newSession,getSummary} from './core.mjs';
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
+import {loadCatalogV2ForBot} from './catalog-v2-adapter.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
@@ -32,6 +33,15 @@ if(ONLINE && env.NODE_ENV==='production' && env.DATA_FILE?.includes('tmp'))throw
 const store=new FileStore(DATA_FILE).init();
 if(!fs.existsSync(BUSINESS_FILE)){fs.mkdirSync(path.dirname(BUSINESS_FILE),{recursive:true});fs.copyFileSync(path.join(projectRoot,'config','business.json'),BUSINESS_FILE);}
 let business=JSON.parse(fs.readFileSync(BUSINESS_FILE,'utf8'));
+let lastV2Read=0;
+async function ensureCatalogReady(){
+  if(env.CARDAPIO_V2_BOT_READ_ENABLED!=='true')return;
+  if(Date.now()-lastV2Read<15000)return;
+  const result=await loadCatalogV2ForBot(env,business);
+  if(result.source!=='v2')throw new Error("Cardápio V2 indisponível: "+result.reason);
+  business=result.business;
+  lastV2Read=Date.now();
+}
 const PUBLIC=path.join(projectRoot,'public');
 
 const json=(res,status,obj,headers={})=>respond(res,status,JSON.stringify(obj),{'content-type':'application/json; charset=utf-8',...headers});
@@ -114,7 +124,7 @@ async function pump(){
          // Never claim to have an AI agent responding when the model is not configured.
          session.mode='HUMAN';session.reason='Modelo de IA não configurado';
          reply='Nosso atendimento automático está indisponível no momento. Vou encaminhar sua conversa à equipe. 😊';
-       }else try{reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}
+       }else try{await ensureCatalogReady();reply=await intelligentReply(n.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}
        catch(error){console.error('AI processing failure',error.message);reply='Tive uma dificuldade para consultar as informações agora. Vou encaminhar sua conversa para a equipe. 🙏';session.mode='HUMAN';session.reason='Falha no processamento de IA';}
        if(session.mode==='HUMAN'&&wantsHuman(n.content))reply='Claro! Vou encaminhar seu atendimento para nossa equipe. 😊';
        if(!previouslyHuman && session.mode==='HUMAN'){
@@ -215,7 +225,7 @@ async function router(req,res){
    if(p==='/api/business'&&req.method==='PUT'){
      let b;try{b=JSON.parse((await readBody(req,200*1024)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
      if(!validateBusiness(b))return json(res,422,{error:'Cardápio inválido: confira preços em centavos, tamanhos, bebidas e políticas de meia a meia.'});
-     const temp=BUSINESS_FILE+'.tmp';fs.writeFileSync(temp,JSON.stringify(b,null,2));fs.renameSync(temp,BUSINESS_FILE);business=b;return json(res,200,{ok:true});
+     const temp=BUSINESS_FILE+'.tmp';fs.writeFileSync(temp,JSON.stringify(b,null,2));fs.renameSync(temp,BUSINESS_FILE);business=b;lastV2Read=0;return json(res,200,{ok:true});
    }
    if(p==='/api/ai/check'&&req.method==='POST'){
      if(!env.OPENAI_API_KEY)return json(res,503,{ok:false,error:'IA real não configurada. Configure OPENAI_API_KEY somente no servidor.'});
@@ -229,7 +239,7 @@ async function router(req,res){
      const key='demo:0:1';const session=store.snapshot().sessions[key]||newSession();
      if(session.mode==='HUMAN')return json(res,200,{reply:'A conversa está com um atendente. Reinicie o teste para retornar ao bot.',session});
      let reply;
-     try{reply=await intelligentReply(m.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}catch(e){return json(res,503,{error:'IA indisponível: '+e.message});}
+     try{await ensureCatalogReady();reply=await intelligentReply(m.content,session,business,{apiKey:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});}catch(e){return json(res,503,{error:'IA indisponível: '+e.message});}
      session.history.push({role:'user',content:m.content},{role:'assistant',content:reply});session.history=session.history.slice(-30);
      await store.tx(d=>{if(session.lastConfirmed){if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId))d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:0,inboxId:0,conversationId:1,customer:'Cliente (simulador)',status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote,demo:true});delete session.lastConfirmed;}d.sessions[key]=session;});
      return json(res,200,{reply,summary:getSummary(session,business),mode:session.mode});
