@@ -2,7 +2,7 @@ import {getSummary,formatMoney} from './core.mjs';
 
 const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 export function wantsToFinishOrder(text){
-  const message=norm(text).replace(/[.!?,;:]+$/,'').replace(/\s+/g,' ');
+  const message=norm(text).replace(/[!?.,;:]/g,' ').replace(/\s+/g,' ').trim();
   return /^(?:so isso|e so|era so isso|pode|sim|isso|pode sim|sim pode|pode fechar|pode finalizar|pode concluir|pode confirmar|fechar|fechar o pedido|fechar pedido|fechar seu pedido|fecha meu pedido|fecha o pedido|pode fechar meu pedido|pode fechar seu pedido|finalizar|finalizar pedido|finalizar o pedido|finaliza meu pedido|concluir|concluir pedido|concluir o pedido|terminar pedido|pronto|pronto pode fechar|nao quero mais nada|quero finalizar|quero confirmar|vamos fechar|pode mandar o resumo|manda o resumo|pode enviar o resumo|pode fechar sim|vamos finalizar)$/.test(message);
 }
 export function asksForCurrentPrice(text){
