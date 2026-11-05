@@ -183,7 +183,9 @@ async function pump(){
        session.history.push({role:'assistant',content:reply.slice(0,3000),delivery:'queued',outboxId:`reply:${evt.id}`});
        session.history=session.history.slice(-100);
        const oid=`reply:${evt.id}`;
-       if(!d.outbox[oid])d.outbox[oid]={id:oid,accountId:n.accountId,conversationId:n.conversationId,content:reply.slice(0,3000),state:'pending',attempts:0,nextAt:Date.now()};
+       const attachMenu=Boolean(session.pendingMenuPdf)&&menuPdfAvailable();
+       delete session.pendingMenuPdf;
+       if(!d.outbox[oid])d.outbox[oid]={id:oid,accountId:n.accountId,conversationId:n.conversationId,content:reply.slice(0,3000),attachment:attachMenu,state:'pending',attempts:0,nextAt:Date.now()};
        if(session.lastConfirmed){
          if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId)){
            d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:n.accountId,inboxId:n.inboxId,conversationId:n.conversationId,customer:session.customerName||n.sender,customerPhone:session.customerPhone,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote});
