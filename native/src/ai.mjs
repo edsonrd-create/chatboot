@@ -191,6 +191,10 @@ if(name==='solicitar_confirmacao'&&out.ok){session.quotePresented=true;session.l
 if(name==='confirmar_solicitacao'&&out.ok){session.lastConfirmed=out;return confirmationReply(session,business,out,`Confirmação recebida! 🍕 Sua solicitação ${out.requestId.slice(0,8)} vai passar pela conferência da equipe. Ainda não foi enviada à cozinha; avisaremos após a aprovação.`);}
 responses.push({functionResponse:{name,response:{result:out}}});
 }
+if(session.cart?.length&&!session.customerNameConfirmed){
+ session.awaitingCustomerName=true;
+ return 'Antes de finalizar, qual é o *seu nome* para este pedido? 🍕';
+}
 contents.push({role:'user',parts:responses});
 }
 session.mode='HUMAN';session.reason='Limite de ferramentas de IA';return 'Para garantir que seu pedido fique correto, vou encaminhar à nossa equipe. 😊';
@@ -263,6 +267,10 @@ let input=[...session.history.slice(-10).map(x=>({role:x.role,content:x.content}
       return `Confira os dados antes de confirmar: 🍕\n${session.lastQuote}\n\nEstá tudo correto? Responda *Confirmo* para enviar a solicitação para conferência da equipe.`;
     }
     if(call.name==='confirmar_solicitacao'&&out.ok){session.lastConfirmed=out;return confirmationReply(session,business,out,`Confirmação recebida! 🍕 Sua solicitação ${out.requestId.slice(0,8)} vai passar pela conferência da equipe. Ainda não foi enviada à cozinha; avisaremos após a aprovação.`);}
+  }
+  if(session.cart?.length&&!session.customerNameConfirmed){
+    session.awaitingCustomerName=true;
+    return 'Antes de finalizar, qual é o *seu nome* para este pedido? 🍕';
   }
  }
  session.mode='HUMAN';session.reason='Limite de ferramentas de IA';return 'Para garantir que seu pedido fique correto, vou encaminhar à nossa equipe. 😊';
