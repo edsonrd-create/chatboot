@@ -87,7 +87,7 @@ test('venda confirmada pelo PDV encerra carrinho; segunda compra começa sem ite
 test('falha no PDV mantém pedido para revisão mas não mistura com a compra seguinte',async()=>{
  const s=quoted();b.pdvMode=async()=> 'off';
  const response=await intelligentReply('Confirmo',s,b);
- assert.match(response,/NÃO foi registrado/i);
+ assert.match(response,/não consegui confirmar o registro/i);
  assert.equal(s.mode,'HUMAN');
  assert.equal(s.cart.length,1);
  assert.match((await intelligentReply('me manda pix',s,b)),/não foi registrado/i);
