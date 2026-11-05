@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readMyPdvOrders,readPdvOperationsSummary} from '../src/pdv-operations-adapter.mjs';
+import {readMyPdvOrders,readPdvOperationsSummary,readRegisteredPdvCustomer} from '../src/pdv-operations-adapter.mjs';
 
 const cfg={
  PDV_OPERATIONS_READ_ENABLED:'true',
@@ -43,4 +43,18 @@ test('consulta administrativa recebe apenas indicadores agregados de marketplace
    return {ok:true,json:async()=>({ok:true,orders:[{channel:'99food',status:'ready',count:3},{channel:'ifood',status:'new',count:2}],deliveries:[{status:'dispatched',count:1}]})};
  });
  assert.equal(out.ok,true);assert.equal(out.orders.length,2);assert.equal(out.deliveries[0].count,1);
+});
+
+test('consulta de cadastro por número autenticado retorna apenas nome para confirmação',async()=>{
+ const out=await readRegisteredPdvCustomer(cfg,'+5541999998888',async(_url,options)=>{
+   assert.deepEqual(JSON.parse(options.body),{action:'customer_profile',phone:'+5541999998888'});
+   return {ok:true,json:async()=>({ok:true,found:true,name:'Maria Teste',blocked:false,address:'NÃO EXPOR'})};
+ });
+ assert.deepEqual(out,{ok:true,found:true,name:'Maria Teste',blocked:false});
+ assert.equal('address' in out,false);
+});
+test('cadastro ambíguo exige conferência humana antes de usar nome',async()=>{
+ const out=await readRegisteredPdvCustomer(cfg,'+5541999998888',
+   async()=>({ok:true,json:async()=>({ok:true,found:false,ambiguous:true})}));
+ assert.deepEqual(out,{ok:true,found:false,ambiguous:true});
 });
