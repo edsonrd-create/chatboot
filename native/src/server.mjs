@@ -11,6 +11,7 @@ import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
 import {createQrManager} from './wa-qr.mjs';
 import {fetchPdvCatalog,catalogFromPdvMenu} from './pdv-catalog.mjs';
+import {classifyPdvStatus} from './pdv-status.mjs';
 import {defaultSchedule,normalizeSchedule,isBotActive,describeSchedule} from './bot-schedule.mjs';
 import {envFlag,qrPreflight,qrSupportStatus,qrBlockerMessage} from './qr-automation.mjs';
 import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice,spokenCustomerReply,requiresWrittenCopy} from './voice.mjs';
@@ -84,11 +85,8 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
         redirect:'error',cache:'no-store',signal:AbortSignal.timeout(10000),
       });
       const payload=await response.json().catch(()=>({}));
-      const mode=response.ok && ['off','test','active'].includes(payload.mode)?payload.mode:null;
-      return {ok:response.ok&&Boolean(mode),
-        reason:response.status===401?'TOKEN_REJECTED':response.status===403?'PDV_DISABLED':response.status===404?'ROUTE_NOT_FOUND':
-          response.ok&&!mode?'INVALID_PDV_MODE':response.ok?'OK':'HTTP_ERROR',
-        httpStatus:response.status,mode,source:pdvBase};
+      const checked=classifyPdvStatus(response.status,payload.mode);
+      return {...checked,httpStatus:response.status,source:pdvBase};
     }catch(e){
       return {ok:false,reason:'PDV_UNREACHABLE',httpStatus:null,mode:null,source:pdvBase};
     }
