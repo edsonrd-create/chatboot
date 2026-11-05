@@ -22,7 +22,14 @@ export function buildPdvOrder(session, business, quote, requestId) {
     address: quote.fulfillment === 'PICKUP' ? '' : String(quote.address || ''),
     neighborhood: String(session.neighborhood || ''),
     items,
-    notes: 'Pedido WhatsApp · Guto Bot',
+    // A comanda recebe o valor entregue em dinheiro. O PDV recalcula o total;
+    // a diferença final deve ser calculada a partir do total que o PDV confirmar.
+    notes: quote.payment==='DINHEIRO'
+      ? 'Pedido WhatsApp · Guto Bot · ' +
+        (quote.cashChangeNeeded===false?'Sem troco':
+          Number.isSafeInteger(quote.cashReceivedCents)?
+            'Troco para '+formatMoney(quote.cashReceivedCents)+' · conferir total do PDV':'Troco pendente')
+      : 'Pedido WhatsApp · Guto Bot',
   };
 }
 
@@ -33,6 +40,15 @@ export function pdvOrderMessage(res, quote) {
   const lines = [`Pedido nº ${res.number} registrado! 🍕`];
   const total = Number.isInteger(res.totalCents) ? res.totalCents : null;
   if (total !== null) lines.push(`Total: ${formatMoney(total)}${quote && total !== quote.totalCents ? ' (valor conferido pelo sistema da loja)' : ''}`);
+  if(quote?.payment==='DINHEIRO'){
+    if(quote.cashChangeNeeded===false)lines.push('Dinheiro: sem troco.');
+    else if(quote.cashChangeNeeded===true&&Number.isSafeInteger(quote.cashReceivedCents)){
+      lines.push('Dinheiro: troco para '+formatMoney(quote.cashReceivedCents)+'.');
+      if(total!==null&&quote.cashReceivedCents>=total)
+        lines.push('Troco calculado pelo total do PDV: '+formatMoney(quote.cashReceivedCents-total)+'.');
+      else lines.push('O valor do troco precisa de conferência da equipe.');
+    }
+  }
   if (res.pixCopiaECola) lines.push('', 'Pague com Pix Copia e Cola (copie o código abaixo):', res.pixCopiaECola, '', 'Assim que o pagamento for confirmado pelo banco, seu pedido segue para a cozinha.');
   else if (quote?.payment === 'PIX') lines.push('O código Pix não foi gerado agora; um atendente vai te enviar.');
   return lines.join('\n');
