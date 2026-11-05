@@ -157,6 +157,8 @@ export function resetCartAfterOrder(session,{requestId,orderNumber=null}={}){
    return {ok:false,error:'Somente o pedido efetivamente confirmado pode limpar o carrinho.'};
  session.lastCompletedRequestId=requestId;
  session.lastCompletedOrderNumber=orderNumber;
+ // Remover o contexto de compras anteriores para a IA não reconstruir o carrinho já encerrado.
+ session.history=[];
  session.cart=[];
  session.address=null;
  session.neighborhood=null;
