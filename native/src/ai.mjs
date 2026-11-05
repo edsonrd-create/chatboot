@@ -227,7 +227,7 @@ export function whatsappText(t){return String(t||'').replace(/\*\*(.+?)\*\*/g,'*
 export async function intelligentReply(userText,session,business,cfg={}){
   const normalizedInput=normalize(String(userText||'')).trim();
   session.enforceCheckoutOrder=true;
-  if(session.cart?.length && !session.awaitingConfirmation && wantsToFinishOrder(userText)){
+  if(session.cart?.length && !session.awaitingConfirmation && !(session.checkoutRequested && session.payment==='DINHEIRO' && (session.cashChangeNeeded===null || session.cashChangeNeeded===undefined || (session.cashChangeNeeded===true && session.cashReceivedCents===null))) && wantsToFinishOrder(userText)){
     // O cliente aceitou fechar: nunca voltar à pergunta "posso fechar?".
     session.checkoutRequested=true;
     const next=checkoutNextQuestion(session,business);
