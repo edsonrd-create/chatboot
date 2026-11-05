@@ -98,3 +98,18 @@ test('PIX, cartão e novo pedido não herdam troco',()=>{
  assert.equal(session.cashReceivedCents,null);
  assert.equal(session.cart.length,0);
 });
+
+test('taxa de entrega entra na soma e no cálculo do troco',()=>{
+ const {business,session}=sample();
+ setFulfillment(session,{method:'DELIVERY'});
+ session.address='Rua das Flores, 100, Centro, Colombo';
+ session.deliveryFeeCents=650;
+ setPayment(session,{method:'DINHEIRO'});
+ assert.equal(setCashChange(session,true,10000,business).ok,true);
+ const summary=getSummary(session,business);
+ assert.equal(summary.subtotalCents,5999);
+ assert.equal(summary.deliveryFeeCents,650);
+ assert.equal(summary.totalCents,6649);
+ assert.equal(summary.cashChangeCents,3351);
+ assert.deepEqual(summary.missing,[]);
+});
