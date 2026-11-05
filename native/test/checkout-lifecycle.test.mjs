@@ -52,17 +52,21 @@ test('pedir PIX com orçamento apresentado não envia nada ao PDV nem refaz o ca
  assert.equal(s.cart.length,count);
  assert.equal(calls,0);
 });
-test('modo teste encerra carrinho mas não registra venda',async()=>{
+test('modo teste preserva carrinho para revisão e permite limpar ao iniciar novo pedido',async()=>{
  const s=confirmed();b.pdvMode=async()=> 'test';
  b.submitOrder=async()=>({ok:true,dryRun:true,mode:'test'});
  const original=s.lastConfirmed.requestId;
  const text=await confirmationReply(s,b,s.lastConfirmed,'fallback');
  assert.match(text,/homologação/i);
- assert.equal(s.cart.length,0);
- assert.equal(s.payment,null);
- assert.equal(s.customerNameConfirmed,false);
+ assert.equal(s.cart.length,1);
+ assert.equal(s.payment,'PIX');
+ assert.equal(s.customerNameConfirmed,true);
  assert.equal(s.lastDryRunRequestId,original);
  assert.notEqual(s.lastCompletedRequestId,original);
+ assert.match(await intelligentReply('me manda o pix',s,b),/homologação/);
+ await intelligentReply('novo pedido',s,b);
+ assert.equal(s.cart.length,0);assert.equal(s.payment,null);
+ assert.equal(s.customerNameConfirmed,false);
 });
 test('venda confirmada pelo PDV encerra carrinho; segunda compra começa sem itens antigos',async()=>{
  const s=quoted();
