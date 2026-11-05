@@ -13,6 +13,7 @@ import {createQrManager} from './wa-qr.mjs';
 import {fetchPdvCatalog,catalogFromPdvMenu} from './pdv-catalog.mjs';
 import {classifyPdvStatus} from './pdv-status.mjs';
 import {defaultSchedule,normalizeSchedule,isBotActive,describeSchedule} from './bot-schedule.mjs';
+import {isThreadTestActive,enableThreadTest,clearThreadTest} from './thread-test.mjs';
 import {envFlag,qrPreflight,qrSupportStatus,qrBlockerMessage} from './qr-automation.mjs';
 import {transcribeAudio,synthesizeVoice,shouldReplyWithVoice,spokenCustomerReply,requiresWrittenCopy} from './voice.mjs';
 import {normalizeIncomingAudio,opusOggValid,AudioInputError,inspectAudioRuntime} from './audio-pipeline.mjs';
@@ -120,6 +121,7 @@ function upsertOutgoing(t,msg){const old=t.messages.find(x=>x.id===msg.id);if(ol
 // Horário de atendimento da IA + chave manual (painel). Padrão 'on' = comportamento anterior.
 const botSchedule=()=>store.peek().settings?.botSchedule||defaultSchedule();
 const botActiveNow=()=>isBotActive(botSchedule(),new Date(clock()));
+const replyAllowedForThread=t=>(qrAutoReply&&botActiveNow())||isThreadTestActive(t,{now:clock()});
 let qr=null;
 // Mídias recebidas/enviadas ficam no volume persistente, ao lado do estado.
 const mediaDir=path.join(path.dirname(statePath),'media');
@@ -170,7 +172,7 @@ if(store.peek().threads[tid]?.messages?.some(x=>x.id===m.id))return; // sem cust
 let text=m.text||'',transcribed=false,audioError='';
 const existing=store.peek().threads[tid];
 const mode=existing?.mode||(qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN');
-const audioEligible=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply&&botActiveNow(),aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:mode,hasText:true}).ready;
+const audioEligible=qrPreflight({freePreview,enabled:qrEnabled,autoReply:replyAllowedForThread(existing),aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:mode,hasText:true}).ready;
 if(m.type==='audio'&&audioEligible){
   try{
     if(!m.audio?.buffer)throw new AudioInputError(m.audio?.error||'AUDIO_DOWNLOAD_FAILED','Áudio não baixado');
@@ -202,7 +204,7 @@ if(m.type==='audio'&&audioError&&audioEligible&&t.mode==='BOT'){
   t.mode='HUMAN';t.session=t.session||newSession();t.session.mode='HUMAN';t.operationalState='WAITING';
   audit(d,{actor:'system',action:'QR_AUDIO_TO_HUMAN',slot:t.slot,clock});
 }
-const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply&&botActiveNow(),aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)&&(m.type==='audio'||m.type==='text')});
+const assessment=qrPreflight({freePreview,enabled:qrEnabled,autoReply:replyAllowedForThread(t),aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(m.slot),numberAllowed:qrAllowed(m.from),threadMode:t.mode,hasText:Boolean(text)&&(m.type==='audio'||m.type==='text')});
 canReply=assessment.ready;
 if(assessment.blockers.length&&t.mode==='BOT')t.qrLastBlocker=assessment.blockers[0];
 else if(!audioError&&t.mode==='BOT')delete t.qrLastBlocker;
@@ -313,7 +315,7 @@ if(session.customerPhone.length>=10&&session.orderRefs?.length)await store.chang
 // Enviar somente se o atendente não assumiu a conversa enquanto a IA processava.
 const stillAutomated=()=>{
   const t=store.peek().threads[tid];
-  return t?.mode==='BOT'&&t.operationalState!=='CLOSED'&&qrAutoReply&&qrAllowed(m.from)&&qr?.isConnected(m.slot);
+  return t?.mode==='BOT'&&t.operationalState!=='CLOSED'&&replyAllowedForThread(t)&&qrAllowed(m.from)&&qr?.isConnected(m.slot);
 };
 if(!stillAutomated()){
   console.info('[QR AUDIO]',JSON.stringify({slot:m.slot,code:'QR_CANCELLED_BY_HUMAN'}));
@@ -405,7 +407,7 @@ const aiCfg=aiProvider==='gemini'
     {id:'demo:2',slot:2,customer:'CLIENTE-FICTICIO-02',customerName:'Exemplo fictício · Bruno',mode:'HUMAN',unread:0,updatedAt:'2026-10-26T18:02:00.000Z',messages:[{id:'demo-b-1',direction:'incoming',text:'Quais são as opções de pizza gigante? É para retirar no balcão.',type:'text',at:'2026-10-26T18:02:00.000Z',delivery:'received',source:'EXEMPLO FICTÍCIO'}]},
   ];
   const previewStatus=()=>({mode:'PREVIA_PUBLICA',ready:false,autoReplyEnabled:false,reason:'Prévia visual somente leitura; nenhum WhatsApp ou PDV conectado',hosting:{freePreview:true,ephemeralData:true,customerMessagingDisabled:true,readOnly:true},channels:[1,2].map(slot=>({slot,phoneId:'',number:'Não conectado',apiVerifiedAt:null,lastInboundAt:null,lastOutboundAt:null,hasToken:false,status:'NOT_VERIFIED'})),ai:{configured:false,model:'',realTest:false,testAt:null},pdv:{enabled:false,baseUrl:'https://pdvgutoexpress.com.br',ordersMode:'DISABLED',lastTest:null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:2,messages:3,pendingOrders:0},oauth:{available:false,appId:null,configId:null}});
-  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d),qrState=qrSummary();const qrPublic={...qrState,slots:qrState.slots.map(({qr,...safe})=>safe)};return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:qrState.active,qr:qrPublic,reason:qrState.active?'Resposta QR configurada e conectada; criação de pedidos no PDV ainda bloqueada':qrState.help,hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(aiCfg.apiKey),model:aiCfg.model,provider:aiCfg.provider,realTest:Boolean(d.aiTest?.ok&&d.aiTest?.provider===aiCfg.provider&&d.aiTest?.model===aiCfg.model),testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
+  const status=()=>{const d=store.snapshot();const channels=configuredChannels(d),qrState=qrSummary();const qrPublic={...qrState,slots:qrState.slots.map(({qr,...safe})=>safe)};return {mode:'HOMOLOGACAO',ready:false,autoReplyEnabled:qrState.active&&botActiveNow(),globalAutomationActive:qrAutoReply&&botActiveNow(),qr:qrPublic,reason:qrState.active&&botActiveNow()?'WhatsApp QR ativo globalmente':!botActiveNow()?'IA global pausada; libere uma conversa temporariamente no painel para teste autorizado':qrState.help,hosting:{freePreview,ephemeralData:freePreview,customerMessagingDisabled:freePreview},channels:channels.map(c=>({...publicChannel(c),hasToken:Boolean(c.tokenEncrypted||env[`META_TOKEN_${c.slot}`])})),ai:{configured:Boolean(aiCfg.apiKey),model:aiCfg.model,provider:aiCfg.provider,realTest:Boolean(d.aiTest?.ok&&d.aiTest?.provider===aiCfg.provider&&d.aiTest?.model===aiCfg.model),testAt:d.aiTest?.at||null},pdv:{...d.settings.pdv,lastTest:d.settings.pdvTest||null},integration:{provider:'META_CLOUD_API_DIRECT',chatwoot:false,qr:'META_OFFICIAL_ONBOARDING_ONLY'},stats:{conversations:Object.keys(d.threads).length,messages:Object.values(d.threads).reduce((n,t)=>n+t.messages.length,0),pendingOrders:d.orders.filter(o=>o.status==='PENDING_STAFF_REVIEW').length},oauth:{available:Boolean(env.META_APP_ID&&env.META_CONFIG_ID),appId:env.META_APP_ID||null,configId:env.META_CONFIG_ID||null}};};
   function authed(req){const raw=cookieValue(req);const n=raw.lastIndexOf('.');if(n<0)return false;const payload=raw.slice(0,n),mac=raw.slice(n+1);if(!safeCompare(sign(payload,env.APP_SECRET),mac))return false;const parts=payload.split(':');return parts[0]==='admin'&&Number(parts[1])>clock()&&Number(parts[1])<clock()+86400000;}
   function checkLoginRate(req){const ip=req.socket?.remoteAddress||'unknown',now=clock();let old=attempts.get(ip)||{at:now,n:0};if(now-old.at>15*60e3)old={at:now,n:0};old.n++;attempts.set(ip,old);return old.n<=12;}
   function append(t,m){t.messages.push(m);if(t.messages.length>250)t.messages=t.messages.slice(-250);t.updatedAt=m.at;}
@@ -637,17 +639,26 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
           const t0=store.snapshot().threads[v.id];
           if(!t0)return json(res,404,{error:'Conversa não encontrada'});
           if(t0.via!=='qr')return json(res,409,{error:'Atendimento automático por QR disponível somente para conversas recebidas por WhatsApp QR.',code:'QR_ONLY'});
-          const check=qrPreflight({freePreview,enabled:qrEnabled,autoReply:qrAutoReply,aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(t0.slot),numberAllowed:qrAllowed(t0.customer),threadMode:'BOT',hasText:true});
+          const globalEnabled=qrAutoReply&&botActiveNow();
+          // Ação explícita do administrador: quando a automação global estiver
+          // pausada, liberar APENAS esta conversa durante 15 minutos.
+          const check=qrPreflight({freePreview,enabled:qrEnabled,autoReply:true,
+            aiConfigured:Boolean(aiCfg.apiKey),connected:qr?.isConnected(t0.slot),
+            numberAllowed:qrAllowed(t0.customer),threadMode:'BOT',hasText:true});
           if(!check.ready)return json(res,409,{error:qrBlockerMessage(check.blockers),code:'QR_NOT_READY',blockers:check.blockers});
+          let testReplyUntil=null;
           await store.change(d=>{
             const t=d.threads[v.id];if(!t)return;
             t.mode='BOT';t.session=t.session||newSession();t.session.mode='BOT';delete t.operationalState;delete t.qrLastBlocker;
-            audit(d,{actor:'admin',action:'QR_BOT_ENABLED_BY_OPERATOR',slot:t.slot,clock});
+            if(!globalEnabled)testReplyUntil=enableThreadTest(t,clock());
+            else clearThreadTest(t);
+            audit(d,{actor:'admin',action:globalEnabled?'QR_BOT_ENABLED_BY_OPERATOR':'QR_SINGLE_THREAD_TEST_ENABLED',slot:t.slot,clock});
           });
-          return json(res,200,{ok:true,mode:'BOT',notice:'IA habilitada nesta conversa QR. Apenas novas mensagens recebidas serão respondidas automaticamente.'});
+          return json(res,200,{ok:true,mode:'BOT',testReplyUntil,
+            notice:testReplyUntil?'IA liberada SOMENTE nesta conversa por 15 minutos. Os demais clientes continuam com a IA global pausada.':'IA habilitada nesta conversa QR. Apenas novas mensagens recebidas serão respondidas automaticamente.'});
         }
         let changed;
-        try{await store.change(d=>{changed=transition(d,{id:v.id,action:'takeover',clock,actor:'admin'});});}
+        try{await store.change(d=>{changed=transition(d,{id:v.id,action:'takeover',clock,actor:'admin'});clearThreadTest(d.threads[v.id]);});}
         catch(e){return json(res,e.status||422,{error:e.message});}
         return json(res,200,{ok:true,thread:changed});
       }
