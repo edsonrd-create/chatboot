@@ -5,6 +5,7 @@ import {newSession,addPizza,setFulfillment,confirmCustomerName,setPayment} from 
 import {intelligentReply} from '../src/ai.mjs';
 import {wantsToFinishOrder,asksForCurrentPrice} from '../src/checkout-flow.mjs';
 const business=JSON.parse(fs.readFileSync(new URL('../config/business.json',import.meta.url),'utf8'));
+business.pizzas.calabresa.grande=5999;
 function session(){
  const s=newSession();s.customerPhone='5541999990000';
  assert.equal(addPizza(s,business,{size:'grande',flavors:['calabresa']}).ok,true);
