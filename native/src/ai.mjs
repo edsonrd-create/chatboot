@@ -60,10 +60,7 @@ export function applyTool(name,args,session,business,userText){
         return {ok:false,error:'Não pergunte nem defina pagamento antes de o cliente escolher finalizar. Pergunte se quer adicionar mais algo.'};
       return setPayment(session,args);
     case 'resumir_carrinho':return getSummary(session,business);
-    case 'solicitar_confirmacao':
-      if(session.enforceCheckoutOrder && !session.checkoutRequested)
-        return {ok:false,error:'Só apresente o resumo final depois que o cliente pedir para finalizar.'};
-      return requestConfirmation(session,business);
+    case 'solicitar_confirmacao':return requestConfirmation(session,business);
     case 'confirmar_solicitacao':return confirmRequest(session,business,{explicitConfirmation:explicitYes(userText)});
     case 'consultar_pedido':{
       const refs=session.orderRefs||[];
@@ -230,7 +227,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
   }
   if(/^(novo pedido|nova compra|comecar outro pedido|iniciar novo pedido|limpar carrinho|cancelar carrinho)$/.test(normalizedInput)){
     beginNewOrder(session);
-    return '🍕 Pedido novinho por aqui! Me conta: qual pizza ou combo você está com vontade de pedir? 😊';
+    return '🍕 Começamos um pedido novo! Me conta: qual pizza ou combo você está com vontade de pedir? 😊';
   }
   if(session.pdvOrder?.ok===false && session.lastConfirmed){
     return 'Seu pedido anterior *não foi registrado no PDV*. Encaminhei a situação para conferência de um atendente; não vou gerar PIX nem enviar uma venda duplicada. Se quiser começar uma compra diferente, responda *novo pedido*.';
@@ -251,8 +248,9 @@ export async function intelligentReply(userText,session,business,cfg={}){
   // Fluxo determinístico: com o carrinho completo, o resumo OFICIAL é sempre apresentado pelo servidor,
   // e o modelo nunca afirma "pedido enviado" sem o registro ter ocorrido.
   if(session.mode==='BOT'&&!session.confirmedRequestId&&!before.confirmed&&!session.awaitingConfirmation&&(session.cart||[]).length){
-    if(session.checkoutRequested){
-      const next=checkoutNextQuestion(session,business);
+    const allAlreadyGiven=session.customerNameConfirmed && session.payment && !getSummary(session,business).missing.length;
+    if(session.checkoutRequested || allAlreadyGiven){
+      const next=session.checkoutRequested?checkoutNextQuestion(session,business):null;
       if(next)return next;
       const q=getSummary(session,business);
       if(!q.missing.length){const r=requestConfirmation(session,business);if(r.ok){session.quotePresented=true;session.lastQuote=formatQuote(r.quote);return QUOTE_PROMPT(session.lastQuote);}}
