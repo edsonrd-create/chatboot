@@ -76,6 +76,23 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
     try{return await catalogInFlight;}finally{catalogInFlight=null;}
   };
   const botToken=String(env.GUTO_BOT_TOKEN||'').trim();
+  async function diagnosePdvOrders(){
+    if(botToken.length<24)return {ok:false,reason:'TOKEN_NOT_CONFIGURED',httpStatus:null,mode:null};
+    try{
+      const response=await fetchImpl(pdvBase+'/api/v1/bot/status',{
+        headers:{authorization:'Bearer '+botToken,accept:'application/json'},
+        redirect:'error',cache:'no-store',signal:AbortSignal.timeout(10000),
+      });
+      const payload=await response.json().catch(()=>({}));
+      const mode=response.ok && ['off','test','active'].includes(payload.mode)?payload.mode:null;
+      return {ok:response.ok&&Boolean(mode),
+        reason:response.status===401?'TOKEN_REJECTED':response.status===403?'PDV_DISABLED':response.status===404?'ROUTE_NOT_FOUND':
+          response.ok&&!mode?'INVALID_PDV_MODE':response.ok?'OK':'HTTP_ERROR',
+        httpStatus:response.status,mode,source:pdvBase};
+    }catch(e){
+      return {ok:false,reason:'PDV_UNREACHABLE',httpStatus:null,mode:null,source:pdvBase};
+    }
+  }
   if(botToken.length>=24)business.validateAddress=async({address,neighborhood,subtotalCents})=>{
     const r=await fetch(`${pdvBase}/api/v1/bot/address`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify({address,neighborhood,subtotalCents}),signal:AbortSignal.timeout(10000)});
     const j=await r.json().catch(()=>({}));return {ok:r.ok&&j.ok!==false,status:r.status,...j};
@@ -492,10 +509,9 @@ const aiCfg=aiProvider==='gemini'
         catch(e){return json(res,200,{ok:false,error:'Falha ao chamar o PDV: '+e.message});}
       }
       if(p==='/api/pdv/bot-status'&&req.method==='GET'){
-        const base=String(env.PDV_BASE_URL||'https://pdvgutoexpress.com.br').replace(/\/$/,'');const token=String(env.GUTO_BOT_TOKEN||'').trim();
-        if(token.length<24)return json(res,200,{ok:false,error:'GUTO_BOT_TOKEN ausente ou curto no Railway'});
-        try{const r=await fetchImpl(base+'/api/v1/bot/status',{headers:{authorization:'Bearer '+token},signal:AbortSignal.timeout(10000)});const body=await r.json().catch(()=>({}));return json(res,200,{ok:r.ok,status:r.status,pdv:body});}
-        catch(e){return json(res,200,{ok:false,error:'PDV indisponível: '+String(e.message||e).slice(0,80)});}
+        const diagnostic=await diagnosePdvOrders();
+        return json(res,200,{...diagnostic,status:diagnostic.httpStatus,
+          pdv:diagnostic.ok?{mode:diagnostic.mode}:null});
       }
       if(p==='/api/bot/schedule'&&req.method==='GET')return json(res,200,{schedule:botSchedule(),...describeSchedule(botSchedule(),new Date(clock())),autoReplyServer:qrAutoReply});
       if(p==='/api/bot/schedule'&&req.method==='PUT'){
@@ -701,7 +717,10 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
     return respond(res,200,fs.readFileSync(path.join(STATIC,file)),headers);
   }
   const server=http.createServer((req,res)=>router(req,res).catch(e=>{if(!res.headersSent)json(res,e.status||500,{error:e.status?e.message:'Erro interno; consulte logs'});console.error('[Guto Nativo]',String(e.message||'Falha').slice(0,160));}));
-  return {server,store,receive,pump,status,start:(port=Number(env.PORT||8080),host=env.HOST||'127.0.0.1')=>store.ready().then(()=>new Promise(resolve=>{server.listen(port,host,()=>{timer=setInterval(pump,2500);timer.unref();syncCatalog();catalogTimer=setInterval(syncCatalog,300000);catalogTimer.unref();resolve(server.address());});})),stop:()=>new Promise(resolve=>{clearInterval(timer);clearInterval(catalogTimer);server.close(()=>resolve());})};
+  return {server,store,receive,pump,status,start:(port=Number(env.PORT||8080),host=env.HOST||'127.0.0.1')=>store.ready().then(()=>new Promise(resolve=>{server.listen(port,host,()=>{timer=setInterval(pump,2500);timer.unref();syncCatalog();catalogTimer=setInterval(syncCatalog,300000);catalogTimer.unref();
+  diagnosePdvOrders().then(result=>console.log('[PDV ORDER STATUS]',JSON.stringify(result)))
+    .catch(()=>console.warn('[PDV ORDER STATUS]',JSON.stringify({ok:false,reason:'DIAGNOSTIC_FAILED'})));
+  resolve(server.address());});})),stop:()=>new Promise(resolve=>{clearInterval(timer);clearInterval(catalogTimer);server.close(()=>resolve());})};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(fs.existsSync(path.join(root,'.env'))&&typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(root,'.env'));
