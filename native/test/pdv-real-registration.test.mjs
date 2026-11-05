@@ -4,8 +4,10 @@ import fs from 'node:fs';
 import {newSession,addPizza,confirmCustomerName,setFulfillment,setPayment,requestConfirmation,confirmRequest} from '../src/core.mjs';
 import {confirmationReply} from '../src/pdv-order.mjs';
 import {reconcilePdvOrder} from '../src/pdv-reconcile.mjs';
+import {catalogFromPdvMenu} from '../src/pdv-catalog.mjs';
 
-const business=JSON.parse(fs.readFileSync(new URL('../config/business.json',import.meta.url),'utf8'));
+const base=JSON.parse(fs.readFileSync(new URL('../config/business.json',import.meta.url),'utf8'));
+const business=catalogFromPdvMenu({ok:true,items:[{id:17,kind:'pizza',name:'Calabresa',sizes:[{label:'Grande',priceCents:5999,maxFlavors:2}]}]},base);
 function ready(){
  const s=newSession();
  s.customerPhone='5541999990000';
