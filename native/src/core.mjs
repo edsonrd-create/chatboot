@@ -20,7 +20,7 @@ export function normalizeEvent(event, configuredInboxes=[], configuredAccount=nu
   return {inboxId,conversationId,accountId,messageId,content:event.content.trim(),sender: String(event.sender?.name || 'Cliente').slice(0,80),key:`${accountId}:${inboxId}:${conversationId}`,eventKey:`${accountId}:${messageId}`};
 }
 
-export const newSession = ()=>({mode:'BOT',cart:[],address:null,payment:null,fulfillment:'DELIVERY',customerNameConfirmed:false,awaitingCustomerName:false,awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
+export const newSession = ()=>({mode:'BOT',cart:[],address:null,payment:null,fulfillment:'DELIVERY',fulfillmentChosen:false,checkoutRequested:false,customerNameConfirmed:false,awaitingCustomerName:false,awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
 function invalidateQuote(session){session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;session.confirmedRequestId=null;}
 export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,customerName:quote.customerName,customerPhone:quote.customerPhone,payment:quote.payment,fulfillment:quote.fulfillment,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
 export function extractText(response) {
@@ -135,13 +135,14 @@ export function getSummary(session,business) {
 export function setFulfillment(session,{method}){
   if(!['DELIVERY','PICKUP'].includes(method))return {ok:false,error:'Selecione entrega ou retirada.'};
   session.fulfillment=method;
+  session.fulfillmentChosen=true;
   if(method==='PICKUP')session.address=null;
   invalidateQuote(session);
   return {ok:true,fulfillment:method};
 }
 export function setAddress(session,{address}) {
   if(typeof address!=='string'||address.trim().length<12 || address.length>500)return {ok:false,error:'Solicite endereço completo com rua, número, bairro e cidade.'};
-  session.address=address.trim();session.fulfillment='DELIVERY';delete session.deliveryFeeCents;delete session.addressCheck;invalidateQuote(session);return {ok:true,address:session.address};
+  session.address=address.trim();session.fulfillment='DELIVERY';session.fulfillmentChosen=true;delete session.deliveryFeeCents;delete session.addressCheck;invalidateQuote(session);return {ok:true,address:session.address};
 }
 export function confirmCustomerName(session,{name}={}){
  const value=String(name||'').trim().replace(/\s+/g,' ');
@@ -163,6 +164,7 @@ export function beginNewOrder(session){
  }
  session.lastDryRunRequestId=null;
  session.cart=[];session.history=[];session.address=null;session.neighborhood=null;
+ session.checkoutRequested=false;session.fulfillmentChosen=false;
  session.payment=null;session.fulfillment='DELIVERY';session.deliveryFeeCents=null;
  session.addressCheck=null;session.customerNameConfirmed=false;session.awaitingCustomerName=false;
  session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;
