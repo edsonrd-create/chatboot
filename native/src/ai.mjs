@@ -243,7 +243,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
     const q=getSummary(session,business);
     if(!q.missing.length){const r=requestConfirmation(session,business);if(r.ok){session.quotePresented=true;session.lastQuote=formatQuote(r.quote);return QUOTE_PROMPT(session.lastQuote);}}
   }
-  if(!session.confirmedRequestId&&/pedido (foi )?(enviado|registrado|confirmado)/i.test(reply)&&!before.confirmed)return whatsappText(reply.replace(/pedido (foi )?(enviado|registrado|confirmado)[^.!\n]*[.!]?/gi,'').trim()||'Posso te mostrar o resumo para confirmar?');
+  if(!session.confirmedRequestId&&!session.pdvOrder?.ok&&/pedido (foi )?(enviado|registrado|confirmado)/i.test(reply)&&!before.confirmed)return whatsappText(reply.replace(/pedido (foi )?(enviado|registrado|confirmado)[^.!\n]*[.!]?/gi,'').trim()||'Posso te mostrar o resumo para confirmar?');
   return whatsappText(reply);
 }
 async function replyCore(userText,session,business,{apiKey,model='gpt-4.1-mini',provider='openai'}={}){
