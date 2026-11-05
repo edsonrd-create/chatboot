@@ -2,7 +2,7 @@
 export async function readMyPdvOrders(config, trustedPhone, orderNumber=null, fetchImpl=fetch) {
   if(config.PDV_OPERATIONS_READ_ENABLED!=='true')
     return {ok:false,error:'PDV_OPERATIONS_DISABLED'};
-  if(typeof trustedPhone!=='string'||!/^\\+55\\d{10,11}$/.test(trustedPhone))
+  if(typeof trustedPhone!=='string'||!/^\+55\d{10,11}$/.test(trustedPhone))
     return {ok:false,error:'WHATSAPP_IDENTITY_REQUIRED'};
   if(orderNumber!==null&&(!Number.isSafeInteger(orderNumber)||orderNumber<=0))
     return {ok:false,error:'INVALID_ORDER_NUMBER'};
