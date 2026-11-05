@@ -195,6 +195,8 @@ if(session.cart?.length&&!session.customerNameConfirmed){
  session.awaitingCustomerName=true;
  return 'Antes de finalizar, qual é o *seu nome* para este pedido? 🍕';
 }
+if(session.cart?.length&&session.customerNameConfirmed&&!session.payment)
+ return 'Como prefere pagar este pedido: *PIX, cartão ou dinheiro*?';
 contents.push({role:'user',parts:responses});
 }
 session.mode='HUMAN';session.reason='Limite de ferramentas de IA';return 'Para garantir que seu pedido fique correto, vou encaminhar à nossa equipe. 😊';
@@ -272,6 +274,8 @@ let input=[...session.history.slice(-10).map(x=>({role:x.role,content:x.content}
     session.awaitingCustomerName=true;
     return 'Antes de finalizar, qual é o *seu nome* para este pedido? 🍕';
   }
+  if(session.cart?.length&&session.customerNameConfirmed&&!session.payment)
+    return 'Como prefere pagar este pedido: *PIX, cartão ou dinheiro*?';
  }
  session.mode='HUMAN';session.reason='Limite de ferramentas de IA';return 'Para garantir que seu pedido fique correto, vou encaminhar à nossa equipe. 😊';
 }
