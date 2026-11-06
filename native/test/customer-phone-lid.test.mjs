@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {dirname,join} from 'node:path';
 import {parseWaMessage} from '../src/wa-qr.mjs';
 import {phoneFromWaKey,parseCustomerPhoneAnswer} from '../src/customer-phone.mjs';
 import {newSession,getSummary} from '../src/core.mjs';
@@ -73,4 +76,16 @@ test('Pedido antigo rejeitado localmente por LID recupera carrinho sem envio dup
  const sent=await intelligentReply('Confirmo',session,business,{apiKey:'unused'});
  assert.match(sent,/Pedido nº 98765 registrado/);
  assert.equal(calls(),1);
+});
+
+test('Número PN acompanha tarefa persistida e tarefa retomada após reinício',()=>{
+ const source=readFileSync(join(dirname(fileURLToPath(import.meta.url)),'../src/server.mjs'),'utf8');
+ assert.match(source,/phoneNumber:validCustomerPhone\(m\.phoneNumber\)\?m\.phoneNumber:''/);
+ assert.match(source,/phoneNumber:j\.phoneNumber\|\|t\.customerPhone\|\|''/);
+ assert.match(source,/authenticatedPhone=String\(m\.phoneNumber\|\|store\.peek\(\)\.threads\?\.\[tid\]\?\.customerPhone\|\|''\)/);
+});
+test('Cadastro local reutiliza nome informado pelo cliente sem exigir endereço para retirada',()=>{
+ const source=readFileSync(join(dirname(fileURLToPath(import.meta.url)),'../src/server.mjs'),'utf8');
+ assert.match(source,/validCustomerPhone\(session\.customerPhone\)&&session\.customerNameConfirmed/);
+ assert.match(source,/session\.address&&session\.addressCheck\?/);
 });
