@@ -34,6 +34,10 @@ export function checkoutNextQuestion(session,business){
     if(summary.missing.includes('valor do troco válido'))
       return `O total atualizado ficou em *${formatMoney(summary.totalCents)}*. Para quanto você vai pagar? Preciso conferir o troco certinho. 😊`;
   }
+  if(summary.missing.includes('telefone para contato')) {
+    session.awaitingCustomerPhone=true;
+    return 'Só falta confirmar um telefone para contato do pedido. 📱 Qual é o seu número com DDD?';
+  }
   return null;
 }
 export function asksPaymentBeforeCheckout(text){

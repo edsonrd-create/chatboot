@@ -1,3 +1,4 @@
+import {parseCustomerPhoneAnswer,validCustomerPhone} from './customer-phone.mjs';
 import {TRAINING_PROTOCOL} from './training.mjs';
 import {wantsToFinishOrder,checkoutNextQuestion,asksPaymentBeforeCheckout,asksForCurrentPrice} from './checkout-flow.mjs';
 import {consumeCashAnswer} from './cash-change.mjs';
@@ -227,6 +228,38 @@ export function whatsappText(t){return String(t||'').replace(/\*\*(.+?)\*\*/g,'*
 export async function intelligentReply(userText,session,business,cfg={}){
   const normalizedInput=normalize(String(userText||'')).trim();
   session.enforceCheckoutOrder=true;
+  // Conversas @lid não fornecem necessariamente um número de telefone.
+  // Não tentar vender usando o identificador de roteamento nem deixar a IA improvisar.
+  if(session.requireValidatedPhone){
+    if(session.awaitingCustomerPhone){
+      const phone=parseCustomerPhoneAnswer(userText);
+      if(!phone)return 'Para registrar corretamente no PDV, informe apenas seu telefone com DDD, por favor. 📱';
+      session.customerPhone=phone;
+      session.awaitingCustomerPhone=false;
+      if(session.pdvOrder?.error==='ORDER_PAYLOAD_INVALID' && session.lastConfirmed){
+        // Esta falha é local e ocorre ANTES do POST: seguro montar nova confirmação.
+        session.lastConfirmed=null;
+        session.confirmedRequestId=null;
+        session.pdvOrder=null;
+        session.awaitingConfirmation=false;
+        session.quotePresented=false;
+        session.quoteSnapshot=null;
+      }
+      const next=checkoutNextQuestion(session,business);
+      if(next)return next;
+      const request=requestConfirmation(session,business);
+      if(request.ok){
+        session.quotePresented=true;
+        session.lastQuote=formatQuote(request.quote);
+        return 'Obrigado! 📱 Agora confira novamente o resumo com o telefone correto. Nenhum pedido foi enviado ainda.\\n\\n'+QUOTE_PROMPT(session.lastQuote);
+      }
+      return 'Telefone anotado. Ainda falta conferir: '+(request.quote?.missing||[]).join(', ')+'.';
+    }
+    if(!validCustomerPhone(session.customerPhone) && (session.awaitingConfirmation || (session.pdvOrder?.error==='ORDER_PAYLOAD_INVALID' && session.lastConfirmed && explicitYes(userText)))){
+      session.awaitingCustomerPhone=true;
+      return 'Antes de registrar no PDV preciso de seu telefone com DDD. 📱 O WhatsApp forneceu apenas um identificador interno; nenhum pedido foi enviado ainda.';
+    }
+  }
   if(session.cart?.length && !session.awaitingConfirmation && !(session.checkoutRequested && session.payment==='DINHEIRO' && (session.cashChangeNeeded===null || session.cashChangeNeeded===undefined || (session.cashChangeNeeded===true && session.cashReceivedCents===null))) && wantsToFinishOrder(userText)){
     // O cliente aceitou fechar: nunca voltar à pergunta "posso fechar?".
     session.checkoutRequested=true;

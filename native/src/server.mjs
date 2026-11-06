@@ -1,3 +1,4 @@
+import {validCustomerPhone} from './customer-phone.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -268,7 +269,11 @@ await store.change(d=>{const t=d.threads[tid];if(t)t.typing=m.type==='audio'&&vo
 const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typing;});
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
-session.customerPhone=String(m.from||'').replace(/\D/g,'');session.enforcePdvAddressValidation=true;
+session.requireValidatedPhone=true;
+const authenticatedPhone=String(m.phoneNumber||'').replace(/\D/g,'');
+if(validCustomerPhone(authenticatedPhone))session.customerPhone=authenticatedPhone;
+else if(!validCustomerPhone(session.customerPhone))session.customerPhone='';
+session.enforcePdvAddressValidation=true;
 session.confirmationMessageId=crypto.createHash('sha256').update([m.slot,m.id,session.customerPhone].join(':')).digest('hex').slice(0,32);{const prof=store.peek().customers?.[session.customerPhone];if(prof&&!session.knownCustomer){session.knownCustomer={name:prof.name||'',address:prof.address||'',neighborhood:prof.neighborhood||''};if(Array.isArray(prof.orderRefs))session.orderRefs=[...new Set([...prof.orderRefs,...(session.orderRefs||[])])].slice(-5);if(!session.customerName&&prof.name)session.customerName=prof.name;}}if(!session.customerName){const nm=store.peek().threads?.[tid]?.customerName;if(nm&&!/^\d+$/.test(nm))session.customerName=String(nm).slice(0,80);}
 const beforeClose=session.lastCompletedRequestId||null;
 const beforeDryRun=session.lastDryRunRequestId||null;
