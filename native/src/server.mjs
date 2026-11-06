@@ -104,7 +104,10 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   };
   if(botToken.length>=24)business.submitOrder=async body=>{
     const r=await fetch(`${pdvBase}/api/v1/bot/order`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
-    const j=await r.json().catch(()=>({}));return {...j,ok:r.ok&&j.ok!==false,httpStatus:r.status};
+    const j=await r.json().catch(()=>({}));
+    // Diagnóstico técnico, sem dados pessoais, token, itens ou endereço.
+    if(!r.ok||j.ok===false)console.error('[PDV ORDER REJECTED]',JSON.stringify({httpStatus:r.status,code:String(j.code||j.error||'UNKNOWN').slice(0,120),externalId:String(body.externalId||'').slice(0,80)}));
+    return {...j,ok:r.ok&&j.ok!==false,httpStatus:r.status};
   };
   const version=graphVersion(env.META_GRAPH_VERSION);
   // Seleção explícita do provedor; chave NUNCA é devolvida ao navegador.
@@ -156,7 +159,7 @@ const mediaFile=saveMedia(`qr${m.slot}-${m.id}`,m.media);
 if(m.fromMe||m.history){
   queueLight(d=>{
     const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
-    t.via='qr';t.jid=m.jid;if(m.name&&!m.fromMe)t.customerName=m.name;
+    t.via='qr';t.jid=m.jid;if(validCustomerPhone(m.phoneNumber))t.customerPhone=m.phoneNumber;if(m.name&&!m.fromMe)t.customerName=m.name;
     if(t.messages.some(x=>x.id===m.id))return;
     const at=m.at||new Date(clock()).toISOString();
     append(t,{id:m.id,direction:m.fromMe?'outgoing':'incoming',text:m.type==='audio'?'🎤 Áudio':m.text,type:m.type,at,delivery:m.fromMe?'sent':'received',source:m.fromMe?'Celular':'WhatsApp QR',media:mediaFile});
@@ -194,7 +197,7 @@ let session=null,canReply=false,notifyAudioHandoff=false;
 await store.change(d=>{
 const now=new Date(clock()).toISOString();
 const t=d.threads[tid]||{id:tid,slot:m.slot,via:'qr',jid:m.jid,customer:m.from,customerName:m.name||m.from,mode:qrAutoReply&&qrAllowed(m.from)?'BOT':'HUMAN',unread:0,updatedAt:'',messages:[],session:newSession(),orders:[]};
-t.via='qr';t.jid=m.jid;if(m.name)t.customerName=m.name;
+t.via='qr';t.jid=m.jid;if(validCustomerPhone(m.phoneNumber))t.customerPhone=m.phoneNumber;if(m.name)t.customerName=m.name;
 if(t.messages.some(x=>x.id===m.id))return;
 append(t,{id:m.id,direction:'incoming',text:shown,type:m.type,at:now,delivery:'received',source:transcribed?'WhatsApp QR · áudio transcrito':'WhatsApp QR',media:mediaFile});
 t.unread=(t.unread||0)+1;t.lastInboundAt=now;if(t.operationalState==='CLOSED'||t.operationalState==='FAILED')delete t.operationalState;t.archived=false;d.threads[tid]=t;
@@ -224,7 +227,7 @@ if(!canReply){
 }
 // Tarefa persistente: se o servidor reiniciar no meio, a resposta é retomada (ver resumeQrJobs).
 const jobKey=`${m.slot}:${m.id}`;
-await store.change(d=>{(d.qrJobs||={})[jobKey]={key:jobKey,slot:m.slot,tid,jid:m.jid,from:m.from,type:m.type,msgId:m.id,text,attempts:0,createdAt:new Date(clock()).toISOString()};});
+await store.change(d=>{(d.qrJobs||={})[jobKey]={key:jobKey,slot:m.slot,tid,jid:m.jid,from:m.from,phoneNumber:validCustomerPhone(m.phoneNumber)?m.phoneNumber:'',type:m.type,msgId:m.id,text,attempts:0,createdAt:new Date(clock()).toISOString()};});
 return runQrJob(jobKey,{m,tid,text,session});
 }
 // Executa a resposta com novas tentativas (espera crescente). Falha definitiva vai para a fila de falhas e para o atendente.
@@ -259,7 +262,7 @@ async function resumeQrJobs(){
     const answered=t&&t.messages.findIndex(x=>x.id===j.msgId)<t.messages.findLastIndex(x=>x.direction==='outgoing');
     if(!t||answered||!j.text||!qr?.isConnected(j.slot)){await store.change(d=>{if(d.qrJobs)delete d.qrJobs[j.key];});continue;}
     console.log('[QR JOB]',JSON.stringify({key:j.key,status:'resumed'}));
-    inThreadOrder(j.tid,()=>runQrJob(j.key,{m:{slot:j.slot,jid:j.jid,from:j.from,type:j.type,id:j.msgId},tid:j.tid,text:j.text,session:structuredClone(t.session||newSession())})).catch(()=>{});
+    inThreadOrder(j.tid,()=>runQrJob(j.key,{m:{slot:j.slot,jid:j.jid,from:j.from,phoneNumber:j.phoneNumber||t.customerPhone||'',type:j.type,id:j.msgId},tid:j.tid,text:j.text,session:structuredClone(t.session||newSession())})).catch(()=>{});
   }
 }
 async function qrReplyPhase({m,tid,text,session}){
@@ -270,7 +273,7 @@ const clearTyping=()=>store.change(d=>{const t=d.threads[tid];if(t)delete t.typi
 await qr.presence(m.slot,m.jid,m.type==='audio'&&voice?'recording':'composing');
 let reply='';
 session.requireValidatedPhone=true;
-const authenticatedPhone=String(m.phoneNumber||'').replace(/\D/g,'');
+const authenticatedPhone=String(m.phoneNumber||store.peek().threads?.[tid]?.customerPhone||'').replace(/\D/g,'');
 if(validCustomerPhone(authenticatedPhone))session.customerPhone=authenticatedPhone;
 else if(!validCustomerPhone(session.customerPhone))session.customerPhone='';
 session.enforcePdvAddressValidation=true;
@@ -315,7 +318,7 @@ await store.change(d=>{
   if(job&&typeof job.preparedReply!=='string')job.preparedReply=reply;
 });
 // Cliente recorrente: guarda só nome e endereço JÁ VALIDADO pelo PDV (a taxa é sempre recalculada).
-if(session.customerPhone.length>=10&&session.address&&session.addressCheck)await store.change(d=>{d.customers??={};d.customers[session.customerPhone]={...d.customers[session.customerPhone],name:session.customerName||d.customers[session.customerPhone]?.name||'',address:session.address,neighborhood:session.neighborhood||'',updatedAt:new Date(clock()).toISOString()};});
+if(validCustomerPhone(session.customerPhone)&&session.customerNameConfirmed)await store.change(d=>{d.customers??={};const old=d.customers[session.customerPhone]||{};d.customers[session.customerPhone]={...old,name:session.customerName||old.name||'',...(session.address&&session.addressCheck?{address:session.address,neighborhood:session.neighborhood||old.neighborhood||''}:{}),updatedAt:new Date(clock()).toISOString()};});
 if(session.customerPhone.length>=10&&session.orderRefs?.length)await store.change(d=>{d.customers??={};const c=d.customers[session.customerPhone]??={name:session.customerName||''};c.orderRefs=[...new Set([...(c.orderRefs||[]),...session.orderRefs])].slice(-5);c.updatedAt=new Date(clock()).toISOString();});
 // Enviar somente se o atendente não assumiu a conversa enquanto a IA processava.
 const stillAutomated=()=>{
