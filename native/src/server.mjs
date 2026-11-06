@@ -109,6 +109,37 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
     if(!r.ok||j.ok===false)console.error('[PDV ORDER REJECTED]',JSON.stringify({httpStatus:r.status,code:String(j.code||j.error||'UNKNOWN').slice(0,120),externalId:String(body.externalId||'').slice(0,80)}));
     return {...j,ok:r.ok&&j.ok!==false,httpStatus:r.status};
   };
+  // Execução única, opt-in: prova a API comercial e vínculo de cadastro no PDV.
+  // Não enviar mensagens a clientes, não gerar PIX e não iniciar pedidos automaticamente.
+  async function runProfileQaOnce(){
+    if(env.GUTO_PROFILE_QA_ONCE!=='1')return;
+    const externalId='gutobot:qa-profile-cash-20261106-01';
+    if(botToken.length<24)return console.error('[QA PROFILE]',JSON.stringify({ok:false,stage:'auth',code:'MISSING_TOKEN'}));
+    try{
+      const mode=await business.pdvMode();
+      if(mode!=='active')return console.error('[QA PROFILE]',JSON.stringify({ok:false,stage:'mode',mode}));
+      // Idempotência: consulta antes e o próprio PDV protege por canal+ID externo.
+      const previous=await business.orderStatus([externalId]);
+      const orders=Array.isArray(previous?.orders)?previous.orders:[];
+      const existing=orders.find(o=>o.externalId===externalId||o.external_id===externalId);
+      if(existing)return console.info('[QA PROFILE]',JSON.stringify({ok:true,stage:'already_exists',number:existing.number??null,externalId}));
+      const out=await business.submitOrder({
+        externalId,fulfillment:'pickup',paymentMethod:'cash',
+        customerName:'TESTE TECNICO GUTO BOT',customerPhone:'41900000000',
+        address:'',neighborhood:'',
+        items:[{name:'Coca-Cola Zero 2L',sizeLabel:null,qty:1,notes:'TESTE - NAO SEPARAR'}],
+        notes:'TESTE TECNICO GUTO BOT - NAO PREPARAR - NAO COBRAR - NAO ENTREGAR'
+      });
+      console.info('[QA PROFILE]',JSON.stringify({
+        ok:out?.ok===true&&!out?.dryRun,
+        stage:'post',status:out?.httpStatus??null,
+        number:out?.number??null,orderStatus:out?.status??null,
+        paymentStatus:out?.paymentStatus??null,
+        duplicate:out?.duplicate===true,dryRun:out?.dryRun===true,
+        error:String(out?.error||'').slice(0,140),externalId
+      }));
+    }catch(e){console.error('[QA PROFILE]',JSON.stringify({ok:false,stage:'exception',error:String(e?.message||e).slice(0,160)}));}
+  }
   const version=graphVersion(env.META_GRAPH_VERSION);
   // Seleção explícita do provedor; chave NUNCA é devolvida ao navegador.
   const aiProvider=String(env.AI_PROVIDER||(env.GEMINI_API_KEY?'gemini':'openai')).trim().toLowerCase();
@@ -768,6 +799,7 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
   }
   const server=http.createServer((req,res)=>router(req,res).catch(e=>{if(!res.headersSent)json(res,e.status||500,{error:e.status?e.message:'Erro interno; consulte logs'});console.error('[Guto Nativo]',String(e.message||'Falha').slice(0,160));}));
   return {server,store,receive,pump,status,start:(port=Number(env.PORT||8080),host=env.HOST||'127.0.0.1')=>store.ready().then(()=>new Promise(resolve=>{server.listen(port,host,()=>{timer=setInterval(pump,2500);timer.unref();syncCatalog();catalogTimer=setInterval(syncCatalog,300000);catalogTimer.unref();
+  runProfileQaOnce().catch(e=>console.error('[QA PROFILE]',String(e?.message||e).slice(0,150)));
   diagnosePdvOrders().then(result=>console.log('[PDV ORDER STATUS]',JSON.stringify(result)))
     .catch(()=>console.warn('[PDV ORDER STATUS]',JSON.stringify({ok:false,reason:'DIAGNOSTIC_FAILED'})));
   resolve(server.address());});})),stop:()=>new Promise(resolve=>{clearInterval(timer);clearInterval(catalogTimer);server.close(()=>resolve());})};
