@@ -113,7 +113,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   // Não enviar mensagens a clientes, não gerar PIX e não iniciar pedidos automaticamente.
   async function runProfileQaOnce(){
     if(env.GUTO_PROFILE_QA_ONCE!=='1')return;
-    const externalId='gutobot:qa-profile-cash-20261106-01';
+    const externalId='gutobot:qa-profile-cash-20261106-02';
     if(botToken.length<24)return console.error('[QA PROFILE]',JSON.stringify({ok:false,stage:'auth',code:'MISSING_TOKEN'}));
     try{
       const mode=await business.pdvMode();
