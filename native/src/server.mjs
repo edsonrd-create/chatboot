@@ -106,6 +106,47 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
     const r=await fetch(`${pdvBase}/api/v1/bot/order`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
     const j=await r.json().catch(()=>({}));return {...j,ok:r.ok&&j.ok!==false,httpStatus:r.status};
   };
+  // Teste controlado, opt-in e idempotente da rota comercial REAL do PDV.
+  // Nenhuma rota pública, token reutilizado somente no backend e nenhum PIX.
+  // O externalId fixo garante que redeploy/restart não gere outra venda.
+  async function runOneShotPdvE2E(){
+    if(env.GUTO_PDV_E2E_TEST_ONCE!=='1')return;
+    const ext='gutobot:e2e-real-20261105-cash-pickup-01';
+    if(botToken.length<24){
+      console.error('[PDV E2E]',JSON.stringify({ok:false,stage:'auth',error:'TOKEN_NOT_CONFIGURED'}));return;
+    }
+    try{
+      const mode=await business.pdvMode();
+      if(mode!=='active'){
+        console.error('[PDV E2E]',JSON.stringify({ok:false,stage:'mode',mode}));return;
+      }
+      const payload={
+        externalId:ext,fulfillment:'pickup',paymentMethod:'cash',
+        customerPhone:'41900000000',customerName:'TESTE TECNICO GUTO BOT',
+        address:'',neighborhood:'',
+        items:[{name:'Coca-Cola Zero 2L',sizeLabel:null,qty:1,notes:'TESTE - NAO SEPARAR'}],
+        notes:'TESTE TECNICO GUTO BOT - NAO PREPARAR - NAO COBRAR - NAO ENTREGAR'
+      };
+      // Consulta de duplicidade obrigatória antes do POST.
+      if(typeof business.orderStatus==='function'){
+        const prior=await business.orderStatus([ext]);
+        const matches=Array.isArray(prior?.orders)?prior.orders:[];
+        const found=matches.find(o=>o.externalId===ext||o.external_id===ext);
+        if(found){
+          console.info('[PDV E2E]',JSON.stringify({ok:true,stage:'already_exists',number:found.number??null,externalId:ext}));return;
+        }
+      }
+      const result=await business.submitOrder(payload);
+      // Logs sem token, telefone ou dados pessoais.
+      console.info('[PDV E2E]',JSON.stringify({
+        ok:result?.ok===true&&!result?.dryRun&&Number.isSafeInteger(Number(result.number))&&Number(result.number)>0,
+        stage:'post',httpStatus:result?.httpStatus??null,
+        number:result?.number??null,status:result?.status??null,
+        duplicate:result?.duplicate===true,dryRun:result?.dryRun===true,
+        error:String(result?.error||'').slice(0,180),externalId:ext
+      }));
+    }catch(e){console.error('[PDV E2E]',JSON.stringify({ok:false,stage:'exception',error:String(e?.message||e).slice(0,180)}));}
+  }
   const version=graphVersion(env.META_GRAPH_VERSION);
   // Seleção explícita do provedor; chave NUNCA é devolvida ao navegador.
   const aiProvider=String(env.AI_PROVIDER||(env.GEMINI_API_KEY?'gemini':'openai')).trim().toLowerCase();
@@ -765,6 +806,7 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
   }
   const server=http.createServer((req,res)=>router(req,res).catch(e=>{if(!res.headersSent)json(res,e.status||500,{error:e.status?e.message:'Erro interno; consulte logs'});console.error('[Guto Nativo]',String(e.message||'Falha').slice(0,160));}));
   return {server,store,receive,pump,status,start:(port=Number(env.PORT||8080),host=env.HOST||'127.0.0.1')=>store.ready().then(()=>new Promise(resolve=>{server.listen(port,host,()=>{timer=setInterval(pump,2500);timer.unref();syncCatalog();catalogTimer=setInterval(syncCatalog,300000);catalogTimer.unref();
+  runOneShotPdvE2E().catch(e=>console.error('[PDV E2E]',String(e?.message||e).slice(0,160)));
   diagnosePdvOrders().then(result=>console.log('[PDV ORDER STATUS]',JSON.stringify(result)))
     .catch(()=>console.warn('[PDV ORDER STATUS]',JSON.stringify({ok:false,reason:'DIAGNOSTIC_FAILED'})));
   resolve(server.address());});})),stop:()=>new Promise(resolve=>{clearInterval(timer);clearInterval(catalogTimer);server.close(()=>resolve());})};
