@@ -106,31 +106,6 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
     const r=await fetch(`${pdvBase}/api/v1/bot/order`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${botToken}`},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
     const j=await r.json().catch(()=>({}));return {...j,ok:r.ok&&j.ok!==false,httpStatus:r.status};
   };
-  // Teste opt-in E2E do PDV após correção do Hub; jamais ativar automaticamente.
-  async function verifyHubOnce(){
-    if(env.GUTO_HUB_QA_ONCE!=='1')return;
-    const externalId='gutobot:qa-hub-20261106-01';
-    if(botToken.length<24) return console.error('[QA HUB]',JSON.stringify({ok:false,error:'MISSING_TOKEN'}));
-    try{
-      const mode=await business.pdvMode();
-      if(mode!=='active')return console.error('[QA HUB]',JSON.stringify({ok:false,error:'MODE_NOT_ACTIVE',mode}));
-      // Consultar primeiro para evitar nova venda em reinícios ou reentregas.
-      const previous=await business.orderStatus([externalId]);
-      const prior=Array.isArray(previous?.orders)?previous.orders.find(o=>o.externalId===externalId||o.external_id===externalId):null;
-      if(prior)return console.info('[QA HUB]',JSON.stringify({ok:true,duplicate:true,number:prior.number||null,externalId}));
-      const response=await business.submitOrder({
-        externalId,fulfillment:'pickup',paymentMethod:'cash',
-        customerName:'TESTE TECNICO GUTO BOT',customerPhone:'41900000000',
-        address:'',neighborhood:'',
-        items:[{name:'Coca-Cola Zero 2L',sizeLabel:null,qty:1,notes:'NAO SEPARAR'}],
-        notes:'TESTE TECNICO GUTO BOT - NAO PREPARAR - NAO COBRAR - NAO ENTREGAR'
-      });
-      console.info('[QA HUB]',JSON.stringify({ok:response?.ok===true,dryRun:response?.dryRun===true,
-        httpStatus:response?.httpStatus??null,number:response?.number??null,
-        status:response?.status??null,paymentStatus:response?.paymentStatus??null,
-        error:String(response?.error||'').slice(0,180),externalId}));
-    }catch(e){console.error('[QA HUB]',JSON.stringify({ok:false,error:String(e?.message||e).slice(0,180)}));}
-  }
   const version=graphVersion(env.META_GRAPH_VERSION);
   // Seleção explícita do provedor; chave NUNCA é devolvida ao navegador.
   const aiProvider=String(env.AI_PROVIDER||(env.GEMINI_API_KEY?'gemini':'openai')).trim().toLowerCase();
@@ -790,7 +765,6 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
   }
   const server=http.createServer((req,res)=>router(req,res).catch(e=>{if(!res.headersSent)json(res,e.status||500,{error:e.status?e.message:'Erro interno; consulte logs'});console.error('[Guto Nativo]',String(e.message||'Falha').slice(0,160));}));
   return {server,store,receive,pump,status,start:(port=Number(env.PORT||8080),host=env.HOST||'127.0.0.1')=>store.ready().then(()=>new Promise(resolve=>{server.listen(port,host,()=>{timer=setInterval(pump,2500);timer.unref();syncCatalog();catalogTimer=setInterval(syncCatalog,300000);catalogTimer.unref();
-  verifyHubOnce().catch(e=>console.error('[QA HUB]',String(e?.message||e).slice(0,160)));
   diagnosePdvOrders().then(result=>console.log('[PDV ORDER STATUS]',JSON.stringify(result)))
     .catch(()=>console.warn('[PDV ORDER STATUS]',JSON.stringify({ok:false,reason:'DIAGNOSTIC_FAILED'})));
   resolve(server.address());});})),stop:()=>new Promise(resolve=>{clearInterval(timer);clearInterval(catalogTimer);server.close(()=>resolve());})};
