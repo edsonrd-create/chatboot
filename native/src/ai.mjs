@@ -255,7 +255,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
       }
       return 'Telefone anotado. Ainda falta conferir: '+(request.quote?.missing||[]).join(', ')+'.';
     }
-    if(!validCustomerPhone(session.customerPhone) && session.awaitingConfirmation){
+    if(!validCustomerPhone(session.customerPhone) && (session.awaitingConfirmation || (session.pdvOrder?.error==='ORDER_PAYLOAD_INVALID' && session.lastConfirmed && explicitYes(userText)))){
       session.awaitingCustomerPhone=true;
       return 'Antes de registrar no PDV preciso de seu telefone com DDD. 📱 O WhatsApp forneceu apenas um identificador interno; nenhum pedido foi enviado ainda.';
     }
