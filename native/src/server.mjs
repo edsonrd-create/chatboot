@@ -124,7 +124,7 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
         externalId:ext,fulfillment:'pickup',paymentMethod:'cash',
         customerPhone:'41900000000',customerName:'TESTE TECNICO GUTO BOT',
         address:'',neighborhood:'',
-        items:[{name:'Coca-Cola 2L',sizeLabel:null,qty:1,notes:'TESTE - NAO SEPARAR'}],
+        items:[{name:'Coca-Cola Zero 2L',sizeLabel:null,qty:1,notes:'TESTE - NAO SEPARAR'}],
         notes:'TESTE TECNICO GUTO BOT - NAO PREPARAR - NAO COBRAR - NAO ENTREGAR'
       };
       // Consulta de duplicidade obrigatória antes do POST.
