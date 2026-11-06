@@ -22,6 +22,12 @@ test('PN verificado no JID alternativo resolve LID sem truncar identificador',()
  assert.equal(parsed.phoneNumber,'5541987654321');
  assert.equal(parsed.jid,LID);
 });
+test('Mapeamento Signal com device :4 conserva somente o telefone completo',()=>{
+ assert.equal(phoneFromWaKey({remoteJid:'5541987654321:4@s.whatsapp.net'}),'5541987654321');
+ const source=readFileSync(join(dirname(fileURLToPath(import.meta.url)),'../src/wa-qr.mjs'),'utf8');
+ assert.match(source,/getPNForLID/);
+ assert.match(source,/if\(!parsed\.phoneNumber && parsed\.jid\.endsWith\('@lid'\)\)/);
+});
 test('Apenas resposta explícita com telefone é aceita',()=>{
  assert.equal(parseCustomerPhoneAnswer('41 98765-4321'),'41987654321');
  assert.equal(parseCustomerPhoneAnswer('Preço R$ 64,99'),'');

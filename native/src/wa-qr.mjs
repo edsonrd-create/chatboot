@@ -79,6 +79,15 @@ export function createQrManager({authDir, onIncoming, onStatus, onLoggedOut, log
     const handle = async (m, {history = false} = {}) => {
       const parsed = parseWaMessage(m);
       if (!parsed) return;
+      // Baileys pode conhecer o telefone de um @lid no cache Signal
+      // mesmo sem remoteJidAlt nesta mensagem. É só consulta local,
+      // não faz engenharia reversa nem adivinha telefone.
+      if(!parsed.phoneNumber && parsed.jid.endsWith('@lid')){
+        try{
+          const mapped=await sock.signalRepository?.lidMapping?.getPNForLID?.(parsed.jid);
+          if(mapped)parsed.phoneNumber=phoneFromWaKey({remoteJid:String(mapped)});
+        }catch{/* Sem mapeamento: solicitar telefone no checkout. */}
+      }
       let audio=null,media=null;
       // Evitar download para transcrição quando metadados já excedem os limites.
       const tooLarge=parsed.type==='audio'&&(parsed.fileLength>12*1024*1024||parsed.durationSeconds>180);
