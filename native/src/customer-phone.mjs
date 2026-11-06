@@ -6,7 +6,7 @@ export function phoneFromWaKey(key = {}) {
   const primary = String(key.remoteJid || '');
   const alt = String(key.remoteJidAlt || '');
   const pn = primary.endsWith('@s.whatsapp.net') ? primary : alt.endsWith('@s.whatsapp.net') ? alt : '';
-  const digits = pn.split('@')[0].replace(/\D/g, '');
+  const digits = pn.split('@')[0].split(':')[0].replace(/\D/g, '');
   return validCustomerPhone(digits) ? digits : '';
 }
 
