@@ -1,3 +1,4 @@
+import {validCustomerPhone} from './customer-phone.mjs';
 import crypto from 'node:crypto';
 
 export function verifyChatwootSignature(body, timestamp, signature, secret, nowSeconds = Math.floor(Date.now()/1000)) {
@@ -128,7 +129,7 @@ export function getSummary(session,business) {
   // Taxa oficial: a que o PDV calculou para o endereço validado (session.deliveryFeeCents). Sem ela, não há total.
   const deliveryFeeCents=fulfillment==='PICKUP'?0:session.address&&Number.isSafeInteger(session.deliveryFeeCents)&&(!session.enforcePdvAddressValidation||session.addressCheck?.checkedAt)?session.deliveryFeeCents:!session.enforcePdvAddressValidation&&Number.isSafeInteger(business.deliveryFeeCents)&&session.address?business.deliveryFeeCents:null;
   const totalCents=subtotalCents!==null && deliveryFeeCents!==null?subtotalCents+deliveryFeeCents:null;
-  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,cashChangeNeeded:session.payment==='DINHEIRO'?session.cashChangeNeeded:null,cashReceivedCents:session.payment==='DINHEIRO'?session.cashReceivedCents:null,cashChangeCents:session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&Number.isSafeInteger(session.cashReceivedCents)&&Number.isSafeInteger(totalCents)?session.cashReceivedCents-totalCents:null,customerName:session.customerNameConfirmed?String(session.customerName||'').trim():null,customerPhone:String(session.customerPhone||'').replace(/\D/g,''),missing:[...(session.customerNameConfirmed&&typeof session.customerName==='string'&&session.customerName.trim().length>=2?[]:['nome do cliente']),...(items.length?[]:['itens']),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(session.payment==='DINHEIRO'&&(session.cashChangeNeeded===null||session.cashChangeNeeded===undefined)?['informar troco']:[]),...(session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&(!Number.isSafeInteger(session.cashReceivedCents)||!Number.isSafeInteger(totalCents)||session.cashReceivedCents<totalCents)?['valor do troco válido']:[]),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
+  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,cashChangeNeeded:session.payment==='DINHEIRO'?session.cashChangeNeeded:null,cashReceivedCents:session.payment==='DINHEIRO'?session.cashReceivedCents:null,cashChangeCents:session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&Number.isSafeInteger(session.cashReceivedCents)&&Number.isSafeInteger(totalCents)?session.cashReceivedCents-totalCents:null,customerName:session.customerNameConfirmed?String(session.customerName||'').trim():null,customerPhone:String(session.customerPhone||'').replace(/\D/g,''),missing:[...(session.customerNameConfirmed&&typeof session.customerName==='string'&&session.customerName.trim().length>=2?[]:['nome do cliente']),...(items.length?[]:['itens']),...(session.requireValidatedPhone&&!validCustomerPhone(session.customerPhone)?['telefone para contato']:[]),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(session.payment==='DINHEIRO'&&(session.cashChangeNeeded===null||session.cashChangeNeeded===undefined)?['informar troco']:[]),...(session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&(!Number.isSafeInteger(session.cashReceivedCents)||!Number.isSafeInteger(totalCents)||session.cashReceivedCents<totalCents)?['valor do troco válido']:[]),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
 }
 
 /** Modalidade explícita, sem presumir entrega quando o cliente escolheu retirada. */
@@ -164,7 +165,7 @@ export function beginNewOrder(session){
  }
  session.lastDryRunRequestId=null;
  session.cart=[];session.history=[];session.address=null;session.neighborhood=null;
- session.checkoutRequested=false;session.fulfillmentChosen=false;
+ session.checkoutRequested=false;session.awaitingCustomerPhone=false;session.fulfillmentChosen=false;
  session.payment=null;session.cashChangeNeeded=null;session.cashReceivedCents=null;session.fulfillment='DELIVERY';session.deliveryFeeCents=null;
  session.addressCheck=null;session.customerNameConfirmed=false;session.awaitingCustomerName=false;
  session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;
