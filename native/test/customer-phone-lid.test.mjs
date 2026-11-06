@@ -49,7 +49,7 @@ test('Checkout LID exige telefone com DDD, então confirma e grava uma única ve
  assert.match(invalid,/telefone com DDD/i);
  assert.equal(calls(),0);
  const quote=await intelligentReply('41 98765-4321',session,business,{apiKey:'unused'});
- assert.match(quote,/Confirma/);
+ assert.match(quote,/responda \*Confirmo\*/i);
  assert.equal(session.awaitingConfirmation,true);
  assert.equal(session.quotePresented,true);
  assert.equal(calls(),0);
