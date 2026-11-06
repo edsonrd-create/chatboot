@@ -1,0 +1,27 @@
+name: Guto Bot Nativo - testes
+on:
+  push:
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-tests.yml'
+  pull_request:
+    paths:
+      - 'native/**'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe da interface e API
+        run: |
+          node --check native/src/server.mjs
+          node --check native/src/meta.mjs
+          node --check native/public/app.js
+      - name: Testes automatizados
+        working-directory: native
+        run: npm test
