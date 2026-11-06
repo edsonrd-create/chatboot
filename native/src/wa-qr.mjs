@@ -1,3 +1,4 @@
+import {phoneFromWaKey} from './customer-phone.mjs';
 // Conexão WhatsApp por QR Code (WhatsApp Web / "Aparelhos conectados") via Baileys.
 // ATENÇÃO: canal NÃO OFICIAL. Pode levar a banimento do número; use chip separado.
 // Dependências carregadas sob demanda para não afetar testes e o modo Meta oficial.
@@ -240,5 +241,5 @@ export function parseWaMessage(m) {
   else if (msg.buttonsResponseMessage || msg.listResponseMessage || msg.templateButtonReplyMessage) { text = msg.buttonsResponseMessage?.selectedDisplayText || msg.listResponseMessage?.title || msg.templateButtonReplyMessage?.selectedDisplayText || ''; }
   if (!text && type === 'text') return null;
   const ts = Number(m.messageTimestamp?.low ?? m.messageTimestamp ?? 0);
-  return {jid,from:jid.split('@')[0],name:m.key.fromMe?'':(m.pushName||''),id:m.key.id,fromMe:Boolean(m.key.fromMe),text,type,mimeType,durationSeconds,fileLength,at:ts?new Date(ts*1000).toISOString():null};
+  return {jid,from:jid.split('@')[0],phoneNumber:phoneFromWaKey(m.key),name:m.key.fromMe?'':(m.pushName||''),id:m.key.id,fromMe:Boolean(m.key.fromMe),text,type,mimeType,durationSeconds,fileLength,at:ts?new Date(ts*1000).toISOString():null};
 }
