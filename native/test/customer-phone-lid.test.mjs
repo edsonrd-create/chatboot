@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname,join} from 'node:path';
 import {parseWaMessage} from '../src/wa-qr.mjs';
-import {phoneFromWaKey,parseCustomerPhoneAnswer} from '../src/customer-phone.mjs';
+import {phoneFromWaKey,parseCustomerPhoneAnswer,validCustomerPhone} from '../src/customer-phone.mjs';
 import {newSession,getSummary} from '../src/core.mjs';
 import {checkoutNextQuestion} from '../src/checkout-flow.mjs';
 import {intelligentReply} from '../src/ai.mjs';
@@ -94,4 +94,13 @@ test('Cadastro local reutiliza nome informado pelo cliente sem exigir endereço 
  const source=readFileSync(join(dirname(fileURLToPath(import.meta.url)),'../src/server.mjs'),'utf8');
  assert.match(source,/validCustomerPhone\(session\.customerPhone\)&&session\.customerNameConfirmed/);
  assert.match(source,/session\.address&&session\.addressCheck\?/);
+});
+
+test('Celular brasileiro incompleto não vira cadastro fictício',()=>{
+ assert.equal(validCustomerPhone('554195003793'),false);
+ assert.equal(validCustomerPhone('4195003793'),false);
+ assert.equal(validCustomerPhone('5541995003793'),true);
+ assert.equal(validCustomerPhone('41995003793'),true);
+ assert.equal(validCustomerPhone('554132345678'),true); // telefone fixo
+ assert.equal(parseCustomerPhoneAnswer('55 41 9500-3793'),'');
 });
