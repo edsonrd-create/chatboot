@@ -72,8 +72,7 @@ export async function sendMetaMenuMedia({phoneId,to,buffer,mimeType,fileName,cap
   form.set('messaging_product','whatsapp');
   form.set('type',mimeType);
   form.set('file',new Blob([buffer],{type:mimeType}),cleanName);
-  if(!token||/[
-]/.test(token))throw new Error('Token Meta inválido');
+  if(!token||/[\r\n]/.test(token))throw new Error('Token Meta inválido');
   const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),30000);
   let mediaId;
   try{
