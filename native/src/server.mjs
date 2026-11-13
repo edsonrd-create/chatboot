@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import {fileURLToPath} from 'node:url';
 import {JsonStore,safeCompare,protectToken,revealToken} from './storage.mjs';
-import {verifyMetaSignature,parseMetaWebhook,checkMetaPhone,sendMetaText,exchangeSignupCode,verifyPhoneInWaba,subscribeWaba,graphVersion} from './meta.mjs';
+import {verifyMetaSignature,parseMetaWebhook,checkMetaPhone,sendMetaText,sendMetaMenuMedia,exchangeSignupCode,verifyPhoneInWaba,subscribeWaba,graphVersion} from './meta.mjs';
 import {newSession,getSummary} from './core.mjs';
 import {intelligentReply,testAIConnection,describeAIError} from './ai.mjs';
 import {validatePdvSettings,pdvReadStatus} from './pdv-integration.mjs';
@@ -673,11 +673,25 @@ if(p==='/api/status'&&req.method==='GET')return json(res,200,status());
       if(p==='/api/send-file'&&req.method==='POST'){
         let v;try{v=JSON.parse((await readBody(req,23*1024*1024)).toString());}catch(e){return json(res,e.status||400,{error:e.status===413?'Arquivo maior que 16 MB':'JSON inválido'});}
         const t0=store.snapshot().threads[v?.id];if(!t0)return json(res,404,{error:'Conversa não encontrada'});
-        if(t0.via!=='qr'||!qr)return json(res,409,{error:'Envio de anexos disponível nas conversas do WhatsApp por QR'});
+        if(t0.via==='qr'&&!qr)return json(res,409,{error:'Conexão WhatsApp QR indisponível'});
         const mime=String(v.type||'').split(';')[0].trim().toLowerCase();if(!MEDIA_EXT[mime])return json(res,415,{error:'Tipo de arquivo não permitido (use foto, vídeo MP4, áudio, PDF, Word, Excel, TXT, CSV ou ZIP)'});
         const buffer=Buffer.from(String(v.data||''),'base64');if(!buffer.length||buffer.length>16*1024*1024)return json(res,413,{error:'Arquivo vazio ou maior que 16 MB'});
         const fileName=String(v.name||'arquivo').replace(/[\\/\r\n"]/g,'_').slice(0,120),caption=String(v.caption||'').slice(0,1000);
-        let r;try{r=await qr.sendMedia(t0.slot,t0.jid,{buffer,mimeType:mime,fileName,caption});}catch(e){return json(res,e.status||503,{error:String(e.message||e).slice(0,140)});}
+        let r;
+        try{
+          if(t0.via==='qr'){
+            r=await qr.sendMedia(t0.slot,t0.jid,{buffer,mimeType:mime,fileName,caption});
+          }else{
+            if(t0.mode!=='HUMAN')return json(res,409,{error:'Assuma a conversa antes de enviar anexos pela Meta'});
+            if(!['image/png','application/pdf'].includes(mime))return json(res,415,{error:'Meta: envie cardápio PNG ou PDF'});
+            const c=configuredChannels(store.snapshot()).find(x=>x.slot===t0.slot);
+            const token=c?getToken(c,env):'';
+            if(!c?.checkedAt||!c.phoneId||!token)return json(res,409,{error:'Número Meta não verificado ou sem credenciais'});
+            const last=Date.parse(String(t0.lastInboundAt||''));
+            if(!Number.isFinite(last)||clock()-last>24*60*60*1000)return json(res,409,{error:'Janela de atendimento de 24h encerrada; use template aprovado'});
+            r=await sendMetaMenuMedia({phoneId:c.phoneId,to:t0.customer,buffer,mimeType:mime,fileName,caption,token,version,fetchImpl});
+          }
+        }catch(e){return json(res,e.status||503,{error:String(e.message||e).slice(0,140)});}
         const id=r.id||crypto.randomUUID(),media=saveMedia(id,{buffer,mimeType:mime});
         const type=mime.startsWith('image/')?'image':mime==='video/mp4'?'video':mime.startsWith('audio/')?'audio':'document';
         const text=type==='document'?`📄 ${fileName}${caption?'\n'+caption:''}`:type==='image'?`📷 ${caption||'Foto'}`:type==='video'?`🎥 ${caption||'Vídeo'}`:'🎤 Áudio';

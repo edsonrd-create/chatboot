@@ -58,6 +58,43 @@ export async function sendMetaText({phoneId,to,text,token,version,fetchImpl}){
   if(!mid)throw new Error('Meta não confirmou identificador da mensagem');
   return {id:mid};
 }
+/** Meta Cloud API: upload an approved PNG/PDF then send its media_id to the same recipient. */
+export async function sendMetaMenuMedia({phoneId,to,buffer,mimeType,fileName,caption='',token,version,fetchImpl=fetch}){
+  if(!digits(String(phoneId))||!digits(String(to)))throw new Error('Destino Meta inválido');
+  if(!['image/png','application/pdf'].includes(mimeType))throw new Error('Cardápio aceita somente PNG ou PDF');
+  if(!Buffer.isBuffer(buffer)||buffer.length===0||buffer.length>16*1024*1024)throw new Error('Anexo vazio ou maior que 16 MB');
+  const png=[137,80,78,71,13,10,26,10];
+  const pdf=[37,80,68,70,45];
+  const magic=mimeType==='image/png'?png:pdf;
+  if(!magic.every((byte,index)=>buffer[index]===byte))throw new Error('Assinatura do arquivo não corresponde ao formato');
+  const cleanName=String(fileName||'cardapio').replace(/[\\/\r\n"]/g,'_').slice(0,90)+(mimeType==='application/pdf'&&!/\.pdf$/i.test(fileName||'')?'.pdf':'');
+  const form=new FormData();
+  form.set('messaging_product','whatsapp');
+  form.set('type',mimeType);
+  form.set('file',new Blob([buffer],{type:mimeType}),cleanName);
+  if(!token||/[\r\n]/.test(token))throw new Error('Token Meta inválido');
+  const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),30000);
+  let mediaId;
+  try{
+    const response=await fetchImpl(`https://graph.facebook.com/${graphVersion(version)}/${phoneId}/media`,{
+      method:'POST',headers:{authorization:`Bearer ${token}`,accept:'application/json'},
+      body:form,redirect:'error',signal:ctrl.signal
+    });
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok||!payload.id)throw new Error(`Falha no upload Meta HTTP ${response.status}`);
+    mediaId=String(payload.id);
+  }finally{clearTimeout(timer);}
+  const type=mimeType==='image/png'?'image':'document';
+  const asset=type==='image'
+    ? {id:mediaId,caption:String(caption).slice(0,1000)}
+    : {id:mediaId,filename:cleanName,caption:String(caption).slice(0,1000)};
+  const sent=await graphCall(`${phoneId}/messages`,{token,version,fetchImpl,method:'POST',
+    body:{messaging_product:'whatsapp',recipient_type:'individual',to,type,[type]:asset}});
+  const id=String(sent?.messages?.[0]?.id||'');
+  if(!id)throw new Error('Meta não confirmou o identificador da mensagem com anexo');
+  return {id,mediaId,type};
+}
+
 export async function exchangeSignupCode({code,appId,appSecret,version,fetchImpl=fetch}){
   if(!/^[\w-]{6,800}$/.test(code||'')||!digits(appId)||!appSecret)throw new Error('Credenciais de cadastro incorporado inválidas');
   const url=new URL(`https://graph.facebook.com/${graphVersion(version)}/oauth/access_token`);
