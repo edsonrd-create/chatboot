@@ -31,7 +31,7 @@ export function catalogFromPdvMenu(menu, base) {
       ingredients: String(p.description || '').split(/,\s*|\s+e\s+/).map(x => x.trim()).filter(Boolean).slice(0, 15),
       startingPriceCents: prices.length ? Math.min(...prices) : null, priceType: 'pdv', availabilityVerified: true});
   }
-  const drinks = items.filter(i => /bebida/i.test(i.category || '')).map(i => ({id: slug(i.name), productId:Number(i.id), label: String(i.name), priceCents: Math.round(Number(i.priceCents)) || null, priceType: 'pdv', available: true, availabilityVerified: true}));
+  const drinks = items.filter(i => /bebida|refrigerante|refri|sucos?|[aá]guas?/i.test(i.category || '')).map(i => ({id: slug(i.name), productId:Number(i.id), label: String(i.name), priceCents: Math.round(Number(i.priceCents)) || null, priceType: 'pdv', available: true, availabilityVerified: true}));
   const combos = items.filter(i => /combo|promo/i.test(i.category || '') && i.kind !== 'pizza').map(i => ({id: slug(i.name), productId:Number(i.id), comboRules:i.comboRules||null, botCheckoutPriceCents:Number.isSafeInteger(Number(i.botCheckoutPriceCents))?Number(i.botCheckoutPriceCents):null, label: String(i.name), description: String(i.description || ''), publishedPriceCents: Math.round(Number(i.promoPriceCents ?? i.comboPriceCents ?? i.priceCents)) || null, priceType: 'pdv', autoCheckoutEnabled: false, available: true}));
   const order = ['broto', 'media', 'grande', 'big', 'gigante'];
   return {
