@@ -235,7 +235,8 @@ export async function intelligentReply(userText,session,business,cfg={}){
   }
   // A API pública do PDV não publica os sabores elegíveis nem as escolhas de bebida de cada combo.
   // Nunca converter um combo em pizzas avulsas ou simular que foi finalizado.
-  const combo=detectUnsupportedComboIntent(userText,business);
+  const combo=detectUnsupportedComboIntent(userText,business) ||
+    (session.cart?.length ? (session.history||[]).filter(m=>m.role==='user').slice(-12).map(m=>detectUnsupportedComboIntent(m.content,business)).find(Boolean) : null);
   if(combo){
     session.comboReview={name:combo.label,reason:'COMBO_RULES_NOT_EXPOSED_BY_PDV',at:new Date().toISOString()};
     session.mode='HUMAN';session.reason='Combo exige conferência dos sabores, preço e bebida no PDV';
