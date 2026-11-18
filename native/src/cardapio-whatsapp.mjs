@@ -5,7 +5,7 @@ export const ANDROID_URL='https://play.google.com/store/apps/details?id=com.br.g
 const norm=text=>String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 export const asksForMenu=text=>/\b(cardapio|catalogo|menu|lista de sabores|ver sabores|mandar sabores)\b/.test(norm(text));
 export const isCommerceIntent=text=>/\b(cardapio|catalogo|menu|sabores|pizza|pizzas|combo|combos|borda|bordas|preco|valor|quanto custa|pedido|comprar|pedir|promo|entrega|retirada|grande|media|broto|big|gigante)\b/.test(norm(text));
-const wantsWhats=text=>/^(2|opcao 2|whatsapp|pelo whatsapp|por aqui|quero aqui|pedido por aqui|envia aqui|manda aqui|pode mandar)$/i.test(norm(text));
+const wantsWhats=text=>/^(2|opcao 2|whatsapp|pelo whatsapp|por aqui|quero aqui|pedido por aqui|envia aqui|manda aqui|pode mandar|quero pedir por aqui( mesmo)?|prefiro pedir por aqui( mesmo)?|vou pedir por aqui( mesmo)?|quero fazer o pedido por aqui( mesmo)?|prefiro pelo whatsapp)$/i.test(norm(text));
 const wantsPdf=text=>/\b(pdf|arquivo pdf|cardapio em pdf)\b/i.test(norm(text));
 const wantsApp=text=>/^(1|opcao 1|site|app|aplicativo|android|ios|iphone|pelo site|pelo app)$/i.test(norm(text));
 
