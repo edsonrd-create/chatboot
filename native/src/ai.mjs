@@ -245,7 +245,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
     if(started.ok){session.comboReview=null;return started.reply;}
     session.comboReview={name:selectedCombo.label,reason:'INVALID_COMBO_RULES'};
     session.mode='HUMAN';session.reason=started.error;
-    return 'O combo '+selectedCombo.label+' ainda não pode ser montado automaticamente: '+started.error+' Vou chamar um atendente; nenhum pedido foi registrado.';
+    return 'O combo '+selectedCombo.label+' ainda não pode ser montado automaticamente: '+started.error+' Os sabores e a bebida inclusa precisam de conferência. Vou chamar um atendente. *Não registrei nem cobrei este combo.*';
   }
   // A API pública do PDV não publica os sabores elegíveis nem as escolhas de bebida de cada combo.
   // Nunca converter um combo em pizzas avulsas ou simular que foi finalizado.
