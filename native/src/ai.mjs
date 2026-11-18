@@ -292,6 +292,10 @@ export async function intelligentReply(userText,session,business,cfg={}){
     if(/^(nao|agora nao|depois|prefiro pagar na entrega)\b/.test(msg)){session.pendingPixOffer=null;return 'Tudo bem! 😊 Não enviarei o PIX. Se precisar alterar a forma de pagamento, vou encaminhar para a equipe.';}
     if(/\b(pix|link de pagamento|copia e cola)\b/.test(msg))return 'Posso enviar o link ou código PIX do seu pedido nº '+session.pendingPixOffer.number+'? Responda *sim* para receber.';
   }
+  if(session.cart?.length && /\b(maquininha|maquina na entrega|cartao na entrega|credito na entrega|debito na entrega)\b/.test(normalizedInput)){
+    setPayment(session,{method:'CARTAO'});session.cardAtDelivery=true;
+    return 'Perfeito! 🍕 Cartão na maquininha durante a entrega. Seu pedido seguirá para produção após validação e registro no PDV, sem esperar pagamento antecipado. Quer acrescentar mais algo?';
+  }
   if(isNewOrderIntent(userText)){
     beginNewOrder(session);
     return '🍕 Combinado! Vamos escolher uma pizza deliciosa? 😋 Qual sabor ou combo você prefere?';
