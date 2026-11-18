@@ -229,6 +229,10 @@ export function whatsappText(t){return String(t||'').replace(/\*\*(.+?)\*\*/g,'*
 export async function intelligentReply(userText,session,business,cfg={}){
   const normalizedInput=normalize(String(userText||'')).trim();
   session.enforceCheckoutOrder=true;
+  if(isNewOrderIntent(userText)){
+    beginNewOrder(session);
+    return '🍕 Combinado! Vamos começar um novo pedido. Qual sabor ou combo você prefere?';
+  }
   // A API pública do PDV não publica os sabores elegíveis nem as escolhas de bebida de cada combo.
   // Nunca converter um combo em pizzas avulsas ou simular que foi finalizado.
   const combo=detectUnsupportedComboIntent(userText,business);
@@ -341,10 +345,6 @@ export async function intelligentReply(userText,session,business,cfg={}){
   if(session.cart?.length && /\b(maquininha|maquina(?: (?:durante|na|no momento da) entrega)?|cartao na entrega|credito na entrega|debito na entrega)\b/.test(normalizedInput)){
     setPayment(session,{method:'CARTAO'});session.cardAtDelivery=true;
     return 'Perfeito! 🍕 Cartão na maquininha durante a entrega. Seu pedido seguirá para produção após validação e registro no PDV, sem esperar pagamento antecipado. Quer acrescentar mais algo?';
-  }
-  if(isNewOrderIntent(userText)){
-    beginNewOrder(session);
-    return '🍕 Combinado! Vamos escolher uma pizza deliciosa? 😋 Qual sabor ou combo você prefere?';
   }
   // CONFIRMO é uma operação financeira/operacional, nunca uma resposta livre da IA.
   // Se houve perda do estado entre resumo e mensagem, apresentar NOVO resumo em vez de fingir envio.
