@@ -6,19 +6,22 @@ const norm=text=>String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''
 export const asksForMenu=text=>/\b(cardapio|catalogo|menu|lista de sabores|ver sabores|mandar sabores)\b/.test(norm(text));
 export const isCommerceIntent=text=>/\b(cardapio|catalogo|menu|sabores|pizza|pizzas|combo|combos|borda|bordas|preco|valor|quanto custa|pedido|comprar|pedir|promo|entrega|retirada|grande|media|broto|big|gigante)\b/.test(norm(text));
 const wantsWhats=text=>/^(2|opcao 2|whatsapp|pelo whatsapp|por aqui|quero aqui|pedido por aqui|envia aqui|manda aqui|pode mandar)$/i.test(norm(text));
+const wantsPdf=text=>/\b(pdf|arquivo pdf|cardapio em pdf)\b/i.test(norm(text));
 const wantsApp=text=>/^(1|opcao 1|site|app|aplicativo|android|ios|iphone|pelo site|pelo app)$/i.test(norm(text));
 
-export function cardapioChoice(session,text,{iosUrl='',catalogSynced=false}={}){
+export function cardapioChoice(session,text,{iosUrl='',catalogSynced=false,pdfAvailable=false}={}){
   if(!session||typeof session!=='object')return null;
   const channels=[
     '🌐 Site: '+SITE_URL,
     '📱 App Android: '+ANDROID_URL,
     iosUrl?'🍎 iPhone: '+iosUrl:'🍎 iPhone: procure Guto Express na App Store.',
   ];
+  if(wantsPdf(text)){session.cardapioChannel='whatsapp';if(pdfAvailable){session.pendingCardapioPdf=true;return {reply:'Claro! 🍕 Vou enviar nosso cardápio em PDF aqui no WhatsApp. Qual é seu nome?',channel:'whatsapp'};}return {reply:'Nosso cardápio em PDF está sendo atualizado. Posso te ajudar com os sabores por aqui ou chamar um atendente?',channel:'whatsapp'};}
   if(session.cardapioChannel==='choosing'){
     if(wantsWhats(text)){
       session.cardapioChannel='whatsapp';
-      return {reply:catalogSynced
+      if(pdfAvailable)session.pendingCardapioPdf=true;
+      return {reply:pdfAvailable?'🍕 Perfeito! Vou enviar o cardápio PDF aqui no WhatsApp para você escolher. Qual é seu nome?':catalogSynced
         ?'🍕 Perfeito! Vou apresentar as opções do cardápio oficial do PDV aqui no WhatsApp. Qual tamanho ou sabor você gostaria?'
         :'🍕 Você pode consultar o cardápio no site: https://www.gutoexpress.com.br/cardapio. A consulta ao PDV está indisponível neste momento, então não vou informar preços sem confirmação. Posso chamar um atendente.',
         channel:'whatsapp'};
@@ -29,7 +32,7 @@ export function cardapioChoice(session,text,{iosUrl='',catalogSynced=false}={}){
   }
   if(asksForMenu(text)){
     session.cardapioChannel='choosing';
-    return {reply:['🍕 *Cardápio Guto Express*','Para pedir com praticidade, recomendamos primeiro o app ou site:',...channels,'','*1* — Pedir pelo aplicativo ou site','*2* — Pedir aqui pelo WhatsApp (cardápio sincronizado com o PDV)'].join('\n'),channel:'choice'};
+    return {reply:['🍕 *Cardápio Guto Express*','Para pedir com praticidade, recomendamos primeiro o app ou site:',...channels,'','*1* — Pedir pelo aplicativo ou site','*2* — Pedir aqui pelo WhatsApp (envio do cardápio PDF)'].join('\n'),channel:'choice'};
   }
   return null;
 }
