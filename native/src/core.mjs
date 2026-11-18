@@ -121,6 +121,11 @@ export function getSummary(session,business) {
       const drink=business.drinks.find(d=>d.id===item.drinkId&&d.available);
       return {...item,unitPriceCents:drink&&Number.isSafeInteger(drink.priceCents)?drink.priceCents:null};
     }
+    if(item.kind==='combo'){
+      const combo=(business.combos||[]).find(c=>c.id===item.comboId&&c.available&&c.productId===item.productId);
+      return {...item,unitPriceCents:combo&&Number.isSafeInteger(combo.botCheckoutPriceCents)?combo.botCheckoutPriceCents:null,
+        description:combo?.label||'Combo indisponível'};
+    }
     return {...item,unitPriceCents:null};
   });
   const subtotalKnown=items.length>0 && items.every(x=>Number.isSafeInteger(x.unitPriceCents));
@@ -129,7 +134,7 @@ export function getSummary(session,business) {
   // Taxa oficial: a que o PDV calculou para o endereço validado (session.deliveryFeeCents). Sem ela, não há total.
   const deliveryFeeCents=fulfillment==='PICKUP'?0:session.address&&Number.isSafeInteger(session.deliveryFeeCents)&&(!session.enforcePdvAddressValidation||session.addressCheck?.checkedAt)?session.deliveryFeeCents:!session.enforcePdvAddressValidation&&Number.isSafeInteger(business.deliveryFeeCents)&&session.address?business.deliveryFeeCents:null;
   const totalCents=subtotalCents!==null && deliveryFeeCents!==null?subtotalCents+deliveryFeeCents:null;
-  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,cashChangeNeeded:session.payment==='DINHEIRO'?session.cashChangeNeeded:null,cashReceivedCents:session.payment==='DINHEIRO'?session.cashReceivedCents:null,cashChangeCents:session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&Number.isSafeInteger(session.cashReceivedCents)&&Number.isSafeInteger(totalCents)?session.cashReceivedCents-totalCents:null,customerName:session.customerNameConfirmed?String(session.customerName||'').trim():null,customerPhone:String(session.customerPhone||'').replace(/\D/g,''),missing:[...(session.customerNameConfirmed&&typeof session.customerName==='string'&&session.customerName.trim().length>=2?[]:['nome do cliente']),...(items.length?[]:['itens']),...(session.requireValidatedPhone&&!validCustomerPhone(session.customerPhone)?['telefone para contato']:[]),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(session.payment==='DINHEIRO'&&(session.cashChangeNeeded===null||session.cashChangeNeeded===undefined)?['informar troco']:[]),...(session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&(!Number.isSafeInteger(session.cashReceivedCents)||!Number.isSafeInteger(totalCents)||session.cashReceivedCents<totalCents)?['valor do troco válido']:[]),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
+  return {items,subtotalCents,deliveryFeeCents,totalCents,fulfillment,address:fulfillment==='PICKUP'?null:session.address,payment:session.payment,cashChangeNeeded:session.payment==='DINHEIRO'?session.cashChangeNeeded:null,cashReceivedCents:session.payment==='DINHEIRO'?session.cashReceivedCents:null,cashChangeCents:session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&Number.isSafeInteger(session.cashReceivedCents)&&Number.isSafeInteger(totalCents)?session.cashReceivedCents-totalCents:null,customerName:session.customerNameConfirmed?String(session.customerName||'').trim():null,customerPhone:String(session.customerPhone||'').replace(/\D/g,''),missing:[...(session.customerNameConfirmed&&typeof session.customerName==='string'&&session.customerName.trim().length>=2?[]:['nome do cliente']),...(items.length?[]:['itens']),...(session.comboDraft?['combo incompleto']:[]),...(session.requireValidatedPhone&&!validCustomerPhone(session.customerPhone)?['telefone para contato']:[]),...(fulfillment==='PICKUP'||session.address?[]:['endereço']),...(session.payment?[]:['pagamento']),...(session.payment==='DINHEIRO'&&(session.cashChangeNeeded===null||session.cashChangeNeeded===undefined)?['informar troco']:[]),...(session.payment==='DINHEIRO'&&session.cashChangeNeeded===true&&(!Number.isSafeInteger(session.cashReceivedCents)||!Number.isSafeInteger(totalCents)||session.cashReceivedCents<totalCents)?['valor do troco válido']:[]),...(subtotalCents===null?['preços válidos']:[]),...(deliveryFeeCents===null?['taxa de entrega validada']:[])]};
 }
 
 /** Modalidade explícita, sem presumir entrega quando o cliente escolheu retirada. */
@@ -170,7 +175,7 @@ export function beginNewOrder(session){
  session.addressCheck=null;session.customerNameConfirmed=false;session.awaitingCustomerName=false;
  session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;
  session.confirmedRequestId=null;session.lastQuote=null;session.lastConfirmed=null;
- session.cardapioChannel=null;session.pdvOrder=null;session.pendingPixOffer=null;session.pendingCardapioPdf=false;session.cardAtDelivery=false;session.comboReview=null;
+ session.cardapioChannel=null;session.pdvOrder=null;session.pendingPixOffer=null;session.pendingCardapioPdf=false;session.cardAtDelivery=false;session.comboReview=null;session.comboDraft=null;
  return {ok:true};
 }
 export function resetCartAfterOrder(session,{requestId,orderNumber=null,dryRun=false}={}){
@@ -201,7 +206,7 @@ export function resetCartAfterOrder(session,{requestId,orderNumber=null,dryRun=f
  session.quotePresented=false;
  session.quoteSnapshot=null;
  session.confirmedRequestId=null;
- session.cardapioChannel=null;session.pendingCardapioPdf=false;session.cardAtDelivery=false;
+ session.cardapioChannel=null;session.pendingCardapioPdf=false;session.cardAtDelivery=false;session.comboDraft=null;session.comboReview=null;
  return {ok:true};
 }
 export function setPayment(session,{method}){
@@ -226,5 +231,5 @@ export function formatMoney(cents){return Number.isInteger(cents)?new Intl.Numbe
 
 /** Catálogo informativo: preços publicados NÃO substituem cotação do backend. */
 export function publicMenuKnowledge(business){
- return {source:business.catalogSource?.source||null,sizes:business.sizes,flavors:(business.flavors||[]).filter(f=>f.available).map(f=>({id:f.id,name:f.label,category:f.category,ingredients:f.ingredients,startingPriceCents:f.startingPriceCents,priceType:f.priceType})),combos:(business.combos||[]).map(c=>({id:c.id,name:c.label,description:c.description,publishedPriceCents:c.publishedPriceCents,restrictions:c.restrictions,autoCheckoutEnabled:false})),drinks:business.drinks.map(d=>({id:d.id,name:d.label,publishedPriceCents:d.priceCents})),policy:business.catalogSource?.snapshotOnly===false?'Preços oficiais do PDV (pizza meio a meio = média dos sabores). Total final conferido pelo PDV ao registrar.':'Valores publicados podem mudar e não autorizam checkout. Pizzas e combos só podem ser cotados quando preços exatos do tamanho, condições e taxa de entrega estiverem validados.'};
+ return {source:business.catalogSource?.source||null,sizes:business.sizes,flavors:(business.flavors||[]).filter(f=>f.available).map(f=>({id:f.id,name:f.label,category:f.category,ingredients:f.ingredients,startingPriceCents:f.startingPriceCents,priceType:f.priceType})),combos:(business.combos||[]).map(c=>({id:c.id,name:c.label,description:c.description,publishedPriceCents:c.publishedPriceCents,restrictions:c.restrictions,autoCheckoutEnabled:Boolean(c.comboRules?.pizzaSlots?.length&&Number.isInteger(c.botCheckoutPriceCents))})),drinks:business.drinks.map(d=>({id:d.id,name:d.label,publishedPriceCents:d.priceCents})),policy:business.catalogSource?.snapshotOnly===false?'Preços oficiais do PDV (pizza meio a meio = média dos sabores). Total final conferido pelo PDV ao registrar.':'Valores publicados podem mudar e não autorizam checkout. Pizzas e combos só podem ser cotados quando preços exatos do tamanho, condições e taxa de entrega estiverem validados.'};
 }

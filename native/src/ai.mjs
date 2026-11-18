@@ -5,6 +5,7 @@ import {consumeCashAnswer} from './cash-change.mjs';
 import {cardapioChoice,isCommerceIntent} from './cardapio-whatsapp.mjs';
 import {confirmationReply} from './pdv-order.mjs';
 import {detectUnsupportedComboIntent,comboRequiresStaff} from './combo-guard.mjs';
+import {findComboRequest,startCombo,consumeCombo} from './combo-flow.mjs';
 import {addPizza,addDrink,replaceFlavor,replaceFlavorOneUnit,removeCartItem,addCartNote,setAddress,setPayment,setFulfillment,confirmCustomerName,beginNewOrder,getSummary,requestConfirmation,confirmRequest,availableCatalog,formatMoney,extractText,publicMenuKnowledge} from './core.mjs';
 
 const params=(properties,required=[])=>({type:'object',properties,required,additionalProperties:false});
@@ -233,10 +234,23 @@ export async function intelligentReply(userText,session,business,cfg={}){
     beginNewOrder(session);
     return '🍕 Combinado! Vamos começar um novo pedido. Qual sabor ou combo você prefere?';
   }
+  if(session.comboDraft){
+    const step=consumeCombo(session,userText,business);
+    if(!step?.ok){session.comboDraft=null;session.mode='HUMAN';session.reason=step?.error||'Falha na montagem do combo';return 'Não consegui validar a montagem do combo no PDV. Vou encaminhar para a equipe, sem registrar pedido nem cobrança.';}
+    return step.reply;
+  }
+  const selectedCombo=findComboRequest(userText,business);
+  if(selectedCombo){
+    const started=startCombo(session,selectedCombo,business);
+    if(started.ok){session.comboReview=null;return started.reply;}
+    session.comboReview={name:selectedCombo.label,reason:'INVALID_COMBO_RULES'};
+    session.mode='HUMAN';session.reason=started.error;
+    return 'O combo '+selectedCombo.label+' ainda não pode ser montado automaticamente: '+started.error+' Os sabores e a bebida inclusa precisam de conferência. Vou chamar um atendente. *Não registrei nem cobrei este combo.*';
+  }
   // A API pública do PDV não publica os sabores elegíveis nem as escolhas de bebida de cada combo.
   // Nunca converter um combo em pizzas avulsas ou simular que foi finalizado.
   const combo=detectUnsupportedComboIntent(userText,business) ||
-    (session.cart?.length ? (session.history||[]).filter(m=>m.role==='user').slice(-12).map(m=>detectUnsupportedComboIntent(m.content,business)).find(Boolean) : null);
+    (session.cart?.length && !session.cart.some(i=>i.kind==='combo') ? (session.history||[]).filter(m=>m.role==='user').slice(-12).map(m=>detectUnsupportedComboIntent(m.content,business)).find(Boolean) : null);
   if(combo){
     session.comboReview={name:combo.label,reason:'COMBO_RULES_NOT_EXPOSED_BY_PDV',at:new Date().toISOString()};
     session.mode='HUMAN';session.reason='Combo exige conferência dos sabores, preço e bebida no PDV';
