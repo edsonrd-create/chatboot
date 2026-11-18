@@ -22,7 +22,7 @@ test('monta o corpo no formato do PDV', ()=>{
 test('modo ativo: devolve número, total do PDV e Pix; nunca diz pago', async ()=>{
   const {b,s}=cart();let sent;b.submitOrder=async x=>{sent=x;return {ok:true,number:42,totalCents:8997,pixCopiaECola:'000201PIXTESTE',paymentStatus:'pending'};};
   const q=getSummary(s,b);s.lastConfirmed={requestId:'abcdefgh-1234',quote:q};const msg=await confirmationReply(s,b,s.lastConfirmed,'fallback');
-  assert.ok(sent);assert.equal(s.cart.length,0);assert.equal(s.payment,null);assert.equal(s.customerNameConfirmed,false);assert.match(msg,/nº 42/);assert.match(msg,/R\$\s?89,97/);assert.match(msg,/000201PIXTESTE/);assert.doesNotMatch(msg,/pagamento (aprovado|confirmado)!/i);
+  assert.ok(sent);assert.equal(s.cart.length,0);assert.equal(s.payment,null);assert.equal(s.customerNameConfirmed,false);assert.match(msg,/nº 42/);assert.match(msg,/R\$\s?89,97/);assert.match(msg,/Posso enviar/);assert.doesNotMatch(msg,/000201PIXTESTE/);assert.equal(s.pendingPixOffer.brcode,'000201PIXTESTE');assert.doesNotMatch(msg,/pagamento (aprovado|confirmado)!/i);
 });
 
 test('modo teste mantém mensagem padrão; falha passa para atendente', async ()=>{
