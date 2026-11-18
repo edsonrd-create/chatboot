@@ -234,6 +234,13 @@ export async function intelligentReply(userText,session,business,cfg={}){
     beginNewOrder(session);
     return '🍕 Combinado! Vamos começar um novo pedido. Qual sabor ou combo você prefere?';
   }
+  // Um combo só pode avançar com a sincronização do cardápio oficial NESTA mensagem.
+  if((session.comboDraft||session.cart?.some(it=>it.kind==='combo')) &&
+      (cfg.menuFlowEnabled!==true||cfg.catalogSynced!==true)){
+    session.mode='HUMAN';session.reason='Cardápio de combos do PDV indisponível ou desatualizado';
+    session.comboDraft=null;session.awaitingConfirmation=false;session.quotePresented=false;
+    return 'Não consegui confirmar agora a composição e o preço atualizados do combo diretamente no PDV. Vou encaminhar para a equipe. *Não registrei nem cobrei este pedido.*';
+  }
   if(session.comboDraft){
     const step=consumeCombo(session,userText,business);
     if(!step?.ok){session.comboDraft=null;session.mode='HUMAN';session.reason=step?.error||'Falha na montagem do combo';return 'Não consegui validar a montagem do combo no PDV. Vou encaminhar para a equipe, sem registrar pedido nem cobrança.';}
@@ -241,6 +248,11 @@ export async function intelligentReply(userText,session,business,cfg={}){
   }
   const selectedCombo=findComboRequest(userText,business);
   if(selectedCombo){
+    if(selectedCombo.comboRules?.pizzaSlots?.length &&
+       (cfg.menuFlowEnabled!==true||cfg.catalogSynced!==true)){
+      session.mode='HUMAN';session.reason='PDV sem sincronização de catálogo para combos';
+      return 'Não consigo verificar os sabores, a bebida inclusa e o preço atual do combo no PDV agora. Vou encaminhar à equipe. *Não registrei nem cobrei este combo.*';
+    }
     const started=startCombo(session,selectedCombo,business);
     if(started.ok){session.comboReview=null;return started.reply;}
     session.comboReview={name:selectedCombo.label,reason:'INVALID_COMBO_RULES'};
