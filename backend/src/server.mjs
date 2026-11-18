@@ -7,6 +7,7 @@ import {FileStore} from './store.mjs';
 import {verifyChatwootSignature,normalizeEvent,newSession,getSummary} from './core.mjs';
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
 import {MAX_PDF_SIZE,pdfStatus,getActivePdf,uploadPdf,activatePdf} from './cardapio-pdf.mjs';
+import {handlePaymentMessage} from './payment-flow.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
@@ -104,23 +105,19 @@ async function acceptWebhook(event,delivery){
 }
 let pumping=false;
 let flushing=false;
-async function pump(){
- if(pumping)return;pumping=true;
+const MAX_PARALLEL=8;
+async function processEvent(e){
  try{
-  const now=Date.now();const events=Object.values(store.snapshot().events).filter(x=>x.state==='pending'&&x.nextAt<=now).sort((a,b)=>a.receivedAt.localeCompare(b.receivedAt));
-  for(const e of events){
-   try{
-    // All business writes are committed together with marking the event processed.
-    const result=await store.tx(async d=>{
-     const evt=d.events[e.id];if(!evt||evt.state!=='pending')return null;
-     const {n}=evt;const session=d.sessions[n.key]||newSession();
+  const evt=store.snapshot().events[e.id];if(!evt||evt.state!=='pending'||evt.nextAt>Date.now())return;
+  const {n}=evt,session=store.snapshot().sessions[n.key]||newSession(),d={outbox:{}};
      session.sender=n.sender;session.inboxId=n.inboxId;session.updatedAt=new Date().toISOString();
      // Keep incoming messages visible to human attendants even after handoff.
      session.history.push({role:'user',content:n.content.slice(0,2000)});
      session.history=session.history.slice(-100);
      if(session.mode==='BOT'){
-       const previouslyHuman = session.mode === 'HUMAN';
+       const previouslyHuman = false;
        let reply;
+       const paymentFlow=handlePaymentMessage(n.content,session);
        const normalized=n.content.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
        const pdfRequested=/\b(pdf|arquivo pdf|cardapio em arquivo|mand(a|e).{0,20}arquivo)\b/.test(normalized);
        const directOrder=/\b(pedir|pedido|comprar|escolher)\b.{0,35}\b(aqui|whats(app)?|conversa|mesmo)\b|\b(aqui|whats(app)?|conversa)\b.{0,35}\b(pedir|pedido|comprar)\b|\bprefiro por aqui\b/.test(normalized);
@@ -138,6 +135,7 @@ async function pump(){
        }else if(menuRequested){
          reply='Claro! 🍕 Confira nosso cardápio digital: https://www.gutoexpress.com.br . Se preferir fazer seu pedido aqui pelo WhatsApp, é só dizer “quero pedir por aqui” que envio o PDF. Qual é seu nome?';
          session.catalogOffered=true;
+       }else if(paymentFlow){reply=paymentFlow.text;
        }else if(!env.OPENAI_API_KEY){
          // Never claim to have an AI agent responding when the model is not configured.
          session.mode='HUMAN';session.reason='Modelo de IA não configurado';
@@ -153,30 +151,49 @@ async function pump(){
        session.history=session.history.slice(-100);
        const oid=`reply:${evt.id}`;
        if(!d.outbox[oid])d.outbox[oid]={id:oid,accountId:n.accountId,conversationId:n.conversationId,content:reply.slice(0,3000),state:'pending',attempts:0,nextAt:Date.now()};
-       if(session.lastConfirmed){
-         if(!d.orders.some(o=>o.requestId===session.lastConfirmed.requestId)){
-           d.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:`GX-${String(d.nextOrder++).padStart(6,'0')}`,accountId:n.accountId,inboxId:n.inboxId,conversationId:n.conversationId,customer:n.sender,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote});
-         }
-         delete session.lastConfirmed;
-       }
      }
-     d.sessions[n.key]=session;evt.state='done';evt.processedAt=new Date().toISOString();return true;
-    });
-   }catch(error){console.error('event processing error',e.id,error.message);await store.tx(d=>{const x=d.events[e.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8)x.state='dead';}});}
-  }
- }finally{pumping=false;}
- // Independent outbox: a slow Chatwoot delivery must not block the next inbound message.
- void flushOutbox();
+  await store.tx(live=>{
+   const target=live.events[e.id];if(!target||target.state!=='pending')return;
+   if(live.sessions[n.key]?.mode==='HUMAN'&&session.mode==='BOT')return;
+   if(session.lastConfirmed){
+    if(!live.orders.some(o=>o.requestId===session.lastConfirmed.requestId))
+      live.orders.push({id:crypto.randomUUID(),requestId:session.lastConfirmed.requestId,number:'GX-'+String(live.nextOrder++).padStart(6,'0'),accountId:n.accountId,inboxId:n.inboxId,conversationId:n.conversationId,customer:n.sender,status:'PENDING_STAFF_REVIEW',createdAt:new Date().toISOString(),...orderSummary(session),quote:session.lastConfirmed.quote});
+    delete session.lastConfirmed;
+   }
+   live.sessions[n.key]=session;
+   for(const [id,item] of Object.entries(d.outbox))if(!live.outbox[id])live.outbox[id]=item;
+   target.state='done';target.processedAt=new Date().toISOString();
+  });
+ }catch(error){
+  console.error('event processing error',e.id,error.message);
+  await store.tx(d=>{const x=d.events[e.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8)x.state='dead';}});
+ }
+}
+async function pump(){
+ if(pumping)return;pumping=true;
+ try{
+  const now=Date.now(),events=Object.values(store.snapshot().events).filter(x=>x.state==='pending'&&x.nextAt<=now).sort((a,b)=>a.receivedAt.localeCompare(b.receivedAt));
+  const groups=new Map();for(const event of events){const key=event.n.key;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(event);}
+  const work=[...groups.values()];let pos=0;
+  await Promise.all(Array.from({length:Math.min(MAX_PARALLEL,work.length)},async()=>{while(pos<work.length){const group=work[pos++];for(const event of group)await processEvent(event);}}));
+ }finally{pumping=false;void flushOutbox();}
 }
 async function flushOutbox(){
  if(flushing)return;flushing=true;
  try{
   if(!ONLINE)return;
-  const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());
-  for(const o of outgoing){
-    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private),o.attachment||null);await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});}
-    catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8||error.permanent){x.state='failed';for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='failed';}}}});}
-  }
+  const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());let pos=0;
+  await Promise.all(Array.from({length:Math.min(MAX_PARALLEL,outgoing.length)},async()=>{
+   while(pos<outgoing.length){const o=outgoing[pos++];
+    try{
+     await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private),o.attachment||null);
+     await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});
+    }catch(error){
+     console.error('Chatwoot send error',o.id,error.message);
+     await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8||error.permanent){x.state='failed';for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='failed';}}}});
+    }
+   }
+  }));
  }finally{flushing=false;}
 }
 
