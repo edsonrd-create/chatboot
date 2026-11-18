@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {FileStore} from './store.mjs';
 import {verifyChatwootSignature,normalizeEvent,newSession,getSummary} from './core.mjs';
 import {intelligentReply,wantsHuman,quoteText,testAIConnection} from './ai.mjs';
+import {MAX_PDF_SIZE,pdfStatus,getActivePdf,uploadPdf,activatePdf} from './cardapio-pdf.mjs';
 
 const projectRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 if(fs.existsSync(path.join(projectRoot,'.env')) && typeof process.loadEnvFile==='function')process.loadEnvFile(path.join(projectRoot,'.env'));
@@ -74,11 +75,23 @@ const inboxRows=()=>Object.entries(store.snapshot().sessions)
  .sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
 const orderSummary=(s)=>({cart:getSummary(s,business).items,address:s.address,payment:s.payment});
 
-async function postMessage(accountId,conversationId,content,isPrivate=false){
+async function postMessage(accountId,conversationId,content,isPrivate=false,attachment=null){
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),12000);
  try{
   const url=`${CW_HOST.replace(/\/$/,'')}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-  const r=await fetch(url,{method:'POST',signal:controller.signal,headers:{api_access_token:CW_TOKEN,'content-type':'application/json'},body:JSON.stringify({content,message_type:'outgoing',private:isPrivate})});
+  let headers={api_access_token:CW_TOKEN},body;
+  if(attachment){
+    const file=getActivePdf(DATA_FILE);
+    if(!file)throw Object.assign(new Error('PDF não configurado'),{permanent:true});
+    const bytes=fs.readFileSync(file.file);
+    const form=new FormData();
+    form.append('content',content||'Cardápio Guto Express 🍕');
+    form.append('message_type','outgoing');
+    form.append('private','false');
+    form.append('attachments[]',new Blob([bytes],{type:'application/pdf'}),'Cardapio_Guto_Express.pdf');
+    body=form;
+  }else{headers['content-type']='application/json';body=JSON.stringify({content,message_type:'outgoing',private:isPrivate});}
+  const r=await fetch(url,{method:'POST',signal:controller.signal,headers,body});
   if(!r.ok)throw new Error(`Chatwoot HTTP ${r.status}`);
  }finally{clearTimeout(timer);}
 }
@@ -108,7 +121,24 @@ async function pump(){
      if(session.mode==='BOT'){
        const previouslyHuman = session.mode === 'HUMAN';
        let reply;
-       if(!env.OPENAI_API_KEY){
+       const normalized=n.content.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+       const pdfRequested=/\b(pdf|arquivo pdf|cardapio em arquivo|mand(a|e).{0,20}arquivo)\b/.test(normalized);
+       const directOrder=/\b(pedir|pedido|comprar|escolher)\b.{0,35}\b(aqui|whats(app)?|conversa|mesmo)\b|\b(aqui|whats(app)?|conversa)\b.{0,35}\b(pedir|pedido|comprar)\b|\bprefiro por aqui\b/.test(normalized);
+       const menuRequested=/\b(cardapio|menu|ver sabores)\b/.test(normalized);
+       if(pdfRequested||directOrder){
+         const active=getActivePdf(DATA_FILE);
+         if(active){
+           reply='Claro! 🍕 Vou enviar nosso cardápio em PDF aqui no WhatsApp. Pode escolher suas pizzas e me dizer os sabores. Qual é seu nome?';
+           const fileId='catalog:'+evt.id;
+           if(!d.outbox[fileId])d.outbox[fileId]={id:fileId,accountId:n.accountId,conversationId:n.conversationId,content:'📄 Cardápio Guto Express',attachment:'catalog',state:'pending',attempts:0,nextAt:Date.now()};
+         }else{
+           reply='Você pode fazer o pedido por aqui mesmo! 🍕 Nosso cardápio em PDF está sendo atualizado. Vou pedir à equipe que encaminhe o arquivo. Qual é seu nome?';
+           session.mode='HUMAN';session.reason='Cardápio PDF solicitado, mas nenhum arquivo está configurado';
+         }
+       }else if(menuRequested){
+         reply='Claro! 🍕 Confira nosso cardápio digital: https://www.gutoexpress.com.br . Se preferir fazer seu pedido aqui pelo WhatsApp, é só dizer “quero pedir por aqui” que envio o PDF. Qual é seu nome?';
+         session.catalogOffered=true;
+       }else if(!env.OPENAI_API_KEY){
          // Never claim to have an AI agent responding when the model is not configured.
          session.mode='HUMAN';session.reason='Modelo de IA não configurado';
          reply='Nosso atendimento automático está indisponível no momento. Vou encaminhar sua conversa à equipe. 😊';
@@ -144,8 +174,8 @@ async function flushOutbox(){
   if(!ONLINE)return;
   const outgoing=Object.values(store.snapshot().outbox).filter(x=>x.state==='pending'&&x.nextAt<=Date.now());
   for(const o of outgoing){
-    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private));await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});}
-    catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8){x.state='failed';for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='failed';}}}});}
+    try{await postMessage(o.accountId,o.conversationId,o.content,Boolean(o.private),o.attachment||null);await store.tx(d=>{if(d.outbox[o.id]){d.outbox[o.id].state='sent';d.outbox[o.id].sentAt=new Date().toISOString();for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='sent';}}});}
+    catch(error){console.error('Chatwoot send error',o.id,error.message);await store.tx(d=>{const x=d.outbox[o.id];if(x){x.attempts++;x.nextAt=Date.now()+Math.min(300000,2000*2**Math.min(x.attempts,7));if(x.attempts>=8||error.permanent){x.state='failed';for(const sess of Object.values(d.sessions)){const item=sess.history?.find(h=>h.outboxId===o.id);if(item)item.delivery='failed';}}}});}
   }
  }finally{flushing=false;}
 }
@@ -178,6 +208,24 @@ async function router(req,res){
    if(!authed(req))return json(res,401,{error:'Faça login para acessar'});
    if(!sameOrigin(req))return json(res,403,{error:'Origem inválida'});
    if(p==='/api/dashboard'&&req.method==='GET')return json(res,200,webData());
+   if(p==='/api/cardapio-pdf'&&req.method==='GET')return json(res,200,pdfStatus(DATA_FILE));
+   if(p==='/api/cardapio-pdf'&&req.method==='PUT'){
+     const filename=String(req.headers['x-filename']||'cardapio.pdf');
+     if(!filename.toLowerCase().endsWith('.pdf'))return json(res,422,{error:'Selecione um arquivo PDF'});
+     if(req.headers['content-type']!=='application/pdf')return json(res,415,{error:'Tipo de arquivo inválido'});
+     const bytes=await readBody(req,MAX_PDF_SIZE);
+     try{return json(res,200,{ok:true,...uploadPdf(DATA_FILE,bytes,filename)});}
+     catch(e){return json(res,e.status||500,{error:e.status?e.message:'Não foi possível salvar o arquivo'});}
+   }
+   if(p==='/api/cardapio-pdf/activate'&&req.method==='POST'){
+     let b;try{b=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+     if(typeof b.id!=='string'||!activatePdf(DATA_FILE,b.id))return json(res,404,{error:'Versão não encontrada'});
+     return json(res,200,{ok:true,...pdfStatus(DATA_FILE)});
+   }
+   if(p==='/api/cardapio-pdf/download'&&req.method==='GET'){
+     const file=getActivePdf(DATA_FILE);if(!file)return json(res,404,{error:'Nenhum PDF ativo'});
+     return respond(res,200,fs.readFileSync(file.file),{'content-type':'application/pdf','content-disposition':'attachment; filename="Cardapio_Guto_Express.pdf"'});
+   }
    if(p==='/api/channels/status'&&req.method==='GET')return json(res,200,{provider:'Chatwoot / Meta Cloud API',channels:channelStatus(),qrGenerated:false,notice:'O QR Code ou código de verificação, quando disponível, é gerado apenas pela Meta no fluxo oficial.'});
    if(p==='/api/inbox/conversations'&&req.method==='GET')return json(res,200,{items:inboxRows(),channels:channelStatus()});
    const inboxDetail=p.match(/^\/api\/inbox\/conversations\/([^/]+)$/);
