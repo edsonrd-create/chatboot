@@ -49,3 +49,14 @@ test('Cliente contesta entrega: transferência sem atribuir conclusão ao entreg
  const r=await intelligentReply('Não chegou meu pedido',s,business);
  assert.equal(s.mode,'HUMAN');assert.match(r,/não tenho confirmação segura/i);
 });
+
+test('Conversa anterior ao deploy: combo transformado em pizza avulsa não pode ser confirmado',async()=>{
+ const session=newSession();
+ addPizza(session,business,{size:'grande',flavors:['calabresa']});
+ session.history=[{role:'user',content:'quero um combo família'},{role:'assistant',content:'quais sabores?'}];
+ session.awaitingConfirmation=true;session.quotePresented=true;
+ let post=0;const b={...business,submitOrder:async()=>{post++;return {ok:true,number:7};}};
+ const reply=await intelligentReply('Confirmo',session,b);
+ assert.match(reply,/não registrei nem cobrei/i);
+ assert.equal(session.mode,'HUMAN');assert.equal(post,0);
+});
