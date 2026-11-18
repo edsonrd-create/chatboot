@@ -11,7 +11,7 @@ function changeMethod(session,method){if(session.payment!==method){session.await
 export function handlePaymentMessage(value,session,{pixLinkAvailable=false}={}){
  const normalized=normalizePaymentText(value).trim();
  if(session.awaitingPixLinkConsent){
-  if(/^(sim|pode|pode mandar|pode enviar|envia|manda|quero|sim por favor)[!. ]*$/.test(normalized)){
+  if(/^(sim|pode|pode mandar|pode enviar|envia|manda|quero|sim por favor|sim pode enviar|sim pode mandar)[!. ]*$/.test(normalized)){
    session.awaitingPixLinkConsent=false;
    session.pixLinkConsent=true;
    // Link deve vir da cobrança do pedido já criado no PDV, nunca de endereço genérico.
