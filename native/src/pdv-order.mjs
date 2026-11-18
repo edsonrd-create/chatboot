@@ -25,7 +25,7 @@ export function buildPdvOrder(session, business, quote, requestId) {
     items,
     // A comanda recebe o valor entregue em dinheiro. O PDV recalcula o total;
     // a diferença final deve ser calculada a partir do total que o PDV confirmar.
-    notes: quote.payment==='DINHEIRO'
+    notes: quote.payment==='CARTAO' && session.cardAtDelivery ? 'Pedido WhatsApp · Guto Bot · Cartão na maquininha durante a entrega' : quote.payment==='DINHEIRO'
       ? 'Pedido WhatsApp · Guto Bot · ' +
         (quote.cashChangeNeeded===false?'Sem troco':
           Number.isSafeInteger(quote.cashReceivedCents)?
@@ -50,8 +50,7 @@ export function pdvOrderMessage(res, quote) {
       else lines.push('O valor do troco precisa de conferência da equipe.');
     }
   }
-  if (res.pixCopiaECola) lines.push('', 'Pague com Pix Copia e Cola (copie o código abaixo):', res.pixCopiaECola, '', 'Assim que o pagamento for confirmado pelo banco, seu pedido segue para a cozinha.');
-  else if (quote?.payment === 'PIX') lines.push('O código Pix não foi gerado agora; um atendente vai te enviar.');
+  if(quote?.payment==='PIX')lines.push(res.pixLink||res.pixCopiaECola?'Posso enviar o link ou código PIX deste pedido? Responda *sim* para receber.':'O código Pix ainda não foi gerado; a equipe vai conferir a cobrança.');
   return lines.join('\n');
 }
 
@@ -106,6 +105,9 @@ export async function submitPdvOrder(session, business, confirmed) {
       // O cliente pode solicitar "novo pedido" para iniciar outro teste sem repetir itens.
       session.lastDryRunRequestId=confirmed.requestId;
     }else if(res?.ok){
+      if(confirmed.quote?.payment==='PIX' && (res.pixLink||res.pixCopiaECola))session.pendingPixOffer={
+        number:res.number,link:res.pixLink||null,brcode:res.pixCopiaECola||null,requestId:confirmed.requestId
+      };
       session.orderRefs=[...new Set([...(session.orderRefs||[]),body.externalId])].slice(-5);
       resetCartAfterOrder(session,{requestId:confirmed.requestId,orderNumber:res.number??null});
     }
