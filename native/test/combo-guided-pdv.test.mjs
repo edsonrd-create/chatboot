@@ -57,3 +57,15 @@ test('rejeita combo sem regras oficiais com transferência segura',async()=>{
  assert.match(reply,/ainda não pode/i);assert.equal(session.mode,'HUMAN');
  assert.equal(session.cart.length,0);
 });
+
+test('sem consulta atual do PDV não inicia nem continua montagem de combo',async()=>{
+ const session=newSession();
+ const blocked=await intelligentReply('quero combo família',session,business,{menuFlowEnabled:true,catalogSynced:false});
+ assert.match(blocked,/não consigo verificar/i);assert.equal(session.mode,'HUMAN');assert.equal(session.cart.length,0);
+ const later=newSession();
+ await intelligentReply('quero combo família',later,business,settings);
+ assert.ok(later.comboDraft);
+ const lost=await intelligentReply('Calabresa',later,business,{menuFlowEnabled:true,catalogSynced:false});
+ assert.match(lost,/não consegui confirmar/i);
+ assert.equal(later.mode,'HUMAN');assert.equal(later.cart.length,0);
+});
