@@ -12,6 +12,7 @@ export function buildPdvOrder(session, business, quote, requestId) {
   const items = quote.items.map(it => {
     if (it.kind === 'pizza') return {name: (it.flavors || []).map(flavorLabel).join(' / '), sizeLabel: sizeLabel(it.size), qty: it.quantity, notes: String(it.notes || '').slice(0, 200)};
     if (it.kind === 'drink') return {name: business.drinks.find(d => d.id === it.drinkId)?.label || it.description || it.drinkId, sizeLabel: null, qty: it.quantity, notes: ''};
+    if (it.kind === 'combo') return {productId:it.productId,name:business.combos.find(c=>c.id===it.comboId)?.label||it.description,sizeLabel:null,qty:it.quantity,notes:String(it.notes||'').slice(0,200)};
     return {name: String(it.description || ''), sizeLabel: null, qty: it.quantity, notes: String(it.notes || '')};
   });
   return {
