@@ -4,6 +4,7 @@ import {wantsToFinishOrder,checkoutNextQuestion,asksPaymentBeforeCheckout,asksFo
 import {consumeCashAnswer} from './cash-change.mjs';
 import {cardapioChoice,isCommerceIntent} from './cardapio-whatsapp.mjs';
 import {confirmationReply} from './pdv-order.mjs';
+import {detectUnsupportedComboIntent,comboRequiresStaff} from './combo-guard.mjs';
 import {addPizza,addDrink,replaceFlavor,replaceFlavorOneUnit,removeCartItem,addCartNote,setAddress,setPayment,setFulfillment,confirmCustomerName,beginNewOrder,getSummary,requestConfirmation,confirmRequest,availableCatalog,formatMoney,extractText,publicMenuKnowledge} from './core.mjs';
 
 const params=(properties,required=[])=>({type:'object',properties,required,additionalProperties:false});
@@ -228,6 +229,24 @@ export function whatsappText(t){return String(t||'').replace(/\*\*(.+?)\*\*/g,'*
 export async function intelligentReply(userText,session,business,cfg={}){
   const normalizedInput=normalize(String(userText||'')).trim();
   session.enforceCheckoutOrder=true;
+  if(isNewOrderIntent(userText)){
+    beginNewOrder(session);
+    return '🍕 Combinado! Vamos começar um novo pedido. Qual sabor ou combo você prefere?';
+  }
+  // A API pública do PDV não publica os sabores elegíveis nem as escolhas de bebida de cada combo.
+  // Nunca converter um combo em pizzas avulsas ou simular que foi finalizado.
+  const combo=detectUnsupportedComboIntent(userText,business) ||
+    (session.cart?.length ? (session.history||[]).filter(m=>m.role==='user').slice(-12).map(m=>detectUnsupportedComboIntent(m.content,business)).find(Boolean) : null);
+  if(combo){
+    session.comboReview={name:combo.label,reason:'COMBO_RULES_NOT_EXPOSED_BY_PDV',at:new Date().toISOString()};
+    session.mode='HUMAN';session.reason='Combo exige conferência dos sabores, preço e bebida no PDV';
+    session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;
+    return '🍕 O *'+combo.label+'* precisa ser montado com os sabores autorizados e a bebida inclusa no PDV. Ainda não consigo validar todas essas escolhas automaticamente; vou encaminhar para nossa equipe montar o combo correto. *Não registrei nem cobrei este combo.*';
+  }
+  if(comboRequiresStaff(session)){
+    session.mode='HUMAN';session.reason='Combo pendente de montagem validada no PDV';
+    return 'Seu combo ainda precisa ser conferido pela equipe: sabores permitidos, bebida inclusa e preço final. *O pedido não foi enviado à cozinha.*';
+  }
   // Conversas @lid não fornecem necessariamente um número de telefone.
   // Não tentar vender usando o identificador de roteamento nem deixar a IA improvisar.
   if(session.requireValidatedPhone){
@@ -280,6 +299,38 @@ export async function intelligentReply(userText,session,business,cfg={}){
     const total=summary.totalCents===null?'a confirmar após validar os dados':formatMoney(summary.totalCents);
     return '🍕 Seu pedido está assim: *Subtotal: '+subtotal+'*. Entrega: '+delivery+'. *Total: '+total+'*. 😊 Quer adicionar mais alguma coisa ou podemos finalizar?';
   }
+  // Status operacional é resposta do PDV, nunca texto livre da IA nem histórico de outro pedido.
+  const trackingQuestion=/\b(quanto tempo|previsao|prazo|cad[eê] meu pedido|onde est[aá] meu pedido|status do pedido|meu pedido|nao chegou|n[aã]o recebi|nao entregaram|entrega atrasada)\b/i.test(normalizedInput);
+  if(trackingQuestion && !session.cart?.length){
+    if(/\b(n[aã]o chegou|nao recebi|nao entregaram|atrasada)\b/i.test(normalizedInput)){
+      session.mode='HUMAN';session.reason='Cliente contesta entrega; rastreio exige conferência da equipe';
+      return 'Sinto muito pela divergência. Vou encaminhar à equipe para verificar a entrega diretamente no PDV e com o entregador. *Não tenho confirmação segura de que seu pedido chegou.*';
+    }
+    const lastRef=(session.orderRefs||[]).at(-1);
+    if(!lastRef||typeof business.orderStatus!=='function'){
+      session.mode='HUMAN';session.reason='Rastreio sem vínculo de pedido verificável';
+      return 'Ainda não consigo localizar com segurança um pedido atual deste atendimento. Vou pedir que nossa equipe confira o número e a previsão de entrega.';
+    }
+    try{
+      const lookup=await business.orderStatus([lastRef]);
+      const order=lookup?.ok?(lookup.orders||[]).find(o=>o.externalId===lastRef):null;
+      if(!order){session.mode='HUMAN';session.reason='Pedido não encontrado no PDV';return 'Não consegui confirmar este pedido no PDV. Vou encaminhar para nossa equipe conferir.';}
+      const age=Date.now()-new Date(order.createdAt).getTime();
+      if(!Number.isFinite(age)||age<0||age>8*60*60*1000){
+        session.mode='HUMAN';session.reason='Pedido do histórico antigo; necessário localizar atual';
+        return 'Encontrei apenas um pedido anterior no histórico, não uma confirmação do pedido atual. Vou encaminhar à equipe.';
+      }
+      const state=String(order.status||'').toLowerCase();
+      if(['delivered','returned','canceled','cancelled'].includes(state)){
+        session.mode='HUMAN';session.reason='Status final exige validação humana quando cliente consulta entrega';
+        return 'O PDV apresenta o pedido nº '+order.number+' com status "'+String(order.statusLabel||state)+'", mas isso não comprova o recebimento por você. Vou encaminhar para conferência com o entregador.';
+      }
+      return 'Consultei agora o PDV: pedido nº '+order.number+', status "'+String(order.statusLabel||state)+'". Ainda não recebi uma previsão exata confirmada pelo sistema; a equipe pode verificar o prazo de entrega.';
+    }catch{
+      session.mode='HUMAN';session.reason='PDV indisponível para consulta do pedido';
+      return 'O PDV não confirmou o status neste momento. Vou encaminhar para nossa equipe verificar, sem informar uma entrega que não foi comprovada.';
+    }
+  }
   if(session.pendingPixOffer){
     const msg=normalize(userText).trim();
     if(/^(sim|pode enviar|pode mandar|manda|envia|quero|sim por favor|pode)\b/.test(msg)){
@@ -296,14 +347,10 @@ export async function intelligentReply(userText,session,business,cfg={}){
     setPayment(session,{method:'CARTAO'});session.cardAtDelivery=true;
     return 'Perfeito! 🍕 Cartão na maquininha durante a entrega. Seu pedido seguirá para produção após validação e registro no PDV, sem esperar pagamento antecipado. Quer acrescentar mais algo?';
   }
-  if(isNewOrderIntent(userText)){
-    beginNewOrder(session);
-    return '🍕 Combinado! Vamos escolher uma pizza deliciosa? 😋 Qual sabor ou combo você prefere?';
-  }
   // CONFIRMO é uma operação financeira/operacional, nunca uma resposta livre da IA.
   // Se houve perda do estado entre resumo e mensagem, apresentar NOVO resumo em vez de fingir envio.
   if(/^(?:confirmo|ok confirmo|pode confirmar|confirmado)$/.test(normalizedInput)){
-    if(session.lastCompletedRequestId && session.pdvOrder?.ok && Number.isSafeInteger(Number(session.pdvOrder.number)) && Number(session.pdvOrder.number)>0)
+    if(!session.cart?.length && !session.awaitingConfirmation && session.lastCompletedRequestId && session.pdvOrder?.ok && !session.pdvOrder?.dryRun && Number.isSafeInteger(Number(session.pdvOrder.number)) && Number(session.pdvOrder.number)>0)
       return 'Seu pedido nº '+session.pdvOrder.number+' já foi registrado no PDV. Não vou enviá-lo novamente.';
     if(session.pdvOrder?.ok===false && session.lastConfirmed)
       return '⚠️ Seu pedido NÃO foi registrado no PDV. Vou chamar um atendente para conferir; não faça pagamento até receber um número real de pedido.';

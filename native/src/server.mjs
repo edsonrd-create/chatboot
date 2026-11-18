@@ -390,7 +390,7 @@ try{
     delete t.typing;
     if(!sentMessages.length){if(!cancelled){t.qrLastBlocker=voiceError||'QR_SEND_FAILED';t.qrLastErrorAt=new Date(clock()).toISOString();}return;}
     t.session=session;
-    if(session.mode==='HUMAN')t.mode='HUMAN';
+    if(session.mode==='HUMAN'){t.mode='HUMAN';t.operationalState='WAITING';t.qrLastBlocker=session.reason||'NEEDS_STAFF_REVIEW';}
     if(voiceDelivered)t.voiceDisclosureSent=true;
     if(voiceError){t.qrLastBlocker=voiceError;t.qrLastErrorAt=new Date(clock()).toISOString();}
     else{delete t.qrLastBlocker;delete t.qrLastErrorAt;}
