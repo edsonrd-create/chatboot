@@ -386,7 +386,49 @@ if(location.pathname.replace(/\/+$/,'')==='/whatsapp')document.body.classList.ad
 if(document.body.classList.contains('full-wa')){const bar=document.createElement('div');bar.className='wa-float';bar.innerHTML='<button type="button" data-go="inbox" title="Conversas">▤ Conversas</button><button type="button" data-go="qr" title="Conectar WhatsApp por QR Code">▣ Conectar QR</button>';bar.addEventListener('click',e=>{const go=e.target.closest('[data-go]')?.dataset.go;if(!go)return;document.querySelector(`.nav-link[data-screen="${go}"]`)?.click();bar.querySelectorAll('[data-go]').forEach(b=>b.classList.toggle('on',b.dataset.go===go));});(document.getElementById('app')||document.body).append(bar);bar.querySelector('[data-go="inbox"]').classList.add('on');}
 api('/api/status').then(async r=>{ss.status=r;$('login').hidden=true;$('app').hidden=false;renderStatus();await loadInbox();beginLiveUpdates();}).catch(()=>{$('app').hidden=true;$('login').hidden=false;});
 
+async function loadPdfPanel(){
+ const active=$('pdf-active'),versions=$('pdf-versions'),link=$('pdf-download');
+ if(!active||!versions)return;
+ try{
+  const result=await api('/api/cardapio-pdf/status');
+  active.textContent=result.active?'Ativo: '+result.active.name+' · atualizado em '+date(result.active.uploadedAt):'Nenhum cardápio PDF ativo.';
+  if(link)link.hidden=!result.active;
+  versions.replaceChildren();
+  for(const item of result.versions||[]){
+   const row=x('div','setting-row');
+   row.append(x('span','',item.name+' · '+(item.size/1048576).toFixed(2)+' MB · '+date(item.uploadedAt)));
+   if(item.active)row.append(x('strong','','Ativo'));
+   else{
+    const button=x('button','secondary','Restaurar');
+    button.type='button';
+    button.addEventListener('click',async()=>{
+     if(!confirm('Restaurar este PDF como o cardápio ativo?'))return;
+     try{await api('/api/cardapio-pdf/activate',{method:'POST',body:JSON.stringify({id:item.id})});notify('PDF restaurado e ativado.');await loadPdfPanel();}
+     catch(e){notify(e.message,true);}
+    });
+    row.append(button);
+   }
+   versions.append(row);
+  }
+ }catch(e){active.textContent='Não foi possível consultar o cardápio PDF: '+e.message;}
+}
+$('pdf-upload-form')?.addEventListener('submit',async e=>{
+ e.preventDefault();
+ const input=$('pdf-file'),file=input.files?.[0],button=$('pdf-upload-button'),feedback=$('pdf-feedback');
+ if(!file)return;
+ if(file.size>20*1024*1024||!file.name.toLowerCase().endsWith('.pdf')){feedback.textContent='Selecione um PDF de até 20 MB.';return;}
+ button.disabled=true;feedback.textContent='Enviando arquivo...';
+ try{
+  const response=await fetch('/api/cardapio-pdf/upload',{method:'PUT',credentials:'same-origin',headers:{'content-type':'application/pdf','x-filename':file.name},body:file});
+  const result=await response.json();
+  if(!response.ok)throw new Error(result.error||'Falha ao salvar');
+  feedback.textContent='PDF salvo e ativado com sucesso. ✅';
+  input.value='';await loadPdfPanel();notify('Novo cardápio PDF salvo e ativado.');
+ }catch(e){feedback.textContent='Erro ao salvar: '+e.message;notify(e.message,true);}
+ finally{button.disabled=false;}
+});
 async function loadCardapioSync(){
+ await loadPdfPanel();
  const status=$('cardapio-sync-state'),details=$('cardapio-sync-details');
  if(!status||!details)return;
  try{

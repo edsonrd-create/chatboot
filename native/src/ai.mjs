@@ -280,6 +280,22 @@ export async function intelligentReply(userText,session,business,cfg={}){
     const total=summary.totalCents===null?'a confirmar após validar os dados':formatMoney(summary.totalCents);
     return '🍕 Seu pedido está assim: *Subtotal: '+subtotal+'*. Entrega: '+delivery+'. *Total: '+total+'*. 😊 Quer adicionar mais alguma coisa ou podemos finalizar?';
   }
+  if(session.pendingPixOffer){
+    const msg=normalize(userText).trim();
+    if(/^(sim|pode enviar|pode mandar|manda|envia|quero|sim por favor|pode)\b/.test(msg)){
+      const offer=session.pendingPixOffer;
+      session.pendingPixOffer=null;
+      if(offer.link && /^https:\/\//.test(offer.link))return 'Claro! 🍕 Aqui está o link oficial PIX do pedido nº '+offer.number+': '+offer.link+'\nO pagamento só será considerado realizado quando confirmado pelo PDV.';
+      if(offer.brcode)return 'Claro! 🍕 Pix Copia e Cola do pedido nº '+offer.number+':\n'+offer.brcode+'\nO pagamento fica pendente até a confirmação pelo PDV.';
+      return 'O PIX ainda não está disponível para este pedido. Vou encaminhar para um atendente conferir a cobrança.';
+    }
+    if(/^(nao|agora nao|depois|prefiro pagar na entrega)\b/.test(msg)){session.pendingPixOffer=null;return 'Tudo bem! 😊 Não enviarei o PIX. Se precisar alterar a forma de pagamento, vou encaminhar para a equipe.';}
+    if(/\b(pix|link de pagamento|copia e cola)\b/.test(msg))return 'Posso enviar o link ou código PIX do seu pedido nº '+session.pendingPixOffer.number+'? Responda *sim* para receber.';
+  }
+  if(session.cart?.length && /\b(maquininha|maquina(?: (?:durante|na|no momento da) entrega)?|cartao na entrega|credito na entrega|debito na entrega)\b/.test(normalizedInput)){
+    setPayment(session,{method:'CARTAO'});session.cardAtDelivery=true;
+    return 'Perfeito! 🍕 Cartão na maquininha durante a entrega. Seu pedido seguirá para produção após validação e registro no PDV, sem esperar pagamento antecipado. Quer acrescentar mais algo?';
+  }
   if(isNewOrderIntent(userText)){
     beginNewOrder(session);
     return '🍕 Combinado! Vamos escolher uma pizza deliciosa? 😋 Qual sabor ou combo você prefere?';
@@ -318,7 +334,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
     return 'A última solicitação foi apenas *validada em homologação*, sem registro de venda nem cobrança. Não há código PIX para ela. Para começar, responda *novo pedido*.';
   }
   if(cfg.menuFlowEnabled===true){
-    const choice=cardapioChoice(session,userText,{iosUrl:cfg.iosUrl||'',catalogSynced:cfg.catalogSynced===true});
+    const choice=cardapioChoice(session,userText,{iosUrl:cfg.iosUrl||'',catalogSynced:cfg.catalogSynced===true,pdfAvailable:cfg.pdfAvailable===true});
     if(choice)return choice.reply;
     // Nunca orçar ou confirmar usando o JSON local ou cache quando PDV não foi consultado.
     if((isCommerceIntent(userText)||session.awaitingConfirmation===true)&&cfg.catalogSynced!==true)

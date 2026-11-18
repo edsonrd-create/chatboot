@@ -14,7 +14,8 @@ test('carrinho completo → resumo oficial; Confirmo → envia ao PDV', async ()
   assert.match(r1,/Confira os dados/);assert.match(r1,/Total: R\$\s?59,99/);
   let sent;b.submitOrder=async x=>{sent=x;return {ok:true,number:7,totalCents:5999,pixCopiaECola:'PIXCODE'};};
   const r2=await intelligentReply('Confirmo',s,b,{});
-  assert.ok(sent);assert.equal(s.cart.length,0);assert.equal(s.customerNameConfirmed,false);assert.match(r2,/nº 7/);assert.match(r2,/PIXCODE/);
+  assert.ok(sent);assert.equal(s.cart.length,0);assert.equal(s.customerNameConfirmed,false);assert.match(r2,/nº 7/);assert.match(r2,/Posso enviar/);assert.doesNotMatch(r2,/PIXCODE/);
+  assert.match(await intelligentReply('sim',s,b,{}),/PIXCODE/);
   delete b.submitOrder;
 });
 test('negrito markdown vira negrito do WhatsApp', ()=>{assert.equal(whatsappText('**Total:** R$ 1'),'*Total:* R$ 1');});

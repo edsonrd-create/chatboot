@@ -170,7 +170,7 @@ export function beginNewOrder(session){
  session.addressCheck=null;session.customerNameConfirmed=false;session.awaitingCustomerName=false;
  session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;
  session.confirmedRequestId=null;session.lastQuote=null;session.lastConfirmed=null;
- session.cardapioChannel=null;session.pdvOrder=null;
+ session.cardapioChannel=null;session.pdvOrder=null;session.pendingPixOffer=null;session.pendingCardapioPdf=false;session.cardAtDelivery=false;
  return {ok:true};
 }
 export function resetCartAfterOrder(session,{requestId,orderNumber=null,dryRun=false}={}){
@@ -201,7 +201,7 @@ export function resetCartAfterOrder(session,{requestId,orderNumber=null,dryRun=f
  session.quotePresented=false;
  session.quoteSnapshot=null;
  session.confirmedRequestId=null;
- session.cardapioChannel=null;
+ session.cardapioChannel=null;session.pendingCardapioPdf=false;session.cardAtDelivery=false;
  return {ok:true};
 }
 export function setPayment(session,{method}){

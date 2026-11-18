@@ -74,7 +74,11 @@ test('venda confirmada pelo PDV encerra carrinho; segunda compra começa sem ite
  b.submitOrder=async()=>({ok:true,number:345,totalCents:5999,paymentStatus:'pending',pixCopiaECola:'PIX-TESTE'});
  const answer=await intelligentReply('Confirmo',s,b);
  assert.match(answer,/Pedido nº 345 registrado/);
- assert.match(answer,/PIX-TESTE/);
+ assert.match(answer,/Posso enviar o link ou código PIX/);
+ assert.doesNotMatch(answer,/PIX-TESTE/);
+ assert.equal(s.pendingPixOffer.brcode,'PIX-TESTE');
+ const authorized=await intelligentReply('sim pode enviar',s,b);
+ assert.match(authorized,/PIX-TESTE/);
  assert.equal(s.cart.length,0);
  assert.equal(s.payment,null);
  assert.equal(s.customerNameConfirmed,false);

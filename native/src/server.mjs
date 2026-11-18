@@ -1,4 +1,5 @@
 import {validCustomerPhone} from './customer-phone.mjs';
+import {MAX_PDF_SIZE,pdfStatus,getActivePdf,uploadPdf,activatePdf} from './cardapio-pdf.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -287,7 +288,7 @@ try{
   }else{
     const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='true'?await syncCatalog():null;
     reply=await withAiSlot(()=>respondWithAI(text,session,business,{
-      ...aiCfg,menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED==='true',
+      ...aiCfg,pdfAvailable:Boolean(getActivePdf(statePath)),menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED==='true',
       catalogSynced:pdvSync?.ok===true,iosUrl:env.GUTO_IOS_APP_URL||''
     }));
   }
@@ -368,6 +369,16 @@ try{
     const payload=voiceError?`Sou a assistente virtual da Guto Express. Não consegui gerar áudio agora; segue minha resposta por escrito: ${reply}`:reply;
     const out=await qr.send(m.slot,m.jid,payload);
     sentMessages.push({id:out.id||crypto.randomUUID(),direction:'outgoing',type:'text',text:payload,at:new Date(clock()).toISOString(),delivery:'sent',source:voiceError?'IA · contingência texto':'IA'});
+  }
+  if(session.pendingCardapioPdf){
+   const pdf=getActivePdf(statePath);
+   if(pdf&&stillAutomated()){
+    const buffer=fs.readFileSync(pdf.file);
+    const sent=await qr.sendMedia(m.slot,m.jid,{buffer,mimeType:'application/pdf',fileName:'Cardapio_Guto_Express.pdf',caption:'📄 Cardápio Guto Express'});
+    const media=saveMedia(`qr${m.slot}-${sent.id||crypto.randomUUID()}`,{buffer,mimeType:'application/pdf'});
+    sentMessages.push({id:sent.id||crypto.randomUUID(),direction:'outgoing',type:'document',text:'📄 Cardapio_Guto_Express.pdf',at:new Date(clock()).toISOString(),delivery:'sent',source:'IA · cardápio',media,fileName:'Cardapio_Guto_Express.pdf'});
+    session.pendingCardapioPdf=false;
+   }
   }
 }catch{
   console.error('[QR SEND]',JSON.stringify({slot:m.slot,code:'QR_SEND_FAILED'}));
@@ -513,7 +524,27 @@ const aiCfg=aiProvider==='gemini'
       if(!authed(req))return json(res,401,{error:'Login obrigatório'});
       if(!csrfSafe(req,appUrl))return json(res,403,{error:'Origem inválida'});
       if(freePreview && (/^\/api\/channels\/[12]\/(configure|verify)$/.test(p)||['/api/reply','/api/meta/signup/complete','/api/ai/test','/api/simulate','/api/pdv/test'].includes(p)))return json(res,409,{error:'Prévia gratuita: conexão, envio e IA pagos bloqueados; armazenamento temporário.'});
-      if(p==='/api/cardapio-whatsapp/status'&&req.method==='GET'){
+      if(p==='/api/cardapio-pdf/status'&&req.method==='GET')return json(res,200,pdfStatus(statePath));
+       if(p==='/api/cardapio-pdf/upload'&&req.method==='PUT'){
+         if(freePreview)return json(res,409,{error:'Upload bloqueado na prévia'});
+         if(String(req.headers['content-type']||'').split(';')[0]!=='application/pdf')return json(res,415,{error:'Envie um PDF'});
+         const name=String(req.headers['x-filename']||'cardapio.pdf');
+         if(!name.toLowerCase().endsWith('.pdf'))return json(res,422,{error:'Extensão .pdf obrigatória'});
+         const buffer=await readBody(req,MAX_PDF_SIZE);
+         try{return json(res,200,{ok:true,...uploadPdf(statePath,buffer,name)});}
+         catch(e){return json(res,e.status||500,{error:e.status?e.message:'Erro ao salvar PDF'});}
+       }
+       if(p==='/api/cardapio-pdf/activate'&&req.method==='POST'){
+         if(freePreview)return json(res,409,{error:'Alteração bloqueada na prévia'});
+         let payload;try{payload=JSON.parse((await readBody(req,2048)).toString());}catch{return json(res,400,{error:'JSON inválido'});}
+         if(!activatePdf(statePath,payload.id))return json(res,404,{error:'Versão não encontrada'});
+         return json(res,200,{ok:true,...pdfStatus(statePath)});
+       }
+       if(p==='/api/cardapio-pdf/download'&&req.method==='GET'){
+         const pdf=getActivePdf(statePath);if(!pdf)return json(res,404,{error:'Nenhum cardápio PDF cadastrado'});
+         return respond(res,200,fs.readFileSync(pdf.file),{'content-type':'application/pdf','content-disposition':'attachment; filename="Cardapio_Guto_Express.pdf"'});
+       }
+       if(p==='/api/cardapio-whatsapp/status'&&req.method==='GET'){
         const scheduleActive=botActiveNow();
         const connectedSlots=[1,2].filter(slot=>Boolean(qr?.isConnected(slot)));
         const snapshot=store.snapshot();
