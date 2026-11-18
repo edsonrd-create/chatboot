@@ -1,4 +1,5 @@
 import {validCustomerPhone} from './customer-phone.mjs';
+import {isMarketingOptOut,optOutMessage} from './marketing-optout.mjs';
 import {MAX_PDF_SIZE,pdfStatus,getActivePdf,uploadPdf,activatePdf} from './cardapio-pdf.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -215,6 +216,47 @@ if(assessment.blockers.length&&t.mode==='BOT')t.qrLastBlocker=assessment.blocker
 else if(!audioError&&t.mode==='BOT')delete t.qrLastBlocker;
 if(canReply)session=structuredClone(t.session||newSession());
 });
+if(m.type==='text' && isMarketingOptOut(text)){
+   // Opt-out prevalece sobre modo BOT/HUMAN, horário, IA e fila de pedidos.
+   const current=store.peek().threads[tid];
+   const phone=String(m.phoneNumber||current?.customerPhone||'').replace(/\D/g,'');
+   let updated=false;
+   if(botToken.length>=24 && validCustomerPhone(phone)){
+     try{
+       const response=await fetchImpl(pdvBase+'/api/v1/bot/marketing-optout',{
+         method:'POST',
+         headers:{'content-type':'application/json',authorization:'Bearer '+botToken},
+         body:JSON.stringify({phone}),signal:AbortSignal.timeout(10000)
+       });
+       const result=await response.json().catch(()=>({}));
+       updated=response.ok&&result.ok===true;
+     }catch{updated=false;}
+   }
+   await store.change(d=>{
+     const thread=d.threads[tid];
+     if(!thread)return;
+     if(updated){
+       thread.marketingOptOut=true;
+       thread.marketingOptOutAt=new Date(clock()).toISOString();
+       audit(d,{actor:'system',action:'MARKETING_OPTOUT_CONFIRMED',slot:m.slot,clock});
+     }else{
+       thread.mode='HUMAN';thread.operationalState='WAITING';
+       thread.qrLastBlocker='MARKETING_OPTOUT_PDV_UNAVAILABLE';
+       audit(d,{actor:'system',action:'MARKETING_OPTOUT_PENDING_STAFF',slot:m.slot,clock});
+     }
+   });
+   const reply=optOutMessage(updated);
+   if(qr?.isConnected(m.slot)){
+     try{
+       const sent=await qr.send(m.slot,m.jid,reply);
+       await store.change(d=>{const thread=d.threads[tid];if(thread)
+         upsertOutgoing(thread,{id:sent.id||crypto.randomUUID(),direction:'outgoing',type:'text',
+           text:reply,at:new Date(clock()).toISOString(),delivery:'sent',source:'Privacidade · SAIR'});
+       });
+     }catch{console.error('[MARKETING OPTOUT]',JSON.stringify({slot:m.slot,code:'ACK_SEND_FAILED'}));}
+   }
+   return;
+ }
 if(!canReply){
   // A mensagem não compreendida não deve produzir pedido inventado. Aviso claro e transferência humana.
   if(notifyAudioHandoff&&qr?.isConnected(m.slot)){
