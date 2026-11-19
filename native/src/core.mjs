@@ -22,7 +22,7 @@ export function normalizeEvent(event, configuredInboxes=[], configuredAccount=nu
 }
 
 export const newSession = ()=>({mode:'BOT',cart:[],address:null,payment:null,fulfillment:'DELIVERY',fulfillmentChosen:false,checkoutRequested:false,cashChangeNeeded:null,cashReceivedCents:null,customerNameConfirmed:false,awaitingCustomerName:false,awaitingConfirmation:false,quotePresented:false,quoteSnapshot:null,confirmedRequestId:null,history:[]});
-function invalidateQuote(session){session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;session.confirmedRequestId=null;}
+function invalidateQuote(session){session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;session.quoteIssuedAt=null;session.confirmedRequestId=null;}
 export function quoteFingerprint(quote){return JSON.stringify({items:quote.items.map(x=>({id:x.id,quantity:x.quantity,kind:x.kind,size:x.size,flavors:x.flavors,notes:x.notes,unitPriceCents:x.unitPriceCents})),address:quote.address,customerName:quote.customerName,customerPhone:quote.customerPhone,payment:quote.payment,cashChangeNeeded:quote.cashChangeNeeded,cashReceivedCents:quote.cashReceivedCents,fulfillment:quote.fulfillment,subtotalCents:quote.subtotalCents,deliveryFeeCents:quote.deliveryFeeCents,totalCents:quote.totalCents});}
 export function extractText(response) {
   if (typeof response?.output_text === 'string') return response.output_text.trim();
@@ -173,7 +173,7 @@ export function beginNewOrder(session){
  session.checkoutRequested=false;session.awaitingCustomerPhone=false;session.fulfillmentChosen=false;
  session.payment=null;session.cashChangeNeeded=null;session.cashReceivedCents=null;session.fulfillment='DELIVERY';session.deliveryFeeCents=null;
  session.addressCheck=null;session.customerNameConfirmed=false;session.awaitingCustomerName=false;
- session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;
+ session.awaitingConfirmation=false;session.quotePresented=false;session.quoteSnapshot=null;session.quoteIssuedAt=null;
  session.confirmedRequestId=null;session.lastQuote=null;session.lastConfirmed=null;
  session.cardapioChannel=null;session.pdvOrder=null;session.pendingPixOffer=null;session.pendingCardapioPdf=false;session.cardAtDelivery=false;session.comboReview=null;session.comboDraft=null;
  return {ok:true};
@@ -204,7 +204,7 @@ export function resetCartAfterOrder(session,{requestId,orderNumber=null,dryRun=f
  session.lastQuote=null;
  session.awaitingConfirmation=false;
  session.quotePresented=false;
- session.quoteSnapshot=null;
+ session.quoteSnapshot=null;session.quoteIssuedAt=null;
  session.confirmedRequestId=null;
  session.cardapioChannel=null;session.pendingCardapioPdf=false;session.cardAtDelivery=false;session.comboDraft=null;session.comboReview=null;
  return {ok:true};
@@ -217,10 +217,11 @@ export function setPayment(session,{method}){
 export function requestConfirmation(session,business){
   const quote=getSummary(session,business);
   if(quote.missing.length)return {ok:false,error:'Não é possível apresentar total final ou confirmar pedido; pendências: '+quote.missing.join(', ')+'.',quote};
-  session.awaitingConfirmation=true;session.quoteSnapshot=quoteFingerprint(quote);return {ok:true,quote};
+  session.awaitingConfirmation=true;session.quoteSnapshot=quoteFingerprint(quote);session.quoteIssuedAt=Date.now();return {ok:true,quote};
 }
 export function confirmRequest(session,business,{explicitConfirmation}){
   if(session.confirmedRequestId)return {ok:true,alreadyConfirmed:true,requestId:session.confirmedRequestId};
+  if(session.awaitingConfirmation && (!Number.isFinite(session.quoteIssuedAt)||Date.now()-session.quoteIssuedAt>=20*60_000))return {ok:false,error:'O resumo expirou após 20 minutos. Inicie um novo pedido.'};
   if(explicitConfirmation!==true || !session.awaitingConfirmation || !session.quotePresented)return {ok:false,error:'É necessário apresentar o resumo ao cliente e receber uma confirmação explícita em mensagem posterior.'};
   const quote=getSummary(session,business);
   if(quote.missing.length || quoteFingerprint(quote)!==session.quoteSnapshot)return {ok:false,error:'Orçamento incompleto ou alterado; gere um novo resumo para o cliente.',quote};
