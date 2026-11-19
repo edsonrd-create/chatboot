@@ -83,7 +83,7 @@ export function applyTool(name,args,session,business,userText){
   }
 }
 
-function formatQuote(q){let t=q.items.map(x=>`• ${x.quantity}x ${x.description}: ${Number.isInteger(x.unitPriceCents)?formatMoney(x.unitPriceCents*x.quantity):'preço a confirmar'}`).join('\n');return `${t}\nSubtotal: ${formatMoney(q.subtotalCents)}\n${q.fulfillment==='PICKUP'?'Retirada no balcão':'Taxa de entrega'}: ${formatMoney(q.deliveryFeeCents)}\nTotal: ${formatMoney(q.totalCents)}\n${q.fulfillment==='PICKUP'?'Modalidade: retirada':'Endereço: '+(q.address||'pendente')}\nPagamento: ${q.payment||'pendente'}${q.payment==='DINHEIRO'?q.cashChangeNeeded===false?'\nTroco: não precisa':q.cashChangeNeeded===true&&Number.isSafeInteger(q.cashReceivedCents)&&Number.isSafeInteger(q.cashChangeCents)?'\nTroco para: '+formatMoney(q.cashReceivedCents)+'\nTroco previsto: '+formatMoney(q.cashChangeCents):'\nTroco: pendente':''}\nNome: ${q.customerName||'pendente'}\nContato: ${q.customerPhone||'pendente'}`;}
+function formatQuote(q,business){let t=q.items.map(x=>`• ${x.quantity}x ${x.description}: ${Number.isInteger(x.unitPriceCents)?formatMoney(x.unitPriceCents*x.quantity):'preço a confirmar'}`).join('\n');return `${t}\nSubtotal: ${formatMoney(q.subtotalCents)}\n${q.fulfillment==='PICKUP'?'Retirada no balcão':'Taxa de entrega'}: ${formatMoney(q.deliveryFeeCents)}\nTotal: ${formatMoney(q.totalCents)}\n${q.fulfillment==='PICKUP'?'Modalidade: retirada':'Endereço: '+(q.address||'pendente')}\nPagamento: ${q.payment||'pendente'}${q.payment==='DINHEIRO'?q.cashChangeNeeded===false?'\nTroco: não precisa':q.cashChangeNeeded===true&&Number.isSafeInteger(q.cashReceivedCents)&&Number.isSafeInteger(q.cashChangeCents)?'\nTroco para: '+formatMoney(q.cashReceivedCents)+'\nTroco previsto: '+formatMoney(q.cashChangeCents):'\nTroco: pendente':''}\nNome: ${q.customerName||'pendente'}\nContato: ${q.customerPhone||'pendente'}${q.fulfillment==='DELIVERY'&&business?.pdvDeliveryWindow?'\nPrevisão de entrega (PDV): '+business.pdvDeliveryWindow:''}`;}
 
 export function localReply(text,session,business){
  const t=normalize(text);
@@ -201,7 +201,7 @@ const responses=[];
 for(const p of calls){
 const name=p.functionCall.name;const args=p.functionCall.args||{};
 const out=await applyTool(name,args,session,business,userText);
-if(name==='solicitar_confirmacao'&&out.ok){session.quotePresented=true;session.lastQuote=formatQuote(out.quote);return `Confira os dados antes de confirmar: 🍕\n${session.lastQuote}\n\nEstá tudo correto? Responda *Confirmo* para enviar a solicitação para conferência da equipe.`;}
+if(name==='solicitar_confirmacao'&&out.ok){session.quotePresented=true;session.lastQuote=formatQuote(out.quote,business);return `Confira os dados antes de confirmar: 🍕\n${session.lastQuote}\n\nEstá tudo correto? Responda *Confirmo* para enviar a solicitação para conferência da equipe.`;}
 if(name==='confirmar_solicitacao'&&out.ok){session.lastConfirmed=out;return confirmationReply(session,business,out,`Confirmação recebida! 🍕 Sua solicitação ${out.requestId.slice(0,8)} vai passar pela conferência da equipe. Ainda não foi enviada à cozinha; avisaremos após a aprovação.`);}
 responses.push({functionResponse:{name,response:{result:out}}});
 }
@@ -230,9 +230,18 @@ export function whatsappText(t){return String(t||'').replace(/\*\*(.+?)\*\*/g,'*
 export async function intelligentReply(userText,session,business,cfg={}){
   const normalizedInput=normalize(String(userText||'')).trim();
   session.enforceCheckoutOrder=true;
+  if(session.awaitingConfirmation && (!Number.isFinite(session.quoteIssuedAt)||Date.now()-session.quoteIssuedAt>=20*60_000)){
+    beginNewOrder(session);
+    return '⏰ O resumo anterior venceu após 20 minutos sem confirmação e foi encerrado sem enviar pedido ou gerar cobrança. 🍕 Vamos montar um pedido atualizado? Qual pizza ou combo você deseja?';
+  }
   if(isNewOrderIntent(userText)){
     beginNewOrder(session);
     return '🍕 Combinado! Vamos começar um novo pedido. Qual sabor ou combo você prefere?';
+  }
+  if(/\b(?:qual|quanto|previs[aã]o|prazo|tempo|demora)\b/i.test(normalizedInput) && /\b(?:entrega|entregar|chegar|delivery)\b/i.test(normalizedInput)){
+    return business.pdvDeliveryWindow
+      ? '🍕 A previsão atual de entrega informada pelo PDV é de *'+business.pdvDeliveryWindow+'*. O prazo pode variar conforme a operação.'
+      : 'Ainda não consegui consultar o prazo de entrega atualizado no PDV. Vou confirmar com nossa equipe para não informar um tempo incorreto.';
   }
   // Um combo só pode avançar com a sincronização do cardápio oficial NESTA mensagem.
   if((session.comboDraft||session.cart?.some(it=>it.kind==='combo')) &&
@@ -391,7 +400,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
       const next=requestConfirmation(session,business);
       if(next.ok){
         session.quotePresented=true;
-        session.lastQuote=formatQuote(next.quote);
+        session.lastQuote=formatQuote(next.quote,business);
         return 'Preciso validar novamente o resumo antes de registrar no PDV. Nenhum pedido foi enviado ainda.\\n\\n'+QUOTE_PROMPT(session.lastQuote);
       }
       return '⚠️ Não consegui registrar o pedido: '+next.error+' Vou chamar um atendente para conferir os dados.';
@@ -422,7 +431,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
       const q=getSummary(session,business);
       if(q.missing.length)return checkoutNextQuestion(session,business)||'Vou conferir os valores antes de apresentar o resumo.';
       const r=requestConfirmation(session,business);
-      if(r.ok){session.quotePresented=true;session.lastQuote=formatQuote(r.quote);return QUOTE_PROMPT(session.lastQuote);}
+      if(r.ok){session.quotePresented=true;session.lastQuote=formatQuote(r.quote,business);return QUOTE_PROMPT(session.lastQuote);}
       return r.error;
     }
   }
@@ -437,7 +446,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
       const next=session.checkoutRequested?checkoutNextQuestion(session,business):null;
       if(next)return next;
       const q=getSummary(session,business);
-      if(!q.missing.length){const r=requestConfirmation(session,business);if(r.ok){session.quotePresented=true;session.lastQuote=formatQuote(r.quote);return QUOTE_PROMPT(session.lastQuote);}}
+      if(!q.missing.length){const r=requestConfirmation(session,business);if(r.ok){session.quotePresented=true;session.lastQuote=formatQuote(r.quote,business);return QUOTE_PROMPT(session.lastQuote);}}
     }else if(before.cart!==JSON.stringify(session.cart||[]) || asksPaymentBeforeCheckout(reply)){
       return 'Que delícia, ótima escolha! 🍕 Já anotei aqui. Quer acrescentar mais alguma coisa ou posso *fechar seu pedido*? 😊';
     }
@@ -489,7 +498,7 @@ let input=[...session.history.slice(-10).map(x=>({role:x.role,content:x.content}
     input.push({type:'function_call_output',call_id:call.call_id,output:JSON.stringify(out)});
     if(call.name==='solicitar_confirmacao'&&out.ok){
       // Garanta que o resumo calculado no servidor seja realmente exibido, sem depender da redação do modelo.
-      session.quotePresented=true; session.lastQuote=formatQuote(out.quote);
+      session.quotePresented=true; session.lastQuote=formatQuote(out.quote,business);
       return `Confira os dados antes de confirmar: 🍕\n${session.lastQuote}\n\nEstá tudo correto? Responda *Confirmo* para enviar a solicitação para conferência da equipe.`;
     }
     if(call.name==='confirmar_solicitacao'&&out.ok){session.lastConfirmed=out;return confirmationReply(session,business,out,`Confirmação recebida! 🍕 Sua solicitação ${out.requestId.slice(0,8)} vai passar pela conferência da equipe. Ainda não foi enviada à cozinha; avisaremos após a aprovação.`);}
@@ -501,4 +510,4 @@ let input=[...session.history.slice(-10).map(x=>({role:x.role,content:x.content}
  }
  session.mode='HUMAN';session.reason='Limite de ferramentas de IA';return 'Para garantir que seu pedido fique correto, vou encaminhar à nossa equipe. 😊';
 }
-export function quoteText(session,business){const q=getSummary(session,business);return formatQuote(q);}
+export function quoteText(session,business){const q=getSummary(session,business);return formatQuote(q,business);}
