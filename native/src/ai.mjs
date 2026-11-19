@@ -240,11 +240,6 @@ export async function intelligentReply(userText,session,business,cfg={}){
     beginNewOrder(session);
     return '🍕 Combinado! Vamos começar um novo pedido. Qual sabor ou combo você prefere?';
   }
-  if(/\b(?:qual|quanto|previs[aã]o|prazo|tempo|demora)\b/i.test(normalizedInput) && /\b(?:entrega|entregar|chegar|delivery)\b/i.test(normalizedInput)){
-    return business.pdvDeliveryWindow
-      ? '🍕 A previsão atual de entrega informada pelo PDV é de *'+business.pdvDeliveryWindow+'*. O prazo pode variar conforme a operação.'
-      : 'Ainda não consegui consultar o prazo de entrega atualizado no PDV. Vou confirmar com nossa equipe para não informar um tempo incorreto.';
-  }
   // Um combo só pode avançar com a sincronização do cardápio oficial NESTA mensagem.
   if((session.comboDraft||session.cart?.some(it=>it.kind==='combo')) &&
       (cfg.menuFlowEnabled!==true||cfg.catalogSynced!==true)){
@@ -416,6 +411,11 @@ export async function intelligentReply(userText,session,business,cfg={}){
   }
   if(session.lastDryRunRequestId && session.lastConfirmed?.requestId===session.lastDryRunRequestId && /\b(pix|pagamento|confirmo|confirmar|pedido)\b/.test(normalizedInput)){
     return 'A última solicitação foi apenas *validada em homologação*, sem registro de venda nem cobrança. Não há código PIX para ela. Para começar, responda *novo pedido*.';
+  }
+  if(/\b(?:qual|quanto|previs[aã]o|prazo|tempo|demora)\b/i.test(normalizedInput) && /\b(?:entrega|entregar|chegar|delivery)\b/i.test(normalizedInput)){
+    return business.pdvDeliveryWindow
+      ? '🍕 A previsão atual de entrega informada pelo PDV é de *'+business.pdvDeliveryWindow+'*. O prazo pode variar conforme a operação.'
+      : 'Ainda não consegui consultar o prazo de entrega atualizado no PDV. Vou confirmar com nossa equipe para não informar um tempo incorreto.';
   }
   if(cfg.menuFlowEnabled===true){
     const choice=cardapioChoice(session,userText,{iosUrl:cfg.iosUrl||'',catalogSynced:cfg.catalogSynced===true,pdfAvailable:cfg.pdfAvailable===true});
