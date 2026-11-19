@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id);
 const x=(tag,cls='',value)=>{const el=document.createElement(tag);if(cls)el.className=cls;if(value!==undefined)el.textContent=String(value);return el;};
-const ss={screen:'inbox',slot:0,selected:null,status:null,conversations:[],modalSlot:1,metaAssets:null,metaCode:null,splitMode:false,splitSelected:{1:null,2:null},splitThreads:{},opsFilter:'all',revision:null,liveSource:null};
+const ss={screen:'inbox',slot:0,selected:null,status:null,pdvOrderStatusText:null,pdvOrders:null,catalog:null,conversations:[],modalSlot:1,metaAssets:null,metaCode:null,splitMode:false,splitSelected:{1:null,2:null},splitThreads:{},opsFilter:'all',revision:null,liveSource:null};
 const notify=(msg,error=false)=>{const n=$('notice');n.hidden=false;n.className='toast'+(error?' error':'');n.textContent=msg;setTimeout(()=>n.hidden=true,5500);};
 async function api(url,options={}){const headers={'content-type':'application/json',...(options.headers||{})};const response=await fetch(url,{credentials:'same-origin',...options,headers});let data;try{data=await response.json();}catch{throw new Error('Servidor retornou resposta inválida');}if(!response.ok){const err=new Error(data.error||`HTTP ${response.status}`);err.code=data.code||null;err.errorId=data.errorId||null;throw err;}return data;}
 const timestamp=v=>v?new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
@@ -13,6 +13,7 @@ async function updatePdvOrderStatus(){
  const label=$('system-status');
  try{
   const result=await api('/api/pdv/bot-status');
+  ss.pdvOrders=result;
   if(!label)return;
   if(!result.ok){
    const reasons={
@@ -25,15 +26,19 @@ async function updatePdvOrderStatus(){
    };
    ss.pdvOrderStatusText='PDV: '+(reasons[result.reason]||('Conexão falhou ('+(result.httpStatus||'sem resposta')+')'));
    label.textContent=ss.pdvOrderStatusText;
+   if(ss.screen==='settings')renderChecklist();
    return;
   }
   const titles={test:'Conectado em TESTE · pedidos não são gravados',off:'Conectado, mas pedidos desativados',active:'Conectado · modo ATIVO no PDV'};
   ss.pdvOrderStatusText='PDV: '+(titles[result.mode]||'Estado desconhecido')+
     (ss.status?.qr?.active?' · WhatsApp QR ativo':'');
   label.textContent=ss.pdvOrderStatusText;
+  if(ss.screen==='settings')renderChecklist();
  }catch{
+   ss.pdvOrders=null;
    ss.pdvOrderStatusText='PDV: não foi possível consultar o estado dos pedidos';
    if(label)label.textContent=ss.pdvOrderStatusText;
+   if(ss.screen==='settings')renderChecklist();
  }
 }
 function renderConversations(){const area=$('conversation-list');area.replaceChildren();const q=$('search').value.trim().toLowerCase();const filtered=ss.conversations.filter(t=>(!ss.slot||t.slot===ss.slot)&&matchesOperationsFilter(t)&&(!q||[t.customer,t.customerName,t.lastText].join(' ').toLowerCase().includes(q)));{const unread=ss.conversations.reduce((n,t)=>n+(t.unread||0),0);const badge=$('unread-total');badge.textContent=unread;badge.hidden=!unread;badge.title=unread?`${unread} mensagem(ns) não lida(s)`:'';}
@@ -70,9 +75,46 @@ async function selectThread(id,mark=true){ss.selected=id;renderConversations();t
   if(mark&&t.unread){await api('/api/thread/read',{method:'POST',body:JSON.stringify({id})});const local=ss.conversations.find(r=>r.id===id);if(local)local.unread=0;renderConversations();}
  }catch(e){notify(e.message,true);}}
 async function loadOrders(){try{const result=await api('/api/orders');const box=$('orders');box.replaceChildren();if(!result.items.length)box.append(x('div','empty-mini','Nenhum pedido em conferência. A integração de escrita no PDV permanece bloqueada.'));for(const o of result.items){const div=x('div','context-card');div.append(x('b','',o.number||o.id),x('p','',JSON.stringify(o).slice(0,550)));box.append(div);}}catch(e){notify(e.message,true);}}
-async function loadSettings(){try{const s=await api('/api/settings');$('pdv-url').value=s.pdv.baseUrl;$('pdv-enabled').checked=s.pdv.enabled;$('pdv-test-result').textContent=s.readiness?.pdv.lastTest?.ok?`Leitura testada em ${date(s.readiness.pdv.lastTest.at)}`:'Leitura do PDV ainda não confirmada.';$('ai-setting').textContent=s.readiness.ai.configured?`IA configurada: ${s.readiness.ai.model} · QR: ${s.readiness.qr?.active?'ativo':'não operacional'}`:'Chave da IA ausente · configure no servidor';ss.status=s.readiness;renderStatus();const readOnly=Boolean(ss.status?.hosting?.readOnly);$('pdv-url').disabled=readOnly;$('pdv-enabled').disabled=readOnly;$('pdv-form').querySelector('button[type=submit]').disabled=readOnly;$('pdv-check').disabled=readOnly;renderSettingsChannels();renderChecklist();await loadChannelConfigs();}catch(e){notify(e.message,true);}}
+async function loadSettings(){try{const s=await api('/api/settings');$('pdv-url').value=s.pdv.baseUrl;$('pdv-enabled').checked=s.pdv.enabled;$('pdv-test-result').textContent=s.readiness?.pdv.lastTest?.ok?`Leitura testada em ${date(s.readiness.pdv.lastTest.at)}`:'Leitura do PDV ainda não confirmada.';$('ai-setting').textContent=s.readiness.ai.configured?`IA configurada: ${s.readiness.ai.model} · QR: ${s.readiness.qr?.active?'ativo':'não operacional'}`:'Chave da IA ausente · configure no servidor';ss.status=s.readiness;renderStatus();const readOnly=Boolean(ss.status?.hosting?.readOnly);$('pdv-url').disabled=readOnly;$('pdv-enabled').disabled=readOnly;$('pdv-form').querySelector('button[type=submit]').disabled=readOnly;$('pdv-check').disabled=readOnly;renderSettingsChannels();renderChecklist();await Promise.all([updatePdvOrderStatus(),refreshCatalogReadiness()]);await loadChannelConfigs();}catch(e){notify(e.message,true);}}
 function renderSettingsChannels(){const container=$('channel-config-cards');container.replaceChildren();for(const c of ss.status?.channels||[]){const row=x('div','channel-card');const info=x('div');info.append(x('b','',`WhatsApp 0${c.slot}`),x('small','',c.apiVerifiedAt?`API verificada em ${date(c.apiVerifiedAt)}`:'Ainda não conectado'));const actions=x('div');const b=x('button','secondary',ss.status?.hosting?.readOnly?'Indisponível na prévia':'Conectar');b.disabled=Boolean(ss.status?.hosting?.readOnly);b.onclick=()=>openConnect(c.slot);actions.append(b);if(c.hasToken){const verify=x('button','secondary','Testar');verify.onclick=()=>verifyChannel(c.slot);actions.append(verify);}row.append(info,actions);container.append(row);}}
-function renderChecklist(){const a=$('readiness-list');a.replaceChildren();const s=ss.status;if(!s)return;const items=[{ok:s.channels[0].apiVerifiedAt&&s.channels[0].lastInboundAt&&s.channels[0].lastOutboundAt,label:'WhatsApp 1: receber e enviar mensagens reais'},{ok:s.channels[1].apiVerifiedAt&&s.channels[1].lastInboundAt&&s.channels[1].lastOutboundAt,label:'WhatsApp 2: receber e enviar mensagens reais'},{ok:s.ai.realTest,label:'IA: conexão com provedor verificada (conversas pendentes)'},{ok:s.pdv.lastTest?.ok,label:'PDV: cardápio/loja verificados em leitura'},{ok:false,label:'Integração de criação de pedidos autenticada, idempotente e homologada'},{ok:false,label:'Testes de ponta a ponta, recuperação, segurança e operação aprovados'}];for(const item of items){const box=x('div','check-item');box.append(x('i','',item.ok?'✓':'○'),x('span','',item.label));a.append(box);}}
+async function refreshCatalogReadiness(){
+ try{ss.catalog=await api('/api/cardapio-whatsapp/status');}
+ catch{ss.catalog=null;}
+ if(ss.screen==='settings')renderChecklist();
+}
+function renderChecklist(){
+ const area=$('readiness-list');area.replaceChildren();
+ const s=ss.status;if(!s)return;
+ const channels=s.channels||[];
+ const waEvidence=slot=>{
+  const meta=channels.find(c=>c.slot===slot);
+  const qrSlot=s.qr?.slots?.find(c=>c.slot===slot);
+  const verified=Boolean(meta?.apiVerifiedAt&&meta?.lastInboundAt&&meta?.lastOutboundAt);
+  const qrConnected=Boolean(qrSlot?.connected||qrSlot?.status==='connected'||qrSlot?.state==='open');
+  return {ok:verified,detail:verified?'Envio e recebimento confirmados na API Meta':qrConnected?'QR conectado; teste real de recebimento e envio ainda pendente':'Não há confirmação dos dois sentidos de mensagens'};
+ };
+ const wa1=waEvidence(1),wa2=waEvidence(2);
+ const pdvConnected=ss.pdvOrders?.ok===true;
+ const catalogSynced=ss.catalog?.sync?.ok===true;
+ const readConfirmed=Boolean(s.pdv?.lastTest?.ok&&s.pdv?.enabled);
+ const checks=[
+  {ok:wa1.ok,label:'WhatsApp 1: receber e enviar mensagens reais',detail:wa1.detail},
+  {ok:wa2.ok,label:'WhatsApp 2: receber e enviar mensagens reais',detail:wa2.detail},
+  {ok:s.ai?.realTest===true,label:'IA: conexão com o provedor verificada',detail:s.ai?.realTest?'Teste real do provedor registrado':'Teste do provedor ainda não aprovado'},
+  {ok:readConfirmed||catalogSynced,label:'PDV: cardápio/loja verificados em leitura',detail:readConfirmed?'Consulta autenticada de cardápio e loja aprovada':catalogSynced?'Catálogo sincronizado; verificação completa da loja ainda pendente':'Sincronização não comprovada'},
+  {ok:pdvConnected,label:'PDV: autenticação da API de pedidos',detail:pdvConnected?'Token aceito; modo '+String(ss.pdvOrders.mode||'desconhecido').toUpperCase():'API de pedidos não autenticada ou indisponível'},
+  {ok:false,label:'Criação de pedidos: idempotência e gravação homologadas',detail:'A conexão não prova gravação, prevenção de duplicidade ou conciliação'},
+  {ok:false,label:'Testes ponta a ponta, recuperação e segurança aprovados',detail:'Pendente homologação operacional com os dois canais e pedidos de teste controlados'}
+ ];
+ for(const item of checks){
+  const box=x('div','check-item');
+  box.append(x('i','',item.ok?'✓':'○'));
+  const details=x('div');
+  details.append(x('span','',item.label),x('small','',item.detail));
+  box.append(details);
+  area.append(box);
+ }
+}
 async function verifyChannel(slot){try{const r=await api(`/api/channels/${slot}/verify`,{method:'POST',body:'{}'});notify(`Canal ${slot}: API Meta validada.`);await loadStatus();renderSettingsChannels();}catch(e){notify(e.message,true);}}
 function openConnect(slot){if(ss.status?.hosting?.freePreview){notify('A prévia gratuita não conecta números reais nem armazena tokens Meta.',true);return;}ss.modalSlot=slot;ss.metaAssets=null;ss.metaCode=null;$('modal-title').textContent=`Conectar WhatsApp 0${slot}`;$('modal-message').textContent='';$('manual-config').reset();$('meta-onboard-hint').textContent=ss.status?.oauth.available?'O login oficial da Meta será aberto nesta tela. Se disponível, escolha manter o WhatsApp Business pelo recurso de coexistência.':'Configure META_APP_ID e META_CONFIG_ID no servidor para habilitar o cadastro oficial aqui. Também é possível validar IDs e token autorizados abaixo.';$('meta-connect').disabled=!ss.status?.oauth.available;$('connect-modal').showModal();}
 async function prepareSdk(){if(window.FB)return;await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://connect.facebook.net/pt_BR/sdk.js';s.onload=resolve;s.onerror=()=>reject(new Error('Não foi possível carregar a autorização oficial da Meta'));document.head.append(s);});window.FB.init({appId:ss.status.oauth.appId,cookie:false,xfbml:false,version:'v25.0'});}
