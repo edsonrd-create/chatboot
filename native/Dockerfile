@@ -5,6 +5,9 @@ RUN apk add --no-cache ffmpeg && npm install --omit=dev --no-audit --no-fund && 
 COPY src ./src
 COPY public ./public
 COPY config ./config
+COPY test ./test
+# Bloqueia publicação se qualquer regressão do bot falhar.
+RUN npm test
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8080 DATA_FILE=/app/data/state.json
 RUN mkdir -p /app/data && chown node:node /app/data
 EXPOSE 8080
