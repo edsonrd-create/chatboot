@@ -7,7 +7,7 @@ const timestamp=v=>v?new Date(v).toLocaleTimeString('pt-BR',{hour:'2-digit',minu
 const deliveryLabel=v=>({received:'Recebida',done:'Enviada',sent:'Enviada',delivered:'Entregue',read:'Lida',failed:'Falhou',queued:'Na fila',pending:'Pendente',sample:'Exemplo',ai:'IA',human:'Atendente'})[String(v||'').toLowerCase()]||v||'';
 const date=v=>v?new Date(v).toLocaleString('pt-BR'):'';
 function navigate(name){ss.screen=name;for(const el of document.querySelectorAll('[data-screen]'))el.classList.toggle('active',el.dataset.screen===name);for(const el of document.querySelectorAll('.screen'))el.hidden=el.id!==`screen-${name}`;$('page-title').textContent=({inbox:'Conversas',orders:'Pedidos',testing:'Laboratório de IA',qr:'Conectar QR',cardapio:'Cardápio WhatsApp',settings:'Configurações'})[name];if(name==='inbox')loadInbox();if(name==='orders')loadOrders();if(name==='settings')loadSettings();if(name==='qr')loadQr();if(name==='cardapio')loadCardapioSync();}
-function renderStatus(){const s=ss.status;if(!s)return;const readOnly=Boolean(s.hosting?.readOnly);$('logout').hidden=readOnly;$('ai-check').disabled=readOnly;$('lab-text').disabled=readOnly;$('lab-form').querySelector('button').disabled=readOnly;$('lab-reset').disabled=readOnly;$('system-status').textContent=s.hosting?.freePreview?'Prévia gratuita · Dados temporários':'PDV: verificando autenticação de pedidos…';const preview=$('free-preview-banner');if(preview)preview.hidden=!s.hosting?.freePreview;for(const c of s.channels){$('number-'+c.slot).textContent=c.number||'Não conectado';const tag=$('badge-'+c.slot);tag.className='pill '+(c.apiVerifiedAt?'on':'off');tag.textContent=c.apiVerifiedAt?'API Meta verificada':'Aguardando verificação';}const ai=$('ai-config-state');ai.textContent=s.hosting?.readOnly?'Prévia pública: Gemini e outras IAs desativados.':s.ai.configured?`IA: ${s.ai.provider==='gemini'?'Google Gemini':'OpenAI'} · ${s.ai.model} · Teste real: ${s.ai.realTest?'aprovado':'pendente'}`:`IA ${s.ai.provider==='gemini'?'Gemini':'OpenAI'} selecionada, mas chave não configurada no servidor.`;}
+function renderStatus(){const s=ss.status;if(!s)return;const readOnly=Boolean(s.hosting?.readOnly);$('logout').hidden=readOnly;$('ai-check').disabled=readOnly;$('lab-text').disabled=readOnly;$('lab-form').querySelector('button').disabled=readOnly;$('lab-reset').disabled=readOnly;$('system-status').textContent=s.hosting?.freePreview?'Prévia gratuita · Dados temporários':(ss.pdvOrderStatusText||'PDV: verificando autenticação de pedidos…');const preview=$('free-preview-banner');if(preview)preview.hidden=!s.hosting?.freePreview;for(const c of s.channels){$('number-'+c.slot).textContent=c.number||'Não conectado';const tag=$('badge-'+c.slot);tag.className='pill '+(c.apiVerifiedAt?'on':'off');tag.textContent=c.apiVerifiedAt?'API Meta verificada':'Aguardando verificação';}const ai=$('ai-config-state');ai.textContent=s.hosting?.readOnly?'Prévia pública: Gemini e outras IAs desativados.':s.ai.configured?`IA: ${s.ai.provider==='gemini'?'Google Gemini':'OpenAI'} · ${s.ai.model} · Teste real: ${s.ai.realTest?'aprovado':'pendente'}`:`IA ${s.ai.provider==='gemini'?'Gemini':'OpenAI'} selecionada, mas chave não configurada no servidor.`;}
 async function loadStatus(){ss.status=await api('/api/status');renderStatus();await updatePdvOrderStatus();}
 async function updatePdvOrderStatus(){
  const label=$('system-status');
@@ -23,14 +23,17 @@ async function updatePdvOrderStatus(){
      PDV_UNREACHABLE:'PDV inacessível',
      INVALID_PDV_MODE:'PDV retornou modo inválido',
    };
-   label.textContent='PDV: '+(reasons[result.reason]||('Conexão falhou ('+(result.httpStatus||'sem resposta')+')'));
+   ss.pdvOrderStatusText='PDV: '+(reasons[result.reason]||('Conexão falhou ('+(result.httpStatus||'sem resposta')+')'));
+   label.textContent=ss.pdvOrderStatusText;
    return;
   }
   const titles={test:'Conectado em TESTE · pedidos não são gravados',off:'Conectado, mas pedidos desativados',active:'Conectado · modo ATIVO no PDV'};
-  label.textContent='PDV: '+(titles[result.mode]||'Estado desconhecido')+
+  ss.pdvOrderStatusText='PDV: '+(titles[result.mode]||'Estado desconhecido')+
     (ss.status?.qr?.active?' · WhatsApp QR ativo':'');
+  label.textContent=ss.pdvOrderStatusText;
  }catch{
-   if(label)label.textContent='PDV: não foi possível consultar o estado dos pedidos';
+   ss.pdvOrderStatusText='PDV: não foi possível consultar o estado dos pedidos';
+   if(label)label.textContent=ss.pdvOrderStatusText;
  }
 }
 function renderConversations(){const area=$('conversation-list');area.replaceChildren();const q=$('search').value.trim().toLowerCase();const filtered=ss.conversations.filter(t=>(!ss.slot||t.slot===ss.slot)&&matchesOperationsFilter(t)&&(!q||[t.customer,t.customerName,t.lastText].join(' ').toLowerCase().includes(q)));{const unread=ss.conversations.reduce((n,t)=>n+(t.unread||0),0);const badge=$('unread-total');badge.textContent=unread;badge.hidden=!unread;badge.title=unread?`${unread} mensagem(ns) não lida(s)`:'';}
