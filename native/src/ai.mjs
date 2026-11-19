@@ -331,7 +331,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
     const total=summary.totalCents===null?'a confirmar após validar os dados':formatMoney(summary.totalCents);
     return '🍕 Seu pedido está assim: *Subtotal: '+subtotal+'*. Entrega: '+delivery+'. *Total: '+total+'*. 😊 Quer adicionar mais alguma coisa ou podemos finalizar?';
   }
-  if(/\b(?:qual|quanto|previs[aã]o|prazo|tempo|demora)\b/i.test(normalizedInput) && /\b(?:entrega|entregar|chegar|delivery)\b/i.test(normalizedInput) && !/\b(?:pedido|atrasad[ao]|cad[eê])\b/i.test(normalizedInput)){
+  if(/\b(?:qual|quanto|previs[aã]o|prazo|tempo|demora)\b/i.test(normalizedInput) && /\b(?:entrega|entregar|chegar|delivery)\b/i.test(normalizedInput) && !/\b(?:pedido|atrasad[ao]|cad[eê])\b/i.test(normalizedInput) && !(session.orderRefs||[]).length){
     return business.pdvDeliveryWindow
       ? '🍕 A previsão atual de entrega informada pelo PDV é de *'+business.pdvDeliveryWindow+'*. O prazo pode variar conforme a operação.'
       : 'Ainda não consegui consultar o prazo de entrega atualizado no PDV. Vou confirmar com nossa equipe para não informar um tempo incorreto.';
