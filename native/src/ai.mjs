@@ -230,7 +230,9 @@ export function whatsappText(t){return String(t||'').replace(/\*\*(.+?)\*\*/g,'*
 export async function intelligentReply(userText,session,business,cfg={}){
   const normalizedInput=normalize(String(userText||'')).trim();
   session.enforceCheckoutOrder=true;
-  if(session.awaitingConfirmation && (!Number.isFinite(session.quoteIssuedAt)||Date.now()-session.quoteIssuedAt>=20*60_000)){
+  // Sessões anteriores à migração não tinham data do orçamento; iniciar controle ao retomá-las.
+  if(session.awaitingConfirmation && !Number.isFinite(session.quoteIssuedAt))session.quoteIssuedAt=Date.now();
+  if(session.awaitingConfirmation && Date.now()-session.quoteIssuedAt>=20*60_000){
     beginNewOrder(session);
     return '⏰ O resumo anterior venceu após 20 minutos sem confirmação e foi encerrado sem enviar pedido ou gerar cobrança. 🍕 Vamos montar um pedido atualizado? Qual pizza ou combo você deseja?';
   }
