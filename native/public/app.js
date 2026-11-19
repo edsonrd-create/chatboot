@@ -101,7 +101,8 @@ function renderChecklist(){
   {ok:wa1.ok,label:'WhatsApp 1: receber e enviar mensagens reais',detail:wa1.detail},
   {ok:wa2.ok,label:'WhatsApp 2: receber e enviar mensagens reais',detail:wa2.detail},
   {ok:s.ai?.realTest===true,label:'IA: conexão com o provedor verificada',detail:s.ai?.realTest?'Teste real do provedor registrado':'Teste do provedor ainda não aprovado'},
-  {ok:readConfirmed||catalogSynced,label:'PDV: cardápio/loja verificados em leitura',detail:readConfirmed?'Consulta autenticada de cardápio e loja aprovada':catalogSynced?'Catálogo sincronizado; verificação completa da loja ainda pendente':'Sincronização não comprovada'},
+  {ok:catalogSynced,label:'PDV: cardápio sincronizado em leitura',detail:catalogSynced?'Catálogo recebido do PDV':'Sincronização não comprovada'},
+  {ok:readConfirmed,label:'PDV: cardápio e situação da loja testados',detail:readConfirmed?'Consulta de leitura aprovada':'Use Testar conexão em Dados oficiais do PDV para confirmar também a situação da loja'},
   {ok:pdvConnected,label:'PDV: autenticação da API de pedidos',detail:pdvConnected?'Token aceito; modo '+String(ss.pdvOrders.mode||'desconhecido').toUpperCase():'API de pedidos não autenticada ou indisponível'},
   {ok:false,label:'Criação de pedidos: idempotência e gravação homologadas',detail:'A conexão não prova gravação, prevenção de duplicidade ou conciliação'},
   {ok:false,label:'Testes ponta a ponta, recuperação e segurança aprovados',detail:'Pendente homologação operacional com os dois canais e pedidos de teste controlados'}
