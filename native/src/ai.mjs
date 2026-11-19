@@ -304,7 +304,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
       const request=requestConfirmation(session,business);
       if(request.ok){
         session.quotePresented=true;
-        session.lastQuote=formatQuote(request.quote);
+        session.lastQuote=formatQuote(request.quote,business);
         return 'Obrigado! 📱 Agora confira novamente o resumo com o telefone correto. Nenhum pedido foi enviado ainda.\\n\\n'+QUOTE_PROMPT(session.lastQuote);
       }
       return 'Telefone anotado. Ainda falta conferir: '+(request.quote?.missing||[]).join(', ')+'.';
@@ -322,7 +322,7 @@ export async function intelligentReply(userText,session,business,cfg={}){
     const result=requestConfirmation(session,business);
     if(result.ok){
       session.quotePresented=true;
-      session.lastQuote=formatQuote(result.quote);
+      session.lastQuote=formatQuote(result.quote,business);
       return QUOTE_PROMPT(session.lastQuote);
     }
     return 'Já estamos fechando seu pedido! 😊 Ainda preciso conferir: '+result.quote?.missing?.join(', ')+'.';
