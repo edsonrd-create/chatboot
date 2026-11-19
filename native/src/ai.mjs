@@ -331,6 +331,11 @@ export async function intelligentReply(userText,session,business,cfg={}){
     const total=summary.totalCents===null?'a confirmar após validar os dados':formatMoney(summary.totalCents);
     return '🍕 Seu pedido está assim: *Subtotal: '+subtotal+'*. Entrega: '+delivery+'. *Total: '+total+'*. 😊 Quer adicionar mais alguma coisa ou podemos finalizar?';
   }
+  if(/\b(?:qual|quanto|previs[aã]o|prazo|tempo|demora)\b/i.test(normalizedInput) && /\b(?:entrega|entregar|chegar|delivery)\b/i.test(normalizedInput) && !/\b(?:pedido|atrasad[ao]|cad[eê])\b/i.test(normalizedInput)){
+    return business.pdvDeliveryWindow
+      ? '🍕 A previsão atual de entrega informada pelo PDV é de *'+business.pdvDeliveryWindow+'*. O prazo pode variar conforme a operação.'
+      : 'Ainda não consegui consultar o prazo de entrega atualizado no PDV. Vou confirmar com nossa equipe para não informar um tempo incorreto.';
+  }
   // Status operacional é resposta do PDV, nunca texto livre da IA nem histórico de outro pedido.
   const trackingQuestion=/\b(quanto tempo|previsao|prazo|cad[eê] meu pedido|onde est[aá] meu pedido|status do pedido|meu pedido|nao chegou|n[aã]o recebi|nao entregaram|entrega atrasada)\b/i.test(normalizedInput);
   if(trackingQuestion && !session.cart?.length){
@@ -411,11 +416,6 @@ export async function intelligentReply(userText,session,business,cfg={}){
   }
   if(session.lastDryRunRequestId && session.lastConfirmed?.requestId===session.lastDryRunRequestId && /\b(pix|pagamento|confirmo|confirmar|pedido)\b/.test(normalizedInput)){
     return 'A última solicitação foi apenas *validada em homologação*, sem registro de venda nem cobrança. Não há código PIX para ela. Para começar, responda *novo pedido*.';
-  }
-  if(/\b(?:qual|quanto|previs[aã]o|prazo|tempo|demora)\b/i.test(normalizedInput) && /\b(?:entrega|entregar|chegar|delivery)\b/i.test(normalizedInput)){
-    return business.pdvDeliveryWindow
-      ? '🍕 A previsão atual de entrega informada pelo PDV é de *'+business.pdvDeliveryWindow+'*. O prazo pode variar conforme a operação.'
-      : 'Ainda não consegui consultar o prazo de entrega atualizado no PDV. Vou confirmar com nossa equipe para não informar um tempo incorreto.';
   }
   if(cfg.menuFlowEnabled===true){
     const choice=cardapioChoice(session,userText,{iosUrl:cfg.iosUrl||'',catalogSynced:cfg.catalogSynced===true,pdfAvailable:cfg.pdfAvailable===true});
