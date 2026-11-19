@@ -58,6 +58,22 @@ export function createNativeServer({env=process.env,fetchImpl=globalThis.fetch,d
   const business=JSON.parse(fs.readFileSync(path.join(root,'config','business.json'),'utf8'));
   // Cardápio e preços oficiais vêm do PDV (boot + a cada 5 min). Falha mantém o último catálogo válido.
   const pdvBase=String(env.PDV_BASE_URL||'https://pdvgutoexpress.com.br').replace(/\/$/,'');
+  // Previsão oficial configurada no PDV (store_state). Nunca confundir com tempo de trajeto do Maps.
+  async function refreshPdvDeliveryWindow(){
+    business.pdvDeliveryWindow=null; // Evita divulgar prazo antigo quando a consulta falha.
+    try{
+      const response=await fetchImpl(pdvBase+'/api/v1/store',{
+        headers:{accept:'application/json'},redirect:'error',cache:'no-store',
+        signal:AbortSignal.timeout(6000),
+      });
+      if(!response.ok)return null;
+      const info=await response.json();
+      const min=Number(info.deliveryTimeMin),max=Number(info.deliveryTimeMax);
+      if(!Number.isSafeInteger(min)||!Number.isSafeInteger(max)||min<1||max<min||max>240)return null;
+      business.pdvDeliveryWindow=min===max?`${min} minutos`:`${min} a ${max} minutos`;
+      return business.pdvDeliveryWindow;
+    }catch{return null;}
+  }
   let catalogTimer;
   let catalogSync={ok:false,checkedAt:null,error:'NOT_SYNCED',items:0};
   let catalogInFlight=null;
@@ -329,6 +345,7 @@ try{
     reply=savedReply;
   }else{
     const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='true'?await syncCatalog():null;
+    await refreshPdvDeliveryWindow();
     reply=await withAiSlot(()=>respondWithAI(text,session,business,{
       ...aiCfg,pdfAvailable:Boolean(getActivePdf(statePath)),menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED==='true',
       catalogSynced:pdvSync?.ok===true,iosUrl:env.GUTO_IOS_APP_URL||''
@@ -808,6 +825,7 @@ if(qt?.via==='qr'){if(!qr)return json(res,409,{error:'Conexão por QR desativada
         try{
           let reply,summary,mode;
           await store.change(async d=>{const session=d.simulation||newSession();session.simulation=true;session.customerPhone||='41900000000';session.customerName||='Teste Simulador';const pdvSync=env.PDV_MENU_REALTIME_ENABLED==='true'?await syncCatalog():null;
+            await refreshPdvDeliveryWindow();
             reply=await intelligentReply(v.text,session,business,{
               ...aiCfg,menuFlowEnabled:env.PDV_MENU_REALTIME_ENABLED==='true',
               catalogSynced:pdvSync?.ok===true,iosUrl:env.GUTO_IOS_APP_URL||''
